@@ -92,14 +92,15 @@ type Configuration struct {
 	// ProtocolVersionMinimum is the earliest version this package supports
 	ProtocolVersionMinimum uint16
 
+	ChannelCapacity uint
+
 	LogPath  string // Path for logs
 	LogLevel string // Logging level
 }
 
 // DefaultP2PConfiguration returns a network configuration with base values
 // These should be overwritten with command line and config parameters
-func DefaultP2PConfiguration() *Configuration {
-	c := new(Configuration)
+func DefaultP2PConfiguration() (c Configuration) {
 	c.Network = MainNet
 	c.NodeID = 0
 	c.NodeName = "FNode0"
@@ -131,5 +132,7 @@ func DefaultP2PConfiguration() *Configuration {
 	c.ProtocolVersion = 9
 	c.ProtocolVersionMinimum = 9
 
-	return c
+	c.ChannelCapacity = 5000
+
+	return
 }

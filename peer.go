@@ -50,9 +50,9 @@ const (
 )
 
 type Peer struct {
-	peerManager *PeerManager
-	conn        *Connection
-	state       PeerState
+	net   *Network
+	conn  *Connection
+	state PeerState
 	//	stateMutex             sync.RWMutex
 	stop                   chan interface{}
 	Outgoing               bool
@@ -215,7 +215,7 @@ func (p *Peer) monitorConnection() {
 				p.logger.WithFields(log.Fields{"old": p.NodeID, "new": nodeid}).Debugf("NodeID changed")
 				p.NodeID = nodeid
 			}
-			p.peerManager.Data <- PeerParcel{Peer: p, Parcel: parcel} // TODO this is potentially blocking
+			p.net.peerManager.Data <- PeerParcel{Peer: p, Parcel: parcel} // TODO this is potentially blocking
 		}
 	}
 }
