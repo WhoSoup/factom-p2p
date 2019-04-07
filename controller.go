@@ -4,16 +4,8 @@
 
 package p2p
 
-// controller manages the P2P Network.
-// It maintains the list of peers, and has a master run-loop that
-// processes ingoing and outgoing messages.
-// It is controlled via a command channel.
-// Other than Init and NetworkStart, all administration is done via the channel.
-
 import (
 	"fmt"
-	"reflect"
-	"time"
 
 	log "github.com/sirupsen/logrus"
 )
@@ -22,17 +14,8 @@ var controllerLogger = packageLogger.WithField("subpack", "controller")
 
 // controller manages the peer to peer network.
 type controller struct {
-	net     *Network
-	running bool
-
-	listenPort string // port to listen on for new connections
-
-	In   chan interface{} // incoming messages from the network to the app
-	Out  chan interface{} // outgoing messages to the network
+	net  *Network
 	stop chan interface{}
-
-	ToNetwork   chan interface{} // Parcels from the application for us to route
-	FromNetwork chan interface{} // Parcels from the network for the application
 
 	logger *log.Entry
 }
@@ -59,6 +42,9 @@ func newController(network *Network) *controller {
 }
 
 func (c *controller) Start() {
+	for len(c.stop) > 0 {
+		<-c.stop
+	}
 	go c.listenLoop()
 	c.routeLoop()
 }
@@ -70,12 +56,11 @@ func (c *controller) Stop() {
 
 // listenLoop listens for incoming TCP connections and passes them off to peer manager
 func (c *controller) listenLoop() {
-	c.logger.Debug("controller.listenLoop() starting up")
-
 	tmpLogger := c.logger.WithFields(log.Fields{"address": c.net.conf.ListenIP, "port": c.net.conf.ListenPort})
+	tmpLogger.Debug("controller.listenLoop() starting up")
 
 	addr := fmt.Sprintf("%s:%s", c.net.conf.ListenIP, c.net.conf.ListenPort)
-	fmt.Println("addr:", addr, c.net.conf.ListenIP, c.net.conf.ListenPort)
+
 	listener, err := NewLimitedListener(addr, c.net.conf.ListenLimit)
 	if err != nil {
 		tmpLogger.WithError(err).Error("controller.Start() unable to start limited listener")
@@ -99,20 +84,14 @@ func (c *controller) listenLoop() {
 	}
 }
 
-// Take messages from Outgoing channel and route it to the peer manager
+// routLoop Takes messages from the network's ToNetwork channel and routes it
+// to the peerManager via the appropriate function
 func (c *controller) routeLoop() {
-	c.logger.Debugf("controller.routeLoop() @@@@@@@@@@ starting up in %d seconds", 2)
-	time.Sleep(time.Second * time.Duration(2)) // Wait a few seconds to let the system come up.
-
-	// terminates via stop channel
 	for {
-		// TODO move this to peer manager
-		//c.connections.UpdatePrometheusMetrics()
-		//p2pcontrollerNumMetrics.Set(float64(len(c.connectionMetrics)))
-
-		// blocking read on c.Out, and c.stop
+		// TODO metrics?
+		// blocking read on ToNetwork, and c.stop
 		select {
-		case message := <-c.Out:
+		case message := <-c.net.ToNetwork:
 			c.handleParcel(message)
 		// stop this loop if anything shows up
 		case <-c.stop:
@@ -121,14 +100,7 @@ func (c *controller) routeLoop() {
 	}
 }
 
-func (c *controller) handleParcel(message interface{}) {
-	parcel, ok := message.(*Parcel)
-	if !ok {
-		c.logger.WithField("message", message).Errorf("handleParcel() received unexpected message of type %s", reflect.TypeOf(message))
-		return
-	}
-	TotalMessagesSent++
-
+func (c *controller) handleParcel(parcel *Parcel) {
 	switch parcel.Header.TargetPeer {
 	case FullBroadcastFlag:
 		c.net.peerManager.Broadcast(parcel, true)

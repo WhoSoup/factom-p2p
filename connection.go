@@ -9,8 +9,6 @@ import (
 	"net"
 	"time"
 
-	"github.com/FactomProject/factomd/common/primitives"
-
 	log "github.com/sirupsen/logrus"
 )
 
@@ -43,54 +41,11 @@ type Connection struct {
 	logger *log.Entry
 }
 
-// Each connection is a simple state machine.  The state is managed by a single goroutine which also does networking.
-// The flow is this:  Connection gets initialized, and either has a peer or a net connection (From an accept())
-// If no network connection, the Connection dials.  If the dial is successful, it moves to the Online state
-// If not, it moves to the Shutdown state-- we only dial out once when initialized with a peer.
-// If we are online and get a network error, we shift to offline mode.  In offline state we attempt to reconnect for
-// a period defined in protocol.go.  IF successful, we go back Online.  If too many attempts are made, we go to
-// The ConnectionShutdown state, and exit the runloop.  In the Shutdown state we notify the controller so that we can be
-// cleaned up.
-const (
-	ConnectionInitialized  uint8 = iota //Structure created, have peer info. Dial command moves us to Online or Shutdown (depending)
-	ConnectionOnline                    // We're connected to the other side.  Normal state
-	ConnectionOffline                   // We've been disconnected for whatever reason.  Attempt to reconnect some number of times. Moves to Online if successful, Shutdown if not.
-	ConnectionShuttingDown              // We're shutting down, the receives loop exits.
-	ConnectionClosed                    // We're shut down, the runloop sets this state right before exiting. Controller can clean us up.
-)
-
-// Map of network ids to strings for easy printing of network ID
-var connectionStateStrings = map[uint8]string{
-	ConnectionInitialized:  "Initialized",
-	ConnectionOnline:       "Online",
-	ConnectionOffline:      "Offline",
-	ConnectionShuttingDown: "Shutting Down",
-	ConnectionClosed:       "Closed",
-}
-
 type GracefulShutdown struct {
 }
 
 func (g *GracefulShutdown) Error() string {
 	return "Graceful Shutdown initiated"
-}
-
-// ConnectionParcel is sent to convey an application message destined for the network.
-type ConnectionParcel struct {
-	Parcel Parcel
-}
-
-func (e *ConnectionParcel) JSONByte() ([]byte, error) {
-	return primitives.EncodeJSON(e)
-}
-
-func (e *ConnectionParcel) JSONString() (string, error) {
-	return primitives.EncodeJSONString(e)
-}
-
-func (e *ConnectionParcel) String() string {
-	str, _ := e.JSONString()
-	return str
 }
 
 // ConnectionMetrics is used to encapsulate various metrics about the connection.
@@ -110,47 +65,10 @@ type ConnectionMetrics struct {
 	ConnectionNotes string // Connectivity notes for the connection
 }
 
-// ConnectionCommand is used to instruct the Connection to carry out some functionality.
-type ConnectionCommand struct {
-	Command uint8
-	Peer    Peer
-	Delta   int32
-	Metrics ConnectionMetrics
-}
-
-func (e *ConnectionCommand) JSONByte() ([]byte, error) {
-	return primitives.EncodeJSON(e)
-}
-
-func (e *ConnectionCommand) JSONString() (string, error) {
-	return primitives.EncodeJSONString(e)
-}
-
-func (e *ConnectionCommand) String() string {
-	str, _ := e.JSONString()
-	return str
-}
-
-// These are the commands that connections can send/receive
-const (
-	ConnectionIsClosed uint8 = iota // Notifies the controller that we are shut down and can be released
-	ConnectionShutdownNow
-	ConnectionUpdatingPeer
-	ConnectionAdjustPeerQuality
-	ConnectionUpdateMetrics
-	ConnectionGoOffline // Notifies the connection it should go offinline (eg from another goroutine)
-)
-
-//////////////////////////////
-//
-// Public API
-//
-//////////////////////////////
-
 func NewConnection(peerHash string, conn net.Conn, receive ParcelChannel, net *Network) *Connection {
 	c := &Connection{}
 	c.Send = NewParcelChannel(net.conf.ChannelCapacity)
-	c.Receive = NewParcelChannel(net.conf.ChannelCapacity)
+	c.Receive = receive
 	c.Error = make(chan error, 3) // two goroutines + close() = max 3 errors
 
 	c.logger = conLogger.WithFields(log.Fields{"address": conn.RemoteAddr(), "peer": peerHash})
@@ -199,7 +117,7 @@ func (c *Connection) readLoop() {
 func (c *Connection) sendLoop() {
 	defer c.conn.Close() // close connection on fatal error
 	for {
-		parcel := <-c.Send.Reader()
+		parcel := <-c.Send
 
 		if parcel == nil {
 			c.logger.Error("Received <nil> pointer")

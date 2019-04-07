@@ -1,6 +1,7 @@
 package p2p
 
 import (
+	"fmt"
 	"sync"
 
 	log "github.com/sirupsen/logrus"
@@ -22,6 +23,14 @@ type Network struct {
 
 var packageLogger = log.WithField("package", "p2p")
 
+func (n *Network) DebugMessage() string {
+	r := ""
+	for _, p := range n.peerManager.peers.Slice() {
+		r += fmt.Sprintf("\tPeer %s %v\n", p.String(), p.IsOnline())
+	}
+	return r
+}
+
 func NewNetwork(conf Configuration) *Network {
 	myconf := conf
 	n := new(Network)
@@ -29,7 +38,7 @@ func NewNetwork(conf Configuration) *Network {
 
 	n.conf = &myconf
 	n.controller = newController(n)
-	n.peerManager = newpeerManager(n)
+	n.peerManager = newPeerManager(n)
 
 	n.ToNetwork = NewParcelChannel(conf.ChannelCapacity)
 	n.FromNetwork = NewParcelChannel(conf.ChannelCapacity)

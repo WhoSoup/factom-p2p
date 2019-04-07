@@ -16,9 +16,9 @@ var pmLogger = packageLogger.WithField("subpack", "peerManager")
 
 // peerManager is responsible for managing all the Peers, both online and offline
 type peerManager struct {
-	net  *Network
-	stop chan interface{}
-	Data chan PeerParcel
+	net     *Network
+	stop    chan interface{}
+	Receive chan PeerParcel
 
 	//peerMutex  sync.RWMutex
 	peers *PeerMap
@@ -38,9 +38,9 @@ type peerManager struct {
 	logger *log.Entry
 }
 
-// newpeerManager creates a new peer manager for the given controller
+// newPeerManager creates a new peer manager for the given controller
 // configuration is shared between the two
-func newpeerManager(network *Network) *peerManager {
+func newPeerManager(network *Network) *peerManager {
 	pm := &peerManager{}
 	pm.net = network
 
@@ -53,7 +53,7 @@ func newpeerManager(network *Network) *peerManager {
 	pm.peers = NewPeerMap()
 
 	pm.stop = make(chan interface{}, 1)
-	pm.Data = make(chan PeerParcel, StandardChannelSize)
+	pm.Receive = make(chan PeerParcel, pm.net.conf.ChannelCapacity)
 
 	// TODO parse config special peers
 	pm.rng = rand.New(rand.NewSource(time.Now().UnixNano()))
@@ -95,7 +95,7 @@ func (pm *peerManager) bootStrapPeers() {
 
 func (pm *peerManager) manageData() {
 	for {
-		data := <-pm.Data
+		data := <-pm.Receive
 		parcel := data.Parcel
 		peer := data.Peer
 
@@ -163,7 +163,7 @@ func (pm *peerManager) discoverSeeds() {
 		address, port, err := net.SplitHostPort(line)
 		if err == nil {
 			// TODO check if seed exists?
-			seed := pm.SpawnPeer(address, true, port)
+			seed := pm.SpawnPeer(address, port)
 			pm.addPeer(seed)
 		} else {
 			pm.logger.Errorf("Bad peer in " + pm.net.conf.SeedURL + " [" + line + "]")
@@ -193,7 +193,7 @@ func (pm *peerManager) processPeers(peer *Peer, parcel *Parcel) {
 		if !known[p.ConnectAddress()] {
 			known[p.ConnectAddress()] = true
 
-			add := pm.SpawnPeer(p.Address, true, p.ListenPort)
+			add := pm.SpawnPeer(p.Address, p.ListenPort)
 			pm.addPeer(add)
 		}
 	}
@@ -302,8 +302,8 @@ func (pm *peerManager) managePeersDialOutgoing() {
 	}
 }
 
-func (pm *peerManager) SpawnPeer(address string, outgoing bool, listenPort string) *Peer {
-	p := &Peer{Address: address, Outgoing: outgoing, state: Offline, ListenPort: listenPort}
+func (pm *peerManager) SpawnPeer(address string, listenPort string) *Peer {
+	p := &Peer{Address: address, state: Offline, ListenPort: listenPort}
 	p.net = pm.net
 	p.logger = peerLogger.WithFields(log.Fields{
 		"node":       pm.net.conf.NodeName,
@@ -311,12 +311,11 @@ func (pm *peerManager) SpawnPeer(address string, outgoing bool, listenPort strin
 		"address":    p.Address,
 		"port":       p.Port,
 		"listenPort": p.ListenPort,
-		"outgoing":   p.Outgoing,
 	})
 	p.config = pm.net.conf
-	p.ListenPort = p.config.ListenPort // assume they listen on same port we do
+	p.age = time.Now()
 	p.stop = make(chan interface{}, 1)
-	p.incoming = make(chan *Parcel, StandardChannelSize)
+	p.Receive = NewParcelChannel(pm.net.conf.ChannelCapacity)
 	p.Hash = address + ":" + listenPort // TODO make this a hash
 	pm.logger.WithField("address", fmt.Sprintf("%s:%s", address, listenPort)).Debugf("Creating new peer %s", p)
 	pm.addPeer(p)
@@ -327,14 +326,7 @@ func (pm *peerManager) SpawnPeer(address string, outgoing bool, listenPort strin
 func (pm *peerManager) addPeer(peer *Peer) {
 	//pm.peerMutex.Lock()
 	//defer pm.peerMutex.Unlock()
-
 	pm.peers.Add(peer)
-
-	if peer.Outgoing {
-		pm.outgoing++
-	} else {
-		pm.incoming++
-	}
 }
 
 func (pm *peerManager) banPeer(peer *Peer) {
@@ -369,8 +361,8 @@ func (pm *peerManager) HandleIncoming(con net.Conn) {
 		}
 	}
 
-	p := pm.SpawnPeer(ip, false, "0") // create AND ADD a peer
-	p.StartWithActiveConnection(con)  // peer is online
+	p := pm.SpawnPeer(ip, "0")       // create AND add peer but we don't know their remote port
+	p.StartWithActiveConnection(con) // peer is online
 
 	//c := NewConnection(con, pm.net.conf)
 

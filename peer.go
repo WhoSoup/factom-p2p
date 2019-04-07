@@ -7,6 +7,7 @@ package p2p
 import (
 	"fmt"
 	"net"
+	"sync"
 	"time"
 
 	log "github.com/sirupsen/logrus"
@@ -50,12 +51,14 @@ const (
 )
 
 type Peer struct {
-	net   *Network
-	conn  *Connection
-	state PeerState
+	net       *Network
+	conn      *Connection
+	connMutex sync.RWMutex
+	state     PeerState
 	//	stateMutex             sync.RWMutex
+	age                    time.Time
 	stop                   chan interface{}
-	Outgoing               bool
+	IsOutgoing             bool
 	config                 *Configuration
 	lastPeerRequest        time.Time
 	lastPeerSend           time.Time
@@ -92,23 +95,35 @@ func (p *Peer) ConnectAddress() string {
 
 func (p *Peer) StartToDial() {
 	if !p.CanDial() {
-		p.logger.Errorf("Attempted to connect to a peer with no remote listen port")
+		p.logger.Errorf("Maximum dial attempts reached")
 		return
+	}
+
+	p.connectionAttempt = time.Now()
+	p.connectionAttemptCount++
+
+	if p.Location == 0 {
+		loc, err := IP2Location(p.Address)
+		if err != nil {
+			p.logger.WithError(err).Warnf("Unable to convert address %s to location", p.Address)
+			return
+		}
+		p.Location = loc
 	}
 
 	//p.stateMutex.Lock()
 	//defer p.stateMutex.Unlock()
 
+	p.connMutex.Lock()
 	if p.conn != nil {
 		p.logger.WithField("old_conn", p.conn).Warn("Peer started to dial despite not being offline")
 		p.conn.Stop()
 		p.conn = nil
 	}
+	p.connMutex.Unlock()
 
-	p.Outgoing = true
+	p.IsOutgoing = true
 	p.state = Connecting
-	p.connectionAttempt = time.Now()
-	p.connectionAttemptCount++
 	remote := fmt.Sprintf("%s:%s", p.Address, p.ListenPort)
 	con, err := net.Dial("tcp", remote)
 	p.logger.WithField("attempt", p.connectionAttemptCount).Debugf("Dialing to %s", remote)
@@ -121,11 +136,13 @@ func (p *Peer) StartToDial() {
 }
 
 func (p *Peer) StartWithActiveConnection(con net.Conn) {
+	p.connMutex.Lock()
 	if p.conn != nil {
 		p.logger.WithField("old_conn", p.conn).Warn("Peer given new connection despite having old one")
 		p.conn.Stop()
 		p.conn = nil
 	}
+	p.connMutex.Unlock()
 	//p.stateMutex.Lock()
 	//defer p.stateMutex.Unlock()
 
@@ -135,8 +152,11 @@ func (p *Peer) StartWithActiveConnection(con net.Conn) {
 // startInternal is the common functionality for both dialing and accepting a connection
 // is under locked mutex from superior function
 func (p *Peer) startInternal(con net.Conn) {
+	p.connMutex.Lock()
 	p.conn = NewConnection(p.Hash, con, p.Receive, p.net)
 	p.conn.Start()
+	p.connMutex.Unlock()
+
 	p.state = Online
 	p.lastPeerRequest = time.Now()
 	go p.monitorConnection() // this will die when the connection is closed
@@ -150,9 +170,9 @@ func (p *Peer) GoOffline() {
 }
 
 func (p *Peer) Send(parcel *Parcel) {
-	//p.stateMutex.RLock()
-	//defer p.stateMutex.RUnlock()
-	if p.state != Online {
+	p.connMutex.RLock()
+	defer p.connMutex.RUnlock()
+	if p.conn == nil || p.state != Online {
 		if p.state == Connecting {
 			log.Error("Tried to send parcel connection still connecting")
 		} else {
@@ -171,7 +191,7 @@ func (p *Peer) Send(parcel *Parcel) {
 }
 
 func (p *Peer) CanDial() bool {
-	return p.connectionAttemptCount < p.config.RedialAttempts
+	return p.connectionAttemptCount < p.config.RedialAttempts && p.ListenPort != ""
 }
 
 func (p *Peer) IsOnline() bool {
@@ -194,23 +214,32 @@ func (p *Peer) monitorConnection() {
 			// p.conn ceased to exist
 		}
 	}()
+
+Monitor:
 	for {
 		select {
 		case <-p.stop: // manual stop, we need to tear down connection
 			//p.stateMutex.Lock()
 			//defer p.stateMutex.Lock()
 			p.state = Offline
-			p.conn.Stop()
-			p.conn = nil
+			p.connMutex.Lock()
+			if p.conn != nil {
+				p.conn.Stop()
+				p.conn = nil
+			}
+			p.connMutex.Unlock()
 			p.connectionAttemptCount = 0
-			return
-		case <-p.conn.Error:
-			//p.stateMutex.Lock()
-			//defer p.stateMutex.Lock()
+			break Monitor
+		case <-p.conn.Error: // if an error arrives here, the connection already stops itself
 			p.state = Offline
-			p.conn = nil // if an error arrives here, the connection already stops itself
+			p.connMutex.Lock()
+			if p.conn != nil {
+				p.conn = nil
+			}
+			p.connMutex.Unlock()
+
 			p.connectionAttemptCount = 0
-			return
+			break Monitor
 		case parcel := <-p.incoming:
 			if newport := parcel.Header.PeerPort; newport != p.ListenPort {
 				p.logger.WithFields(log.Fields{"old": p.ListenPort, "new": newport}).Debugf("Listen port changed")
@@ -220,7 +249,7 @@ func (p *Peer) monitorConnection() {
 				p.logger.WithFields(log.Fields{"old": p.NodeID, "new": nodeid}).Debugf("NodeID changed")
 				p.NodeID = nodeid
 			}
-			p.net.peerManager.Data <- PeerParcel{Peer: p, Parcel: parcel} // TODO this is potentially blocking
+			p.net.peerManager.Receive <- PeerParcel{Peer: p, Parcel: parcel} // TODO this is potentially blocking
 		}
 	}
 }

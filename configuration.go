@@ -92,8 +92,12 @@ type Configuration struct {
 	// silent (no writes) before sending a Ping
 	PingInterval time.Duration
 
+	// PeerAgeLimit dictates how long a peer can fail to connect before being considered dead
+	PeerAgeLimit time.Duration
 	// RedialInterval dictates how long to wait between connection attempts
 	RedialInterval time.Duration
+	// RedialReset dictates after how long we should try to reconnect again
+	RedialReset time.Duration
 	// RedialAttempts is the number of redial attempts to make before considering
 	// a connection unreachable
 	RedialAttempts uint
@@ -141,7 +145,9 @@ func DefaultP2PConfiguration() (c Configuration) {
 	c.ListenPort = "8108"
 	c.ListenLimit = time.Second
 	c.PingInterval = time.Second * 15
+	c.PeerAgeLimit = time.Hour * 48 // 2 days
 	c.RedialInterval = time.Second * 20
+	c.RedialReset = time.Hour * 12
 	c.RedialAttempts = 5
 
 	c.ReadDeadline = time.Minute * 5  // high enough to accomodate large packets

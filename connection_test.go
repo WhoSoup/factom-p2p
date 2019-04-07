@@ -15,17 +15,19 @@ func TestConnection(t *testing.T) {
 	log.SetLevel(log.DebugLevel)
 	testParcels := 50
 
-	incoming1 := make(chan *Parcel, StandardChannelSize)
-	incoming2 := make(chan *Parcel, StandardChannelSize)
+	incoming1 := NewParcelChannel(5000)
+	incoming2 := NewParcelChannel(5000)
 	config := DefaultP2PConfiguration()
 	config.ReadDeadline = time.Second
 	config.WriteDeadline = time.Second
 
+	netw := &Network{conf: &config}
+
 	pipe1, pipe2 := net.Pipe()
 
 	// test 1 write garbage
-	con1 := NewConnection(pipe1, &config, incoming1)
-	con2 := NewConnection(pipe2, &config, incoming2)
+	con1 := NewConnection("incoming1", pipe1, incoming1, netw)
+	con2 := NewConnection("incoming2", pipe2, incoming2, netw)
 
 	con1.Start()       // start via Start()
 	go con2.readLoop() // start "manually"
@@ -38,12 +40,12 @@ func TestConnection(t *testing.T) {
 	}
 
 	for _, p := range parcels {
-		con1.Outgoing <- p
+		con1.Send.Send(p)
 	}
 
 	fmt.Println("Sent garbage parcels")
 
-	for len(con1.Outgoing) > 0 { // wait until everything is sent
+	for len(con1.Send) > 0 { // wait until everything is sent
 		time.Sleep(time.Millisecond * 10)
 	}
 
@@ -67,18 +69,18 @@ func TestConnection(t *testing.T) {
 
 	time.Sleep(time.Millisecond * 50)
 
-	if len(con2.Shutdown) == 0 {
+	if len(con2.Error) == 0 {
 		t.Error("Expected error in connection 2 after writing garbage, got nothing")
 	} else {
-		e := <-con2.Shutdown
+		e := <-con2.Error
 		if e.Error() != "gob: type mismatch in decoder: want struct type p2p.Parcel; got non-struct" {
 			t.Errorf("Expected gob type mismatch error on Connection2, got: %s", e.Error())
 		}
 	}
-	if len(con1.Shutdown) == 0 {
+	if len(con1.Error) == 0 {
 		t.Fatal("Expected error in connection 1 after writing garbage, got nothing")
 	} else {
-		e := <-con1.Shutdown
+		e := <-con1.Error
 		if e != io.EOF {
 			t.Errorf("Expected EOF on Connection1, got: %s", e.Error())
 		}
