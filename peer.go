@@ -60,6 +60,7 @@ type Peer struct {
 	lastPeerRequest        time.Time
 	lastPeerSend           time.Time
 	incoming               chan *Parcel
+	Receive                ParcelChannel
 	connectionAttempt      time.Time
 	connectionAttemptCount uint
 
@@ -134,7 +135,7 @@ func (p *Peer) StartWithActiveConnection(con net.Conn) {
 // startInternal is the common functionality for both dialing and accepting a connection
 // is under locked mutex from superior function
 func (p *Peer) startInternal(con net.Conn) {
-	p.conn = NewConnection(con, p.config, p.incoming)
+	p.conn = NewConnection(p.Hash, con, p.Receive, p.net)
 	p.conn.Start()
 	p.state = Online
 	p.lastPeerRequest = time.Now()
@@ -160,9 +161,13 @@ func (p *Peer) Send(parcel *Parcel) {
 		return
 	}
 	// TODO check peer state machine
+
+	// send this parcel from this peer
+	parcel.Header.Network = p.net.conf.Network
+	parcel.Header.Version = p.net.conf.ProtocolVersion
 	parcel.Header.NodeID = p.config.NodeID
 	parcel.Header.PeerPort = string(p.config.ListenPort) // notify other side of our port
-	BlockFreeParcelSend(p.conn.Outgoing, parcel)
+	p.conn.Send.Send(parcel)
 }
 
 func (p *Peer) CanDial() bool {
@@ -199,7 +204,7 @@ func (p *Peer) monitorConnection() {
 			p.conn = nil
 			p.connectionAttemptCount = 0
 			return
-		case <-p.conn.Shutdown:
+		case <-p.conn.Error:
 			//p.stateMutex.Lock()
 			//defer p.stateMutex.Lock()
 			p.state = Offline

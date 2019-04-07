@@ -30,8 +30,8 @@ type ParcelHeader struct {
 	Length      uint32            // 4 bytes - length of the payload (that follows this header) in bytes
 	TargetPeer  string            // ? bytes - "" or nil for broadcast, otherwise the destination peer's hash.
 	Crc32       uint32            // 4 bytes - data integrity hash (of the payload itself.)
-	_           uint16            // deprecated
-	_           uint16            // deprecated
+	_           uint16            // deprecated PartsNo
+	_           uint16            // deprecated PartsTotal
 	NodeID      uint64
 	PeerAddress string // address of the peer set by connection to know who sent message (for tracking source of other peers)
 	PeerPort    string // port of the peer , or we are listening on
@@ -65,11 +65,6 @@ var CommandStrings = map[ParcelCommandType]string{
 	TypeMessagePart:  "MessagePart",   // Application level message that was split into multiple parts
 }
 
-func (p *Parcel) UpdateHeader() {
-	p.Header.Crc32 = crc32.Checksum(p.Payload, CRCKoopmanTable)
-	p.Header.Length = uint32(len(p.Payload))
-}
-
 func (p *Parcel) LogEntry() *log.Entry {
 	return parcelLogger.WithFields(log.Fields{
 		"network":     p.Header.Network.String(),
@@ -85,5 +80,33 @@ func (p *Parcel) LogEntry() *log.Entry {
 }
 
 func (p *Parcel) MessageType() string {
-	return (fmt.Sprintf("[%s]", CommandStrings[p.Header.Type]))
+	return fmt.Sprintf("[%s]", CommandStrings[p.Header.Type])
+}
+
+func NewParcel(command ParcelCommandType, payload []byte) *Parcel {
+	header := new(ParcelHeader)
+	header.Network = 0 // auto-filled upon send
+	header.Version = 0 // ditto
+	header.Type = command
+	header.TargetPeer = "" // initially no target
+	header.PeerPort = ""   // store our listening port
+	header.AppHash = "NetworkMessage"
+	header.AppType = "Network"
+
+	parcel := new(Parcel)
+	parcel.Header = ParcelHeader{
+		Network: 0,
+		Version: 0,
+		Type:    command,
+		AppHash: "NetworkMessage",
+		AppType: "Network"}
+
+	parcel.SetPayload(payload) // Updates the header with info about payload.
+	return parcel
+}
+
+func (p *Parcel) SetPayload(payload []byte) {
+	p.Payload = payload
+	p.Header.Crc32 = crc32.Checksum(p.Payload, CRCKoopmanTable)
+	p.Header.Length = uint32(len(p.Payload))
 }

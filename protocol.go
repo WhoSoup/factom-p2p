@@ -5,10 +5,6 @@
 package p2p
 
 import (
-	"fmt"
-	"hash/crc32"
-	"math/rand"
-
 	"github.com/FactomProject/factomd/common/primitives"
 )
 
@@ -60,55 +56,4 @@ func BlockFreeChannelSend(channel chan interface{}, message interface{}) int {
 		}
 	}
 	return removed
-}
-
-// Global variables for the p2p protocol
-var (
-	StandardChannelSize = 5000
-	BroadcastFlag       = "<BROADCAST>"
-	FullBroadcastFlag   = "<FULLBORADCAST>"
-	RandomPeerFlag      = "<RANDOMPEER>"
-	// Testing metrics
-	TotalMessagesReceived       uint64
-	TotalMessagesSent           uint64
-	ApplicationMessagesReceived uint64
-
-	CRCKoopmanTable = crc32.MakeTable(crc32.Koopman)
-	RandomGenerator *rand.Rand // seeded pseudo-random number generator
-
-)
-
-const (
-	// ProtocolVersion is the latest version this package supports
-	ProtocolVersion uint16 = 9
-	// ProtocolVersionMinimum is the earliest version this package supports
-	ProtocolVersionMinimum uint16 = 9
-)
-
-// NetworkIdentifier represents the P2P network we are participating in (eg: test, nmain, etc.)
-type NetworkID uint32
-
-// Network indicators.
-const (
-	// MainNet represents the production network
-	MainNet NetworkID = 0xfeedbeef
-
-	// TestNet represents a testing network
-	TestNet NetworkID = 0xdeadbeef
-
-	// LocalNet represents any arbitrary/private network
-	LocalNet NetworkID = 0xbeaded
-)
-
-func (n *NetworkID) String() string {
-	switch *n {
-	case MainNet:
-		return "MainNet"
-	case TestNet:
-		return "TestNet"
-	case LocalNet:
-		return "LocalNet"
-	default:
-		return fmt.Sprintf("CustomNet ID: %x\n", *n)
-	}
 }

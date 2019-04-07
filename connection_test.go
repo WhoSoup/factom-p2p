@@ -24,8 +24,8 @@ func TestConnection(t *testing.T) {
 	pipe1, pipe2 := net.Pipe()
 
 	// test 1 write garbage
-	con1 := NewConnection(pipe1, config, incoming1)
-	con2 := NewConnection(pipe2, config, incoming2)
+	con1 := NewConnection(pipe1, &config, incoming1)
+	con2 := NewConnection(pipe2, &config, incoming2)
 
 	con1.Start()       // start via Start()
 	go con2.readLoop() // start "manually"

@@ -6,7 +6,7 @@ type PeerMap struct {
 	lock    sync.RWMutex
 	bySlice []*Peer
 	byHash  map[string]*Peer
-	byIP    map[string]*Peer
+	byIP    map[string]*Peer // TODO make this a list
 }
 
 func NewPeerMap() *PeerMap {

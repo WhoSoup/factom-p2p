@@ -1,7 +1,25 @@
 package p2p
 
 import (
+	"hash/crc32"
 	"time"
+)
+
+const (
+	StandardChannelSize = 5000
+	BroadcastFlag       = "<BROADCAST>"
+	FullBroadcastFlag   = "<FULLBORADCAST>"
+	RandomPeerFlag      = "<RANDOMPEER>"
+)
+
+// Global variables for the p2p protocol
+var (
+	// Testing metrics
+	TotalMessagesReceived       uint64
+	TotalMessagesSent           uint64
+	ApplicationMessagesReceived uint64
+
+	CRCKoopmanTable = crc32.MakeTable(crc32.Koopman)
 )
 
 // Configuration defines the behavior of the gossip network protocol

@@ -32,6 +32,7 @@ func NewNetwork(conf Configuration) *Network {
 	n.peerManager = newpeerManager(n)
 
 	n.ToNetwork = NewParcelChannel(conf.ChannelCapacity)
+	n.FromNetwork = NewParcelChannel(conf.ChannelCapacity)
 	return n
 }
 
@@ -39,9 +40,21 @@ func NewNetwork(conf Configuration) *Network {
 func (n *Network) Start() {
 	n.runningMutex.Lock()
 	defer n.runningMutex.Unlock()
-	n.logger.Info("Starting the P2P Network")
+	if n.running {
+		n.logger.Error("Tried to start the P2P Network even though it's already running")
+	} else {
+		n.running = true
+		n.logger.Info("Starting the P2P Network")
 
-	go n.peerManager.Start() // this will get peer manager ready to handle incoming connections
-	go n.controller.Start()
+		go n.peerManager.Start() // this will get peer manager ready to handle incoming connections
+		go n.controller.Start()
+	}
+}
 
+func (n *Network) Stop() {
+	n.runningMutex.Lock()
+	defer n.runningMutex.Unlock()
+	n.peerManager.Stop()
+	n.controller.Stop()
+	n.running = false
 }

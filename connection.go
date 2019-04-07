@@ -24,34 +24,20 @@ var conLogger = packageLogger.WithField("subpack", "connection")
 type Connection struct {
 	conn net.Conn
 
-	Incoming      chan *Parcel // messages from the other side
-	Outgoing      chan *Parcel // messages to the other side
-	Shutdown      chan error   // connection died
+	Send    ParcelChannel // messages from the other side
+	Receive ParcelChannel // messages to the other side
+	Error   chan error    // connection died
+
 	writeDeadline time.Duration
 	readDeadline  time.Duration
 	encoder       *gob.Encoder // Wire format is gobs in this version, may switch to binary
 	decoder       *gob.Decoder // Wire format is gobs in this version, may switch to binary
-	isRunning     bool
 
-	Errors2        chan error              // handle errors from connections.
-	Commands       chan *ConnectionCommand // handle connection commands
-	SendChannel    chan interface{}        // Send means "towards the network" Channel sends Parcels and ConnectionCommands
-	ReceiveChannel chan interface{}        // Receive means "from the network" Channel receives Parcels and ConnectionCommands
-	ReceiveParcel  chan *Parcel            // Parcels to be handled.
+	LastRead time.Time
+	LastSend time.Time
+
 	// and as "address" for sending messages to specific nodes.
-	peer            Peer              // the data structure representing the peer we are talking to. defined in peer.go
-	attempts        int               // reconnection attempts
-	TimeLastpacket  time.Time         // Time we last successfully received a packet or command.
-	timeLastAttempt time.Time         // time of last attempt to connect via dial
-	timeLastPing    time.Time         // time of last ping sent
-	timeLastUpdate  time.Time         // time of last peer update sent
-	timeLastStatus  time.Time         // last time we printed our status for debugging.
-	timeLastMetrics time.Time         // last time we updated metrics
-	state           uint8             // Current state of the connection. Private. Only communication
-	isOutGoing      bool              // We keep track of outgoing dial() vs incoming accept() connections
-	isPersistent    bool              // Persistent connections we always redail.
-	notes           string            // Notes about the connection, for debugging (eg: error)
-	metrics         ConnectionMetrics // Metrics about this connection
+	metrics ConnectionMetrics // Metrics about this connection
 
 	// logging
 	logger *log.Entry
@@ -161,15 +147,18 @@ const (
 //
 //////////////////////////////
 
-func NewConnection(conn net.Conn, config *Configuration, incoming chan *Parcel) *Connection {
+func NewConnection(peerHash string, conn net.Conn, receive ParcelChannel, net *Network) *Connection {
 	c := &Connection{}
-	c.Outgoing = make(chan *Parcel, StandardChannelSize)
-	c.Incoming = incoming
-	c.Shutdown = make(chan error, 3) // two goroutines + close() = max 3 errors
-	c.logger = conLogger.WithFields(log.Fields{"address": conn.RemoteAddr(), "node": config.NodeName})
+	c.Send = NewParcelChannel(net.conf.ChannelCapacity)
+	c.Receive = NewParcelChannel(net.conf.ChannelCapacity)
+	c.Error = make(chan error, 3) // two goroutines + close() = max 3 errors
+
+	c.logger = conLogger.WithFields(log.Fields{"address": conn.RemoteAddr(), "peer": peerHash})
 	c.logger.Debug("Connection initialized")
-	c.readDeadline = config.ReadDeadline
-	c.writeDeadline = config.WriteDeadline
+
+	c.readDeadline = net.conf.ReadDeadline
+	c.writeDeadline = net.conf.WriteDeadline
+
 	c.conn = conn
 	c.encoder = gob.NewEncoder(c.conn)
 	c.decoder = gob.NewDecoder(c.conn)
@@ -193,15 +182,15 @@ func (c *Connection) readLoop() {
 		c.conn.SetReadDeadline(time.Now().Add(c.readDeadline))
 		err := c.decoder.Decode(&message)
 		if err != nil {
-			c.Shutdown <- err
+			c.Error <- err
 			c.logger.WithError(err).Debug("Terminating readLoop because of error")
 			return
 		}
 
 		c.metrics.BytesReceived += message.Header.Length
 		c.metrics.MessagesReceived++
-		c.TimeLastpacket = time.Now()
-		BlockFreeParcelSend(c.Incoming, &message)
+		c.LastRead = time.Now()
+		c.Receive.Send(&message)
 	}
 }
 
@@ -210,7 +199,7 @@ func (c *Connection) readLoop() {
 func (c *Connection) sendLoop() {
 	defer c.conn.Close() // close connection on fatal error
 	for {
-		parcel := <-c.Outgoing
+		parcel := <-c.Send.Reader()
 
 		if parcel == nil {
 			c.logger.Error("Received <nil> pointer")
@@ -220,18 +209,19 @@ func (c *Connection) sendLoop() {
 		c.conn.SetWriteDeadline(time.Now().Add(c.writeDeadline))
 		err := c.encoder.Encode(parcel)
 		if err != nil { // no error is recoverable
-			c.Shutdown <- err
+			c.Error <- err
 			c.logger.WithError(err).Debug("Terminating sendLoop because of error")
 			return
 		}
 
 		c.metrics.BytesSent += parcel.Header.Length
 		c.metrics.MessagesSent++
+		c.LastSend = time.Now()
 	}
 }
 
 func (c *Connection) Stop() {
 	c.logger.Debug("Stopping connection")
-	c.Shutdown <- &GracefulShutdown{}
+	c.Error <- &GracefulShutdown{}
 	c.conn.Close() // this will force both sendLoop and readLoop to stop immediately
 }
