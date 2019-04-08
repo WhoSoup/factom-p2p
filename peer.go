@@ -67,6 +67,7 @@ type Peer struct {
 	connectionAttemptCount uint
 	LastReceive            time.Time // Keep track of how long ago we talked to the peer.
 	LastSend               time.Time // Keep track of how long ago we talked to the peer.
+	FromSeed               bool
 
 	ListenPort string
 
@@ -205,7 +206,7 @@ func (p *Peer) Send(parcel *Parcel) {
 }
 
 func (p *Peer) CanDial() bool {
-	return p.connectionAttemptCount < p.config.RedialAttempts && p.ListenPort != ""
+	return p.connectionAttemptCount < p.config.RedialAttempts && p.ListenPort != "0"
 }
 
 func (p *Peer) IsOnline() bool {
@@ -287,6 +288,10 @@ func (p *Peer) Better(other *Peer) bool {
 	}
 
 	return p.QualityScore > other.QualityScore
+}
+
+func (p *Peer) Shareable() bool {
+	return p.QualityScore >= p.net.conf.MinimumQualityScore && p.ListenPort != "0" && !p.FromSeed
 }
 
 func (p *Peer) AddressPort() string {

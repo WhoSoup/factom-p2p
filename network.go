@@ -23,12 +23,23 @@ type Network struct {
 
 var packageLogger = log.WithField("package", "p2p")
 
-func (n *Network) DebugMessage() string {
+func (n *Network) DebugMessage() (string, string) {
+	hv := ""
 	r := ""
 	for _, p := range n.peerManager.peers.Slice() {
+
+		if p.IsOffline() {
+			continue
+		}
+
 		r += fmt.Sprintf("\tPeer %s %v\n", p.String(), p.state.String())
+		//		r += fmt.Sprintf("\t\tLast Send: %s\n", p.LastSend)
+		//		r += fmt.Sprintf("\t\tLast Revc: %s\n", p.LastReceive)
+		if p.IsOutgoing {
+			hv += fmt.Sprintf("%s -> %s\n", n.conf.BindIP, p.Address)
+		}
 	}
-	return r
+	return r, hv
 }
 
 func NewNetwork(conf Configuration) *Network {

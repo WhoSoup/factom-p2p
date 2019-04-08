@@ -58,15 +58,29 @@ func (pm *PeerMap) Slice() []*Peer {
 	return pm.bySlice[:]
 }
 
-func (pm *PeerMap) HasIPPort(ip, port string) bool {
+func (pm *PeerMap) HasIPPort(ip, port string) (*Peer, bool) {
 	pm.lock.RLock()
 	defer pm.lock.RUnlock()
 	if list, ok := pm.byIP[ip]; ok {
 		for _, p := range list {
 			if p.ListenPort == port {
+				return p, true
+			}
+		}
+	}
+	return nil, false
+}
+
+func (pm *PeerMap) IsConnected(peer *Peer) bool {
+	pm.lock.RLock()
+	defer pm.lock.RUnlock()
+	if list, ok := pm.byIP[peer.Address]; ok {
+		for _, p := range list {
+			if !p.IsOffline() {
 				return true
 			}
 		}
 	}
 	return false
+
 }

@@ -168,10 +168,12 @@ func (pm *peerManager) discoverSeeds() {
 				pm.logger.Debugf("Discovered ourself in seed list")
 				continue
 			}
-			if pm.peers.HasIPPort(address, port) { // check if seed exists already
+			if p, has := pm.peers.HasIPPort(address, port); has { // check if seed exists already
+				p.FromSeed = true
 				continue
 			}
-			pm.SpawnPeer(address, port)
+			p := pm.SpawnPeer(address, port)
+			p.FromSeed = true
 		} else {
 			pm.logger.Errorf("Bad peer in " + pm.net.conf.SeedURL + " [" + line + "]")
 		}
@@ -189,16 +191,18 @@ func (pm *peerManager) processPeers(peer *Peer, parcel *Parcel) {
 		pm.logger.WithError(err).Warnf("Failed to unmarshal peer share from peer %s", peer)
 	}
 
-	pm.logger.Debugf("Received peer share of: %v", list)
-
 	known := make(map[string]bool)
 	//pm.peerMutex.RLock()
+	known[fmt.Sprintf("%s:%s", pm.net.conf.BindIP, pm.net.conf.ListenPort)] = true
 	for _, p := range pm.peers.Slice() {
 		known[p.ConnectAddress()] = true
 	}
 	//pm.peerMutex.RUnlock()
 
 	for _, p := range list {
+		if p.ListenPort == "" || p.ListenPort == "0" {
+			continue
+		}
 		if !known[p.ConnectAddress()] {
 			known[p.ConnectAddress()] = true
 
@@ -240,8 +244,12 @@ func (pm *peerManager) managePeers() {
 			pm.managePeersDialOutgoing()
 		}
 
+		incoming := uint(0)
 		for _, p := range pm.peers.Slice() {
 			if p.IsOnline() {
+				if !p.IsOutgoing {
+					incoming++
+				}
 				if time.Since(p.lastPeerRequest) > p.config.PeerRequestInterval {
 					p.lastPeerRequest = time.Now()
 
@@ -257,6 +265,8 @@ func (pm *peerManager) managePeers() {
 				}
 			}
 		}
+
+		pm.incoming = incoming
 
 		// manager peers every second
 		time.Sleep(time.Second)
@@ -304,9 +314,14 @@ func (pm *peerManager) managePeersDialOutgoing() {
 
 	if want := int(pm.net.conf.Outgoing - count); want > 0 {
 		filter := pm.filteredOutgoing()
-		peers := pm.getOutgoingSelection(filter, want)
-		for _, p := range peers {
-			p.StartToDial()
+
+		if len(filter) > 0 {
+			peers := pm.getOutgoingSelection(filter, want)
+			for _, p := range peers {
+				if !pm.peers.IsConnected(p) {
+					p.StartToDial()
+				}
+			}
 		}
 	}
 }
@@ -325,7 +340,7 @@ func (pm *peerManager) SpawnPeer(address string, listenPort string) *Peer {
 	p.age = time.Now()
 	p.stop = make(chan interface{}, 1)
 	p.Receive = NewParcelChannel(pm.net.conf.ChannelCapacity)
-	p.Hash = address + ":" + listenPort // TODO make this a hash
+	p.Hash = fmt.Sprintf("%x", pm.rng.Int63())
 	pm.logger.WithField("address", fmt.Sprintf("%s:%s", address, listenPort)).Debugf("Creating new peer %s", p)
 	pm.addPeer(p)
 	return p
@@ -370,9 +385,16 @@ func (pm *peerManager) HandleIncoming(con net.Conn) {
 		}
 	}*/
 
+	if pm.incoming >= pm.net.conf.Incoming {
+		pm.logger.Infof("Refusing incoming connection from %s because we are maxed out", con.RemoteAddr().String())
+		con.Close()
+		return
+	}
+
 	p := pm.SpawnPeer(ip[0], "0") // create AND add peer but we don't know their remote port
 	p.Port = ip[1]
 	p.StartWithActiveConnection(con) // peer is online
+	pm.incoming++
 
 	//c := NewConnection(con, pm.net.conf)
 
@@ -417,8 +439,9 @@ func (pm *peerManager) filteredOutgoing() []*Peer {
 func (pm *peerManager) filteredSharing() []PeerShare {
 	var filtered []PeerShare
 	//pm.peerMutex.RLock()
+	// TODO sort by qualityscore
 	for _, p := range pm.peers.Slice() {
-		if p.QualityScore >= pm.net.conf.MinimumQualityScore {
+		if p.Shareable() {
 			filtered = append(filtered, p.PeerShare())
 		}
 	}
@@ -438,6 +461,11 @@ func (pm *peerManager) getOutgoingSelection(filtered []*Peer, wanted int) []*Pee
 	if len(filtered) <= wanted {
 		pm.logger.Debugf("getOutgoingSelection returning %d peers", len(filtered))
 		return filtered
+	}
+
+	if wanted == 1 { // edge case
+		rand := pm.rng.Intn(len(filtered))
+		return []*Peer{filtered[rand]}
 	}
 
 	// generate a list of peers distant to each other

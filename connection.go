@@ -105,7 +105,6 @@ func (c *Connection) readLoop() {
 			return
 		}
 
-		c.logger.Debugf("Received parcel: %v", message)
 		c.metrics.BytesReceived += message.Header.Length
 		c.metrics.MessagesReceived++
 		c.LastRead = time.Now()
