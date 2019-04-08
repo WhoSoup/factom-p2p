@@ -71,7 +71,7 @@ func NewConnection(peerHash string, conn net.Conn, receive ParcelChannel, net *N
 	c.Receive = receive
 	c.Error = make(chan error, 3) // two goroutines + close() = max 3 errors
 
-	c.logger = conLogger.WithFields(log.Fields{"address": conn.RemoteAddr(), "peer": peerHash})
+	c.logger = conLogger.WithFields(log.Fields{"address": conn.RemoteAddr(), "peer": peerHash, "node": net.conf.NodeName})
 	c.logger.Debug("Connection initialized")
 
 	c.readDeadline = net.conf.ReadDeadline
@@ -105,6 +105,7 @@ func (c *Connection) readLoop() {
 			return
 		}
 
+		c.logger.Debugf("Received parcel: %v", message)
 		c.metrics.BytesReceived += message.Header.Length
 		c.metrics.MessagesReceived++
 		c.LastRead = time.Now()

@@ -79,9 +79,10 @@ type Configuration struct {
 
 	// === Connection Settings ===
 
-	// ListenIP is the ip address to bind to when listening for incoming connections
+	// BindIP is the ip address to bind to for listening and connecting
+	//
 	// leave blank to bind to all
-	ListenIP string
+	BindIP string
 	// ListenPort is the port to listen to incoming tcp connections on
 	ListenPort string
 	// ListenLimit is the lockout period of accepting connections from a single
@@ -141,7 +142,7 @@ func DefaultP2PConfiguration() (c Configuration) {
 	c.TrustedOnly = false
 	c.RefuseIncoming = false
 
-	c.ListenIP = "" // bind to all
+	c.BindIP = "" // bind to all
 	c.ListenPort = "8108"
 	c.ListenLimit = time.Second
 	c.PingInterval = time.Second * 15

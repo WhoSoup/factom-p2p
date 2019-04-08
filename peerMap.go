@@ -57,3 +57,16 @@ func (pm *PeerMap) Get(hash string) *Peer {
 func (pm *PeerMap) Slice() []*Peer {
 	return pm.bySlice[:]
 }
+
+func (pm *PeerMap) HasIPPort(ip, port string) bool {
+	pm.lock.RLock()
+	defer pm.lock.RUnlock()
+	if list, ok := pm.byIP[ip]; ok {
+		for _, p := range list {
+			if p.ListenPort == port {
+				return true
+			}
+		}
+	}
+	return false
+}

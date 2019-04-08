@@ -56,10 +56,10 @@ func (c *controller) Stop() {
 
 // listenLoop listens for incoming TCP connections and passes them off to peer manager
 func (c *controller) listenLoop() {
-	tmpLogger := c.logger.WithFields(log.Fields{"address": c.net.conf.ListenIP, "port": c.net.conf.ListenPort})
+	tmpLogger := c.logger.WithFields(log.Fields{"address": c.net.conf.BindIP, "port": c.net.conf.ListenPort})
 	tmpLogger.Debug("controller.listenLoop() starting up")
 
-	addr := fmt.Sprintf("%s:%s", c.net.conf.ListenIP, c.net.conf.ListenPort)
+	addr := fmt.Sprintf("%s:%s", c.net.conf.BindIP, c.net.conf.ListenPort)
 
 	listener, err := NewLimitedListener(addr, c.net.conf.ListenLimit)
 	if err != nil {

@@ -26,7 +26,7 @@ var packageLogger = log.WithField("package", "p2p")
 func (n *Network) DebugMessage() string {
 	r := ""
 	for _, p := range n.peerManager.peers.Slice() {
-		r += fmt.Sprintf("\tPeer %s %v\n", p.String(), p.IsOnline())
+		r += fmt.Sprintf("\tPeer %s %v\n", p.String(), p.state.String())
 	}
 	return r
 }

@@ -7,6 +7,7 @@ import (
 	"math/rand"
 	"net"
 	"net/http"
+	"strings"
 	"time"
 
 	log "github.com/sirupsen/logrus"
@@ -29,7 +30,6 @@ type peerManager struct {
 
 	specialIP map[string]bool
 
-	lastPeerRequest        time.Time
 	lastPeerDial           time.Time
 	lastPeerDuplicateCheck time.Time
 	lastSeedRefresh        time.Time
@@ -123,20 +123,22 @@ func (pm *peerManager) manageData() {
 			ApplicationMessagesReceived++
 			pm.net.FromNetwork.Send(parcel)
 		case TypePeerRequest:
-			if time.Since(peer.lastPeerSend) >= pm.net.conf.PeerRequestInterval {
-				peer.lastPeerSend = time.Now()
-				go pm.sharePeers(peer)
-			} else {
-				pm.logger.Warnf("Peer %s requested peer share sooner than expected", peer)
-			}
+			go pm.sharePeers(peer)
+			/*			if time.Since(peer.lastPeerSend) >= pm.net.conf.PeerRequestInterval {
+							peer.lastPeerSend = time.Now()
+
+						} else {
+							pm.logger.Warnf("Peer %s requested peer share sooner than expected", peer)
+						}*/
 		case TypePeerResponse:
-			// TODO check here if we asked them for a peer request
-			if time.Since(peer.lastPeerRequest) >= pm.net.conf.PeerRequestInterval {
-				peer.lastPeerRequest = time.Now()
-				go pm.processPeers(peer, parcel)
-			} else {
-				pm.logger.Warnf("Peer %s sent us an umprompted peer share", peer)
-			}
+			go pm.processPeers(peer, parcel)
+			/*			// TODO check here if we asked them for a peer request
+						if time.Since(peer.lastPeerRequest) >= pm.net.conf.PeerRequestInterval {
+							peer.lastPeerRequest = time.Now()
+
+						} else {
+							pm.logger.Warnf("Peer %s sent us an umprompted peer share", peer)
+						}*/
 		default:
 			pm.logger.Warnf("Peer %s sent unknown parcel.Header.Type?: %+v ", peer, parcel)
 		}
@@ -162,9 +164,14 @@ func (pm *peerManager) discoverSeeds() {
 
 		address, port, err := net.SplitHostPort(line)
 		if err == nil {
-			// TODO check if seed exists?
-			seed := pm.SpawnPeer(address, port)
-			pm.addPeer(seed)
+			if address == pm.net.conf.BindIP && port == pm.net.conf.ListenPort {
+				pm.logger.Debugf("Discovered ourself in seed list")
+				continue
+			}
+			if pm.peers.HasIPPort(address, port) { // check if seed exists already
+				continue
+			}
+			pm.SpawnPeer(address, port)
 		} else {
 			pm.logger.Errorf("Bad peer in " + pm.net.conf.SeedURL + " [" + line + "]")
 		}
@@ -176,11 +183,13 @@ func (pm *peerManager) discoverSeeds() {
 
 // processPeers processes a peer share response
 func (pm *peerManager) processPeers(peer *Peer, parcel *Parcel) {
-	var list []Peer
-	err := json.Unmarshal(parcel.Payload, list)
+	list := make([]PeerShare, 0)
+	err := json.Unmarshal(parcel.Payload, &list)
 	if err != nil {
 		pm.logger.WithError(err).Warnf("Failed to unmarshal peer share from peer %s", peer)
 	}
+
+	pm.logger.Debugf("Received peer share of: %v", list)
 
 	known := make(map[string]bool)
 	//pm.peerMutex.RLock()
@@ -193,8 +202,7 @@ func (pm *peerManager) processPeers(peer *Peer, parcel *Parcel) {
 		if !known[p.ConnectAddress()] {
 			known[p.ConnectAddress()] = true
 
-			add := pm.SpawnPeer(p.Address, p.ListenPort)
-			pm.addPeer(add)
+			pm.SpawnPeer(p.Address, p.ListenPort)
 		}
 	}
 }
@@ -202,7 +210,7 @@ func (pm *peerManager) processPeers(peer *Peer, parcel *Parcel) {
 // sharePeers creates a list of peers to share and sends it to peer
 func (pm *peerManager) sharePeers(peer *Peer) {
 	list := pm.filteredSharing()
-
+	pm.logger.Debugf("Sharing peers: %v", list)
 	json, ok := json.Marshal(list)
 	if ok != nil {
 		pm.logger.WithError(ok).Error("Failed to marshal peer list to json")
@@ -210,6 +218,7 @@ func (pm *peerManager) sharePeers(peer *Peer) {
 	}
 	parcel := NewParcel(TypePeerResponse, json)
 	peer.Send(parcel)
+
 }
 
 func (pm *peerManager) managePeers() {
@@ -232,17 +241,17 @@ func (pm *peerManager) managePeers() {
 		}
 
 		for _, p := range pm.peers.Slice() {
-			fmt.Println("Checking peer", p)
 			if p.IsOnline() {
 				if time.Since(p.lastPeerRequest) > p.config.PeerRequestInterval {
 					p.lastPeerRequest = time.Now()
 
+					pm.logger.Debugf("Requesting peers from %s", p.ConnectAddress())
 					req := NewParcel(TypePeerRequest, []byte("Peer Request"))
 					p.Send(req)
 				}
 
-				if time.Since(p.lastPeerSend) > pm.net.conf.PingInterval {
-					// should update the lastpeersend on its own
+				if time.Since(p.LastSend) > pm.net.conf.PingInterval {
+					pm.logger.Debugf("Pinging %s", p.ConnectAddress())
 					ping := NewParcel(TypePing, []byte("Ping"))
 					p.Send(ping)
 				}
@@ -341,12 +350,12 @@ func (pm *peerManager) removePeer(peer *Peer) {
 }
 
 func (pm *peerManager) HandleIncoming(con net.Conn) {
-	ip := con.RemoteAddr().String()
-	special := pm.specialIP[ip]
+	ip := strings.Split(con.RemoteAddr().String(), ":")
+	/*special := pm.specialIP[ip]
 
-	ipLog := pm.logger.WithField("remote_addr", ip)
+	ipLog := pm.logger.WithField("remote_addr", ip)*/
 
-	if !special {
+	/*	if !special {
 		if pm.outgoing >= pm.net.conf.Outgoing {
 			ipLog.Info("Rejecting inbound connection because of inbound limit")
 			con.Close()
@@ -359,9 +368,10 @@ func (pm *peerManager) HandleIncoming(con net.Conn) {
 			con.Close()
 			return
 		}
-	}
+	}*/
 
-	p := pm.SpawnPeer(ip, "0")       // create AND add peer but we don't know their remote port
+	p := pm.SpawnPeer(ip[0], "0") // create AND add peer but we don't know their remote port
+	p.Port = ip[1]
 	p.StartWithActiveConnection(con) // peer is online
 
 	//c := NewConnection(con, pm.net.conf)
@@ -404,12 +414,12 @@ func (pm *peerManager) filteredOutgoing() []*Peer {
 	return filtered
 }
 
-func (pm *peerManager) filteredSharing() []*Peer {
-	var filtered []*Peer
+func (pm *peerManager) filteredSharing() []PeerShare {
+	var filtered []PeerShare
 	//pm.peerMutex.RLock()
 	for _, p := range pm.peers.Slice() {
 		if p.QualityScore >= pm.net.conf.MinimumQualityScore {
-			filtered = append(filtered, p)
+			filtered = append(filtered, p.PeerShare())
 		}
 	}
 	//pm.peerMutex.RUnlock()

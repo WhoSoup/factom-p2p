@@ -94,7 +94,7 @@ func (ll *LimitedListener) Accept() (net.Conn, error) {
 	addr := strings.Split(con.RemoteAddr().String(), ":")
 	if ll.isInHistory(addr[0]) {
 		con.Close()
-		return nil, fmt.Errorf("connection rate limit exceeded")
+		return nil, fmt.Errorf("connection rate limit exceeded for %s", addr[0])
 	}
 
 	ll.addToHistory(addr[0])
