@@ -2,17 +2,20 @@ package p2p
 
 import "sync"
 
+// PeerMap holds peers in a set of different structures to allow for efficient
+// retrieval in all circumstances
 type PeerMap struct {
 	lock    sync.RWMutex
-	bySlice []*Peer
+	bySlice PeerList
 	byHash  map[string]*Peer
-	byIP    map[string]map[string]*Peer // TODO make this a list
+	byIP    map[string]PeerList
 }
 
 func NewPeerMap() *PeerMap {
 	n := new(PeerMap)
 	n.byHash = make(map[string]*Peer)
-	n.byIP = make(map[string]map[string]*Peer)
+	n.byIP = make(map[string]PeerList)
+	n.bySlice = NewPeerList()
 	return n
 }
 
@@ -22,24 +25,18 @@ func (pm *PeerMap) Add(p *Peer) {
 	pm.byHash[p.Hash] = p
 
 	if _, ok := pm.byIP[p.Address]; !ok {
-		pm.byIP[p.Address] = make(map[string]*Peer)
+		pm.byIP[p.Address] = NewPeerList()
 	}
-	pm.byIP[p.Address][p.Port] = p
-	pm.bySlice = append(pm.bySlice, p)
+	pm.byIP[p.Address].Add(p)
+	pm.bySlice.Add(p)
 }
 
 func (pm *PeerMap) Remove(p *Peer) {
 	pm.lock.Lock()
 	defer pm.lock.Unlock()
 	delete(pm.byHash, p.Hash)
-	delete(pm.byIP, p.Address)
-	for i, x := range pm.bySlice {
-		if x.Hash == p.Hash {
-			pm.bySlice[i] = pm.bySlice[len(pm.bySlice)-1]
-			pm.bySlice = pm.bySlice[:len(pm.bySlice)-1]
-			break
-		}
-	}
+	pm.byIP[p.Address].Remove(p)
+	pm.bySlice.Remove(p)
 }
 
 func (pm *PeerMap) Has(hash string) bool {
@@ -55,27 +52,23 @@ func (pm *PeerMap) Get(hash string) *Peer {
 }
 
 func (pm *PeerMap) Slice() []*Peer {
-	return pm.bySlice[:]
+	return pm.bySlice.Slice()
 }
 
-func (pm *PeerMap) HasIPPort(ip, port string) (*Peer, bool) {
+func (pm *PeerMap) HasIPPort(addr, port string) (*Peer, bool) {
 	pm.lock.RLock()
 	defer pm.lock.RUnlock()
-	if list, ok := pm.byIP[ip]; ok {
-		for _, p := range list {
-			if p.ListenPort == port {
-				return p, true
-			}
-		}
+	if list, ok := pm.byIP[addr]; ok {
+		return list.HasIPPort(addr, port)
 	}
 	return nil, false
 }
 
-func (pm *PeerMap) IsConnected(peer *Peer) bool {
+func (pm *PeerMap) IsConnected(address string) bool {
 	pm.lock.RLock()
 	defer pm.lock.RUnlock()
-	if list, ok := pm.byIP[peer.Address]; ok {
-		for _, p := range list {
+	if list, ok := pm.byIP[address]; ok {
+		for _, p := range list.Slice() {
 			if !p.IsOffline() {
 				return true
 			}

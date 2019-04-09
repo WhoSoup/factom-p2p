@@ -59,7 +59,6 @@ type Peer struct {
 	age                    time.Time
 	stop                   chan interface{}
 	IsOutgoing             bool
-	config                 *Configuration
 	lastPeerRequest        time.Time
 	lastPeerSend           time.Time
 	Receive                ParcelChannel
@@ -67,13 +66,14 @@ type Peer struct {
 	connectionAttemptCount uint
 	LastReceive            time.Time // Keep track of how long ago we talked to the peer.
 	LastSend               time.Time // Keep track of how long ago we talked to the peer.
-	FromSeed               bool
 
-	ListenPort string
+	Port      string
+	Temporary bool
+	Seed      bool
+	Dialable  bool
 
 	QualityScore int32  // 0 is neutral quality, negative is a bad peer.
 	Address      string // Must be in form of x.x.x.x
-	Port         string // Must be in form of xxxx
 	NodeID       uint64 // a nonce to distinguish multiple nodes behind one IP address
 	Hash         string // This is more of a connection ID than hash right now.
 	Location     uint32 // IP address as an int.
@@ -83,19 +83,52 @@ type Peer struct {
 	logger *log.Entry
 }
 
+func NewPeer(net *Network, address string) *Peer {
+	p := &Peer{Address: address, state: Offline}
+	p.net = net
+	p.logger = peerLogger.WithFields(log.Fields{
+		"node":    net.conf.NodeName,
+		"hash":    p.Hash,
+		"address": p.Address,
+		"Port":    p.Port,
+	})
+	p.age = time.Now()
+	p.stop = make(chan interface{}, 1)
+	p.Receive = NewParcelChannel(net.conf.ChannelCapacity)
+	p.Hash = fmt.Sprintf("%x", net.rng.Int63())
+	p.logger.Debugf("Creating new peer")
+	return p
+}
+
+func (p *Peer) ImportMetrics(other *Peer) {
+	p.QualityScore = other.QualityScore
+	if other.Seed {
+		p.Seed = other.Seed
+	}
+	p.age = other.age
+	p.Hash = other.Hash
+	if other.Dialable {
+		p.Dialable = true
+	}
+}
+
 func (p *Peer) String() string {
-	return fmt.Sprintf("%s %s:%s", p.Hash, p.Address, p.ListenPort)
+	return fmt.Sprintf("%s %s:%s", p.Hash, p.Address, p.Port)
 }
 
 func (p *Peer) ConnectAddress() string {
-	return fmt.Sprintf("%s:%s", p.Address, p.ListenPort)
+	return fmt.Sprintf("%s:%s", p.Address, p.Port)
 }
 
 func (p *Peer) PeerShare() PeerShare {
 	return PeerShare{
 		Address:      p.Address,
-		ListenPort:   p.ListenPort,
+		Port:         p.Port,
 		QualityScore: p.QualityScore}
+}
+
+func (p *Peer) canUpgrade() bool {
+	return p.Temporary && p.Port != "0" && p.Port != ""
 }
 
 func (p *Peer) StartToDial() {
@@ -136,9 +169,9 @@ func (p *Peer) StartToDial() {
 	p.IsOutgoing = true
 	p.state = Connecting
 	p.logger.Debugf("State changed to %s", p.state.String())
-	remote, err := net.ResolveTCPAddr("tcp", fmt.Sprintf("%s:%s", p.Address, p.ListenPort))
+	remote, err := net.ResolveTCPAddr("tcp", fmt.Sprintf("%s:%s", p.Address, p.Port))
 	if err != nil {
-		p.logger.WithError(err).Infof("Unable to resolve remote address \"%s:%s\"", p.Address, p.ListenPort)
+		p.logger.WithError(err).Infof("Unable to resolve remote address \"%s:%s\"", p.Address, p.Port)
 		return
 	}
 	con, err := net.DialTCP("tcp", local, remote)
@@ -178,6 +211,9 @@ func (p *Peer) startInternal(con net.Conn) {
 }
 
 func (p *Peer) GoOffline() {
+	if p.state == Offline {
+		return
+	}
 	p.state = Offline
 	p.logger.Debugf("State changed to %s", p.state.String())
 	p.stop <- true
@@ -200,13 +236,13 @@ func (p *Peer) Send(parcel *Parcel) {
 	// send this parcel from this peer
 	parcel.Header.Network = p.net.conf.Network
 	parcel.Header.Version = p.net.conf.ProtocolVersion
-	parcel.Header.NodeID = p.config.NodeID
-	parcel.Header.PeerPort = string(p.config.ListenPort) // notify other side of our port
+	parcel.Header.NodeID = p.net.conf.NodeID
+	parcel.Header.PeerPort = string(p.net.conf.ListenPort) // notify other side of our port
 	p.conn.Send.Send(parcel)
 }
 
 func (p *Peer) CanDial() bool {
-	return p.connectionAttemptCount < p.config.RedialAttempts && p.ListenPort != "0"
+	return p.connectionAttemptCount < p.net.conf.RedialAttempts && p.Port != "0"
 }
 
 func (p *Peer) IsOnline() bool {
@@ -254,9 +290,9 @@ Monitor:
 			break Monitor
 		case parcel := <-p.Receive:
 			p.logger.Debugf("Received incoming parcel: %v", parcel)
-			if newport := parcel.Header.PeerPort; newport != p.ListenPort {
-				p.logger.WithFields(log.Fields{"old": p.ListenPort, "new": newport}).Debugf("Listen port changed")
-				p.ListenPort = newport
+			if newport := parcel.Header.PeerPort; newport != p.Port {
+				p.logger.WithFields(log.Fields{"old": p.Port, "new": newport}).Debugf("Listen port changed")
+				p.Port = newport
 			}
 			if nodeid := parcel.Header.NodeID; nodeid != p.NodeID {
 				p.logger.WithFields(log.Fields{"old": p.NodeID, "new": nodeid}).Debugf("NodeID changed")
@@ -268,34 +304,8 @@ Monitor:
 	}
 }
 
-// Better compares a peer to another peer to determine which one we
-// would rather keep
-//
-// Prefers to keep peers that are online or connecting over peers that are not
-// but if both are in the same state, it uses qualityscore
-func (p *Peer) Better(other *Peer) bool {
-	// TODO special
-	/*	if p.IsSpecial() && !other.IsSpecial() {
-		return true
-	}*/
-
-	if !p.IsOffline() && other.IsOffline() { // other is offline
-		return true
-	}
-
-	if p.IsOnline() && !other.IsOnline() { // other is connecting
-		return true
-	}
-
-	return p.QualityScore > other.QualityScore
-}
-
 func (p *Peer) Shareable() bool {
-	return p.QualityScore >= p.net.conf.MinimumQualityScore && p.ListenPort != "0" && !p.FromSeed
-}
-
-func (p *Peer) AddressPort() string {
-	return p.Address + ":" + p.Port
+	return p.QualityScore >= p.net.conf.MinimumQualityScore && !p.Temporary && !p.Seed
 }
 
 func (p *Peer) PeerIdent() string {

@@ -2,12 +2,17 @@ package p2p
 
 import (
 	"fmt"
+	"math/rand"
 	"sync"
+	"time"
 
 	log "github.com/sirupsen/logrus"
 )
 
 type Network struct {
+	ToNetwork   ParcelChannel
+	FromNetwork ParcelChannel
+
 	running      bool
 	runningMutex sync.Mutex
 
@@ -15,8 +20,7 @@ type Network struct {
 	controller  *controller
 	peerManager *peerManager
 
-	ToNetwork   ParcelChannel
-	FromNetwork ParcelChannel
+	rng *rand.Rand
 
 	logger *log.Entry
 }
@@ -25,10 +29,15 @@ var packageLogger = log.WithField("package", "p2p")
 
 func (n *Network) DebugMessage() (string, string) {
 	hv := ""
-	r := ""
+	r := "TEMPORARY:\n"
+	offline := ""
+	for _, p := range n.peerManager.tempPeers.Slice() {
+		r += fmt.Sprintf("\tPeer %s %v\n", p.String(), p.state.String())
+	}
+	r += "\nONLINE:\n"
 	for _, p := range n.peerManager.peers.Slice() {
-
 		if p.IsOffline() {
+			offline += fmt.Sprintf("\tPeer %s %v\n", p.String(), p.state.String())
 			continue
 		}
 
@@ -39,6 +48,7 @@ func (n *Network) DebugMessage() (string, string) {
 			hv += fmt.Sprintf("%s -> %s\n", n.conf.BindIP, p.Address)
 		}
 	}
+	r += "\nOFFLINE:\n" + offline
 	return r, hv
 }
 
@@ -48,8 +58,10 @@ func NewNetwork(conf Configuration) *Network {
 	n.logger = packageLogger.WithField("subpackage", "Network")
 
 	n.conf = &myconf
+
 	n.controller = newController(n)
 	n.peerManager = newPeerManager(n)
+	n.rng = rand.New(rand.NewSource(time.Now().UnixNano()))
 
 	n.ToNetwork = NewParcelChannel(conf.ChannelCapacity)
 	n.FromNetwork = NewParcelChannel(conf.ChannelCapacity)

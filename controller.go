@@ -68,8 +68,6 @@ func (c *controller) listenLoop() {
 	}
 	defer listener.Close()
 
-	tmpLogger.Info("Listening for new connections")
-
 	// start permanent loop
 	// terminates on program exit
 	for {

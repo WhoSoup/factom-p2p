@@ -3,7 +3,6 @@ package p2p
 import (
 	"fmt"
 	"net"
-	"strings"
 	"time"
 )
 
@@ -91,12 +90,17 @@ func (ll *LimitedListener) Accept() (net.Conn, error) {
 		return nil, err
 	}
 
-	addr := strings.Split(con.RemoteAddr().String(), ":")
-	if ll.isInHistory(addr[0]) {
+	addr, _, err := net.SplitHostPort(con.RemoteAddr().String())
+	if err != nil {
 		con.Close()
-		return nil, fmt.Errorf("connection rate limit exceeded for %s", addr[0])
+		return nil, err
 	}
 
-	ll.addToHistory(addr[0])
+	if ll.isInHistory(addr) {
+		con.Close()
+		return nil, fmt.Errorf("connection rate limit exceeded for %s", addr)
+	}
+
+	ll.addToHistory(addr)
 	return con, nil
 }

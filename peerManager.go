@@ -4,10 +4,8 @@ import (
 	"bufio"
 	"encoding/json"
 	"fmt"
-	"math/rand"
 	"net"
 	"net/http"
-	"strings"
 	"time"
 
 	log "github.com/sirupsen/logrus"
@@ -22,7 +20,8 @@ type peerManager struct {
 	Receive chan PeerParcel
 
 	//peerMutex  sync.RWMutex
-	peers *PeerMap
+	tempPeers PeerList
+	peers     *PeerMap
 
 	//onlinePeers map[string]bool // set of online peers
 	incoming uint
@@ -34,7 +33,6 @@ type peerManager struct {
 	lastPeerDuplicateCheck time.Time
 	lastSeedRefresh        time.Time
 
-	rng    *rand.Rand
 	logger *log.Entry
 }
 
@@ -51,13 +49,12 @@ func newPeerManager(network *Network) *peerManager {
 	pm.logger.WithField("peermanager_init", pm.net.conf).Debugf("Initializing Peer Manager")
 
 	pm.peers = NewPeerMap()
+	pm.tempPeers = NewPeerList()
 
 	pm.stop = make(chan interface{}, 1)
 	pm.Receive = make(chan PeerParcel, pm.net.conf.ChannelCapacity)
 
 	// TODO parse config special peers
-	pm.rng = rand.New(rand.NewSource(time.Now().UnixNano()))
-
 	return pm
 }
 
@@ -112,6 +109,11 @@ func (pm *peerManager) manageData() {
 			continue
 		}
 
+		// upgrade peer
+		if peer.canUpgrade() {
+			pm.upgradePeer(peer)
+		}
+
 		switch parcel.Header.Type {
 		case TypeMessagePart: // deprecated
 		case TypeHeartbeat: // deprecated
@@ -147,6 +149,17 @@ func (pm *peerManager) manageData() {
 
 }
 
+// upgradePeer takes a temporary peer and adds it as a full peer
+func (pm *peerManager) upgradePeer(peer *Peer) {
+	pm.tempPeers.Remove(peer)
+	if existing, ok := pm.peers.HasIPPort(peer.Address, peer.Port); ok {
+		// hand over active tcp connection to new peer
+		peer.ImportMetrics(existing)
+		existing.GoOffline()
+	}
+	pm.addPeer(peer)
+}
+
 func (pm *peerManager) discoverSeeds() {
 	pm.logger.Info("Contacting seed URL to get peers")
 	resp, err := http.Get(pm.net.conf.SeedURL)
@@ -169,15 +182,14 @@ func (pm *peerManager) discoverSeeds() {
 				continue
 			}
 			if p, has := pm.peers.HasIPPort(address, port); has { // check if seed exists already
-				p.FromSeed = true
+				p.Seed = true
 				continue
 			}
 			p := pm.SpawnPeer(address, port)
-			p.FromSeed = true
+			p.Seed = true
 		} else {
 			pm.logger.Errorf("Bad peer in " + pm.net.conf.SeedURL + " [" + line + "]")
 		}
-
 	}
 
 	pm.logger.Debugf("discoverSeed got peers: %s", report)
@@ -200,13 +212,19 @@ func (pm *peerManager) processPeers(peer *Peer, parcel *Parcel) {
 	//pm.peerMutex.RUnlock()
 
 	for _, p := range list {
-		if p.ListenPort == "" || p.ListenPort == "0" {
+		if !p.Verify() {
+			pm.logger.Infof("Peer %s tried to send us peer share with bad data: %s", peer, p)
+		}
+	}
+
+	for _, p := range list {
+		if p.Port == "" || p.Port == "0" {
 			continue
 		}
-		if !known[p.ConnectAddress()] {
-			known[p.ConnectAddress()] = true
+		if !known[p.String()] {
+			known[p.String()] = true
 
-			pm.SpawnPeer(p.Address, p.ListenPort)
+			pm.SpawnPeer(p.Address, p.Port)
 		}
 	}
 }
@@ -250,7 +268,7 @@ func (pm *peerManager) managePeers() {
 				if !p.IsOutgoing {
 					incoming++
 				}
-				if time.Since(p.lastPeerRequest) > p.config.PeerRequestInterval {
+				if time.Since(p.lastPeerRequest) > pm.net.conf.PeerRequestInterval {
 					p.lastPeerRequest = time.Now()
 
 					pm.logger.Debugf("Requesting peers from %s", p.ConnectAddress())
@@ -273,42 +291,14 @@ func (pm *peerManager) managePeers() {
 	}
 }
 
-func (pm *peerManager) managePeersDetectDuplicate() {
-	exists := make(map[string]*Peer)
-	var remove []*Peer
-	//pm.peerMutex.RLock()
-	for _, p := range pm.peers.Slice() {
-		addr := p.ConnectAddress()
-		if other, ok := exists[addr]; ok {
-			if p.Better(other) {
-				remove = append(remove, other)
-				exists[addr] = p
-			} else {
-				remove = append(remove, p)
-			}
-		} else {
-			exists[addr] = p
-		}
-	}
-	//pm.peerMutex.RUnlock()
-
-	if len(remove) > 0 {
-		for _, p := range remove {
-			pm.removePeer(p)
-		}
-	}
-}
-
 func (pm *peerManager) managePeersDialOutgoing() {
 	var count uint // online OR dialing
-	//pm.peerMutex.RLock()
 	for _, p := range pm.peers.Slice() {
 		if !p.IsOffline() {
 			count++
 			// TODO subtract special?
 		}
 	}
-	//pm.peerMutex.RUnlock()
 
 	pm.logger.Debugf("We have %d peers online or connecting", count)
 
@@ -318,7 +308,7 @@ func (pm *peerManager) managePeersDialOutgoing() {
 		if len(filter) > 0 {
 			peers := pm.getOutgoingSelection(filter, want)
 			for _, p := range peers {
-				if !pm.peers.IsConnected(p) {
+				if !pm.peers.IsConnected(p.Address) {
 					p.StartToDial()
 				}
 			}
@@ -326,23 +316,16 @@ func (pm *peerManager) managePeersDialOutgoing() {
 	}
 }
 
-func (pm *peerManager) SpawnPeer(address string, listenPort string) *Peer {
-	p := &Peer{Address: address, state: Offline, ListenPort: listenPort}
-	p.net = pm.net
-	p.logger = peerLogger.WithFields(log.Fields{
-		"node":       pm.net.conf.NodeName,
-		"hash":       p.Hash,
-		"address":    p.Address,
-		"port":       p.Port,
-		"listenPort": p.ListenPort,
-	})
-	p.config = pm.net.conf
-	p.age = time.Now()
-	p.stop = make(chan interface{}, 1)
-	p.Receive = NewParcelChannel(pm.net.conf.ChannelCapacity)
-	p.Hash = fmt.Sprintf("%x", pm.rng.Int63())
-	pm.logger.WithField("address", fmt.Sprintf("%s:%s", address, listenPort)).Debugf("Creating new peer %s", p)
-	pm.addPeer(p)
+func (pm *peerManager) SpawnTemporaryPeer(address string) *Peer {
+	p := NewPeer(pm.net, address)
+	pm.tempPeers.Add(p)
+	return p
+}
+
+func (pm *peerManager) SpawnPeer(address string, port string) *Peer {
+	p := NewPeer(pm.net, address)
+	p.Port = port
+	pm.peers.Add(p)
 	return p
 }
 
@@ -365,25 +348,14 @@ func (pm *peerManager) removePeer(peer *Peer) {
 }
 
 func (pm *peerManager) HandleIncoming(con net.Conn) {
-	ip := strings.Split(con.RemoteAddr().String(), ":")
-	/*special := pm.specialIP[ip]
+	addr, _, err := net.SplitHostPort(con.RemoteAddr().String())
+	if err != nil {
+		pm.logger.WithError(err).Debugf("Unable to parse address %s", con.RemoteAddr().String())
+		con.Close()
+		return
+	}
 
-	ipLog := pm.logger.WithField("remote_addr", ip)*/
-
-	/*	if !special {
-		if pm.outgoing >= pm.net.conf.Outgoing {
-			ipLog.Info("Rejecting inbound connection because of inbound limit")
-			con.Close()
-			return
-		} else if pm.net.conf.RefuseIncoming || pm.net.conf.RefuseUnknown {
-			ipLog.WithFields(log.Fields{
-				"RefuseIncoming": pm.net.conf.RefuseIncoming,
-				"RefuseUnknown":  pm.net.conf.RefuseUnknown,
-			}).Info("Rejecting inbound connection because of config settings")
-			con.Close()
-			return
-		}
-	}*/
+	// TODO allow special peers
 
 	if pm.incoming >= pm.net.conf.Incoming {
 		pm.logger.Infof("Refusing incoming connection from %s because we are maxed out", con.RemoteAddr().String())
@@ -391,16 +363,11 @@ func (pm *peerManager) HandleIncoming(con net.Conn) {
 		return
 	}
 
-	p := pm.SpawnPeer(ip[0], "0") // create AND add peer but we don't know their remote port
-	p.Port = ip[1]
+	pm.logger.Debugf("Accepting temporary peer from %s", addr)
+
+	p := pm.SpawnTemporaryPeer(addr) // add a temporary peer
 	p.StartWithActiveConnection(con) // peer is online
 	pm.incoming++
-
-	//c := NewConnection(con, pm.net.conf)
-
-	// TODO check if special
-	// TODO check if incoming is maxed out
-	// TODO add peer
 }
 
 func (pm *peerManager) Broadcast(parcel *Parcel, full bool) {
@@ -464,7 +431,7 @@ func (pm *peerManager) getOutgoingSelection(filtered []*Peer, wanted int) []*Pee
 	}
 
 	if wanted == 1 { // edge case
-		rand := pm.rng.Intn(len(filtered))
+		rand := pm.net.rng.Intn(len(filtered))
 		return []*Peer{filtered[rand]}
 	}
 
@@ -481,12 +448,12 @@ func (pm *peerManager) getOutgoingSelection(filtered []*Peer, wanted int) []*Pee
 	// pick random peers from each bucket
 	var picked []*Peer
 	for len(picked) < wanted {
-		offset := pm.rng.Intn(len(buckets)) // start at a random point in the bucket array
+		offset := pm.net.rng.Intn(len(buckets)) // start at a random point in the bucket array
 		for i := 0; i < len(buckets); i++ {
 			bi := (i + offset) % len(buckets)
 			bucket := buckets[bi]
 			if len(bucket) > 0 {
-				pi := pm.rng.Intn(len(bucket)) // random member in bucket
+				pi := pm.net.rng.Intn(len(bucket)) // random member in bucket
 				picked = append(picked, bucket[pi])
 				bucket[pi] = bucket[len(bucket)-1] // fast remove
 				buckets[bi] = bucket[:len(bucket)-1]
