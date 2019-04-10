@@ -4,24 +4,35 @@ import "sync"
 
 // PeerMap holds peers in a set of different structures to allow for efficient
 // retrieval in all circumstances
+//
+// This map does not allow duplicate peers. A peer is considered equal if they have the same peer hash
 type PeerMap struct {
 	lock    sync.RWMutex
-	bySlice PeerList
+	bySlice *PeerList
 	byHash  map[string]*Peer
-	byIP    map[string]PeerList
+	byIP    map[string]*PeerList
 }
 
+// NewPeerMap creates and initializes a new PeerMap
 func NewPeerMap() *PeerMap {
 	n := new(PeerMap)
 	n.byHash = make(map[string]*Peer)
-	n.byIP = make(map[string]PeerList)
+	n.byIP = make(map[string]*PeerList)
 	n.bySlice = NewPeerList()
 	return n
 }
 
 func (pm *PeerMap) Add(p *Peer) {
+	if p == nil {
+		return
+	}
 	pm.lock.Lock()
 	defer pm.lock.Unlock()
+
+	if pm.byHash[p.Hash] != nil {
+		return
+	}
+
 	pm.byHash[p.Hash] = p
 
 	if _, ok := pm.byIP[p.Address]; !ok {
@@ -31,9 +42,16 @@ func (pm *PeerMap) Add(p *Peer) {
 	pm.bySlice.Add(p)
 }
 
+// Remove removes the specified peer
 func (pm *PeerMap) Remove(p *Peer) {
+	if p == nil {
+		return
+	}
 	pm.lock.Lock()
 	defer pm.lock.Unlock()
+	if pm.byHash[p.Hash] == nil {
+		return
+	}
 	delete(pm.byHash, p.Hash)
 	pm.byIP[p.Address].Remove(p)
 	pm.bySlice.Remove(p)
@@ -55,15 +73,17 @@ func (pm *PeerMap) Slice() []*Peer {
 	return pm.bySlice.Slice()
 }
 
-func (pm *PeerMap) HasIPPort(addr, port string) (*Peer, bool) {
+// Search finds the first peer with the specified address and port
+func (pm *PeerMap) Search(addr, port string) (*Peer, bool) {
 	pm.lock.RLock()
 	defer pm.lock.RUnlock()
 	if list, ok := pm.byIP[addr]; ok {
-		return list.HasIPPort(addr, port)
+		return list.Search(addr, port)
 	}
 	return nil, false
 }
 
+// IsConnected returns true if at least one peer with the given address is online or connecting
 func (pm *PeerMap) IsConnected(address string) bool {
 	pm.lock.RLock()
 	defer pm.lock.RUnlock()
@@ -75,5 +95,19 @@ func (pm *PeerMap) IsConnected(address string) bool {
 		}
 	}
 	return false
+}
 
+// ConnectedCount returns the number of online or connecting peers from the given address
+func (pm *PeerMap) ConnectedCount(address string) int {
+	pm.lock.RLock()
+	defer pm.lock.RUnlock()
+	count := 0
+	if list, ok := pm.byIP[address]; ok {
+		for _, p := range list.Slice() {
+			if !p.IsOffline() {
+				count++
+			}
+		}
+	}
+	return count
 }

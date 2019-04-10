@@ -11,17 +11,26 @@ type PeerList struct {
 	mutex sync.RWMutex
 }
 
-func NewPeerList() PeerList {
-	return PeerList{}
+// NewPeerList creates a new, empty PeerList
+func NewPeerList() *PeerList {
+	return new(PeerList)
 }
 
-func (pl PeerList) Add(p *Peer) {
+// Add adds a given peer to the list
+func (pl *PeerList) Add(p *Peer) {
+	if p == nil {
+		return
+	}
 	pl.mutex.Lock()
 	defer pl.mutex.Unlock()
 	pl.list = append(pl.list, p)
 }
 
-func (pl PeerList) Remove(needle *Peer) {
+// Remove removes the FIRST instance (by hash) of peer it encounters
+func (pl *PeerList) Remove(needle *Peer) {
+	if needle == nil {
+		return
+	}
 	pl.mutex.Lock()
 	defer pl.mutex.Unlock()
 	for i, p := range pl.list {
@@ -35,13 +44,16 @@ func (pl PeerList) Remove(needle *Peer) {
 }
 
 // Slice creates a concurrency safe slice to iterate over
-func (pl PeerList) Slice() []*Peer {
+func (pl *PeerList) Slice() []*Peer {
 	pl.mutex.RLock()
 	defer pl.mutex.RUnlock()
 	return append(pl.list[:0:0], pl.list...)
 }
 
-func (pl PeerList) HasIPPort(addr, port string) (*Peer, bool) {
+// Search checks if the list contains an entry for the given address and port
+//
+// returns (peer, true) on success, (nil, false) if nothing was found
+func (pl *PeerList) Search(addr, port string) (*Peer, bool) {
 	pl.mutex.RLock()
 	defer pl.mutex.RUnlock()
 	for _, p := range pl.list {

@@ -20,7 +20,7 @@ type peerManager struct {
 	Receive chan PeerParcel
 
 	//peerMutex  sync.RWMutex
-	tempPeers PeerList
+	tempPeers *PeerList
 	peers     *PeerMap
 
 	//onlinePeers map[string]bool // set of online peers
@@ -152,7 +152,7 @@ func (pm *peerManager) manageData() {
 // upgradePeer takes a temporary peer and adds it as a full peer
 func (pm *peerManager) upgradePeer(peer *Peer) {
 	pm.tempPeers.Remove(peer)
-	if existing, ok := pm.peers.HasIPPort(peer.Address, peer.Port); ok {
+	if existing, ok := pm.peers.Search(peer.Address, peer.Port); ok {
 		// hand over active tcp connection to new peer
 		peer.ImportMetrics(existing)
 		existing.GoOffline()
@@ -181,7 +181,7 @@ func (pm *peerManager) discoverSeeds() {
 				pm.logger.Debugf("Discovered ourself in seed list")
 				continue
 			}
-			if p, has := pm.peers.HasIPPort(address, port); has { // check if seed exists already
+			if p, has := pm.peers.Search(address, port); has { // check if seed exists already
 				p.Seed = true
 				continue
 			}
