@@ -79,7 +79,7 @@ func (pm *peerManager) Stop() {
 	//pm.peerMutex.RLock()
 	//defer pm.peerMutex.RUnlock()
 	for _, p := range pm.peers.Slice() {
-		p.GoOffline()
+		p.Stop(true)
 	}
 }
 
@@ -152,11 +152,15 @@ func (pm *peerManager) manageData() {
 // upgradePeer takes a temporary peer and adds it as a full peer
 func (pm *peerManager) upgradePeer(peer *Peer) {
 	pm.tempPeers.Remove(peer)
+	//oldhash := peer.Hash
 	if existing, ok := pm.peers.Search(peer.Address, peer.Port); ok {
 		// hand over active tcp connection to new peer
-		peer.ImportMetrics(existing)
-		existing.GoOffline()
+		peer.HandleActiveConnection(existing.conn)
+		existing.Stop(false) // shut down the old one but keep connection alive
+		pm.logger.Debugf("Replacing existing peer with temporary")
+		pm.removePeer(existing)
 	}
+	peer.Temporary = false
 	pm.addPeer(peer)
 }
 
@@ -318,6 +322,7 @@ func (pm *peerManager) managePeersDialOutgoing() {
 
 func (pm *peerManager) SpawnTemporaryPeer(address string) *Peer {
 	p := NewPeer(pm.net, address)
+	p.Temporary = true
 	pm.tempPeers.Add(p)
 	return p
 }
@@ -343,7 +348,7 @@ func (pm *peerManager) banPeer(peer *Peer) {
 func (pm *peerManager) removePeer(peer *Peer) {
 	//pm.peerMutex.Lock()
 	//defer pm.peerMutex.Unlock()
-	peer.GoOffline()
+	peer.Stop(true)
 	pm.peers.Remove(peer)
 }
 
@@ -366,7 +371,8 @@ func (pm *peerManager) HandleIncoming(con net.Conn) {
 	pm.logger.Debugf("Accepting temporary peer from %s", addr)
 
 	p := pm.SpawnTemporaryPeer(addr) // add a temporary peer
-	p.StartWithActiveConnection(con) // peer is online
+	p.Start()
+	p.HandleActiveTCP(con)
 	pm.incoming++
 }
 

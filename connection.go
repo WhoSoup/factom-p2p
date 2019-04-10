@@ -22,9 +22,10 @@ var conLogger = packageLogger.WithField("subpack", "connection")
 type Connection struct {
 	conn net.Conn
 
-	Send    ParcelChannel // messages from the other side
-	Receive ParcelChannel // messages to the other side
-	Error   chan error    // connection died
+	Send       ParcelChannel // messages from the other side
+	Receive    ParcelChannel // messages to the other side
+	Error      chan error    // connection died
+	IsOutgoing bool
 
 	writeDeadline time.Duration
 	readDeadline  time.Duration
@@ -65,8 +66,9 @@ type ConnectionMetrics struct {
 	ConnectionNotes string // Connectivity notes for the connection
 }
 
-func NewConnection(peerHash string, conn net.Conn, receive ParcelChannel, net *Network) *Connection {
+func NewConnection(peerHash string, conn net.Conn, receive ParcelChannel, net *Network, outgoing bool) *Connection {
 	c := &Connection{}
+	c.IsOutgoing = outgoing
 	c.Send = NewParcelChannel(net.conf.ChannelCapacity)
 	c.Receive = receive
 	c.Error = make(chan error, 3) // two goroutines + close() = max 3 errors

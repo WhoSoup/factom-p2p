@@ -45,19 +45,25 @@ func (ps PeerState) String() string {
 
 // The peer state machine's states
 const (
-	Offline PeerState = iota
+	Uninitialized PeerState = iota
+	Offline
 	Connecting
 	Online
 )
 
 type Peer struct {
-	net       *Network
-	conn      *Connection
-	connMutex sync.RWMutex
-	state     PeerState
+	net *Network
+
+	connChannel chan *Connection
+	conn        *Connection
+	connError   chan error
+	connMutex   sync.RWMutex
+
+	state PeerState
+
 	//	stateMutex             sync.RWMutex
 	age                    time.Time
-	stop                   chan interface{}
+	stop                   chan bool
 	IsOutgoing             bool
 	lastPeerRequest        time.Time
 	lastPeerSend           time.Time
@@ -93,22 +99,104 @@ func NewPeer(net *Network, address string) *Peer {
 		"Port":    p.Port,
 	})
 	p.age = time.Now()
-	p.stop = make(chan interface{}, 1)
+	p.stop = make(chan bool, 1)
+	p.connChannel = make(chan *Connection, 10)
 	p.Receive = NewParcelChannel(net.conf.ChannelCapacity)
 	p.Hash = fmt.Sprintf("%x", net.rng.Int63())
 	p.logger.Debugf("Creating new peer")
 	return p
 }
 
-func (p *Peer) ImportMetrics(other *Peer) {
-	p.QualityScore = other.QualityScore
-	if other.Seed {
-		p.Seed = other.Seed
+func (p *Peer) Start() {
+	if p.state == Uninitialized {
+		p.logger.Error("Tried to Start a peer that is already initialized")
+		return
 	}
-	p.age = other.age
-	p.Hash = other.Hash
-	if other.Dialable {
-		p.Dialable = true
+
+	p.connMutex.Lock()
+	if p.conn != nil {
+		p.conn.Stop()
+	}
+	p.conn = nil
+	p.state = Offline
+	p.connError = nil
+	p.connMutex.Unlock()
+	p.connectionAttemptCount = 0
+
+	go p.monitorConnection()
+}
+
+func (p *Peer) StopConnection() {
+	p.connChannel <- nil
+}
+
+// Stop stops the peer's internal loop and returns it to being unitialized.
+// A hard stop will also sever the underlying connection
+func (p *Peer) Stop(hard bool) {
+	p.stop <- hard
+}
+
+func (p *Peer) setConnection(c *Connection) {
+	p.connMutex.Lock()
+	if p.conn != nil { // stop active connection
+		p.conn.Stop()
+	}
+	for len(p.Receive) > 0 { // drop old messages
+		<-p.Receive
+	}
+	if c == nil { // go offline
+		p.logger.Debug("Going offline")
+		p.state = Offline
+		p.conn = nil
+		p.connError = nil
+		p.IsOutgoing = false
+	} else { // handle a new connection
+		p.logger.Debugf("Switching connection to accept %s", c.conn.RemoteAddr().String())
+		p.state = Online
+		p.conn = c
+		p.connError = c.Error
+		p.IsOutgoing = p.IsOutgoing
+	}
+	p.connMutex.Unlock()
+}
+
+// monitorConnection watches the underlying Connection and the connection channel
+//
+// Any data arriving via connection will be passed on to the peer manager.
+// If the connection dies, change state to Offline. If a new connection arrives, handle it.
+func (p *Peer) monitorConnection() {
+	for {
+		select {
+		case err := <-p.connError: // if an error arrives here, the connection already stops itself
+			p.logger.WithError(err).Debug("Connection error")
+			p.setConnection(nil)
+		case hard := <-p.stop: // manual stop, we need to tear down connection
+			p.logger.Debugf("Manual stop. hard = %v", hard)
+			if hard {
+				p.setConnection(nil)
+			}
+			p.state = Uninitialized
+			return // exit this loop
+		case c := <-p.connChannel:
+			p.setConnection(c)
+		case parcel := <-p.Receive:
+			p.logger.Debugf("Received incoming parcel: %v", parcel)
+			if newport := parcel.Header.PeerPort; newport != p.Port {
+				p.logger.WithFields(log.Fields{"old": p.Port, "new": newport}).Debugf("Listen port changed")
+				p.Port = newport
+			}
+
+			if nodeid := parcel.Header.NodeID; nodeid != p.NodeID {
+				p.logger.WithFields(log.Fields{"old": p.NodeID, "new": nodeid}).Debugf("NodeID changed")
+				p.NodeID = nodeid
+			}
+			p.LastReceive = time.Now()
+			select {
+			case p.net.peerManager.Receive <- PeerParcel{Peer: p, Parcel: parcel}:
+			default:
+				p.logger.Warn("Peer manager unable to handle load")
+			}
+		}
 	}
 }
 
@@ -141,6 +229,17 @@ func (p *Peer) StartToDial() {
 		return
 	}
 
+	p.StopConnection()
+
+	var newcon *Connection
+	defer func() { // update peer after dialing is over
+		p.setConnection(newcon)
+	}()
+
+	p.connMutex.Lock()
+	defer p.connMutex.Unlock() // executes before the above setConnection
+
+	p.state = Connecting
 	p.connectionAttempt = time.Now()
 	p.connectionAttemptCount++
 
@@ -153,27 +252,19 @@ func (p *Peer) StartToDial() {
 		p.Location = loc
 	}
 
-	p.connMutex.Lock()
-	if p.conn != nil {
-		p.logger.WithField("old_conn", p.conn).Warn("Peer started to dial despite not being offline")
-		p.conn.Stop()
-		p.conn = nil
-	}
-	p.connMutex.Unlock()
-
 	local, err := net.ResolveTCPAddr("tcp", fmt.Sprintf("%s:0", p.net.conf.BindIP))
 	if err != nil {
 		p.logger.WithError(err).Errorf("Unable to resolve local interface \"%s:0\"", p.net.conf.BindIP)
 	}
 
-	p.IsOutgoing = true
-	p.state = Connecting
 	p.logger.Debugf("State changed to %s", p.state.String())
 	remote, err := net.ResolveTCPAddr("tcp", fmt.Sprintf("%s:%s", p.Address, p.Port))
 	if err != nil {
 		p.logger.WithError(err).Infof("Unable to resolve remote address \"%s:%s\"", p.Address, p.Port)
 		return
 	}
+
+	p.state = Connecting
 	con, err := net.DialTCP("tcp", local, remote)
 	p.logger.WithField("attempt", p.connectionAttemptCount).Debugf("Dialing to %s", remote)
 	if err != nil {
@@ -181,42 +272,19 @@ func (p *Peer) StartToDial() {
 		return
 	}
 
-	p.startInternal(con)
+	newcon = NewConnection(p.Hash, con, p.Receive, p.net, true)
+	newcon.Start()
+	p.connChannel <- newcon
 }
 
-func (p *Peer) StartWithActiveConnection(con net.Conn) {
-	p.connMutex.Lock()
-	if p.conn != nil {
-		p.logger.WithField("old_conn", p.conn).Warn("Peer given new connection despite having old one")
-		p.conn.Stop()
-		p.conn = nil
-	}
-	p.connMutex.Unlock()
-
-	p.startInternal(con)
+func (p *Peer) HandleActiveConnection(con *Connection) {
+	p.connChannel <- con
 }
 
-// startInternal is the common functionality for both dialing and accepting a connection
-// is under locked mutex from superior function
-func (p *Peer) startInternal(con net.Conn) {
-	p.connMutex.Lock()
-	p.conn = NewConnection(p.Hash, con, p.Receive, p.net)
-	p.conn.Start()
-	p.connMutex.Unlock()
-
-	p.state = Online
-	p.logger.Debugf("State changed to %s", p.state.String())
-	p.lastPeerRequest = time.Now()
-	go p.monitorConnection() // this will die when the connection is closed
-}
-
-func (p *Peer) GoOffline() {
-	if p.state == Offline {
-		return
-	}
-	p.state = Offline
-	p.logger.Debugf("State changed to %s", p.state.String())
-	p.stop <- true
+func (p *Peer) HandleActiveTCP(con net.Conn) {
+	newcon := NewConnection(p.Hash, con, p.Receive, p.net, false)
+	newcon.Start()
+	p.connChannel <- newcon
 }
 
 func (p *Peer) Send(parcel *Parcel) {
@@ -252,69 +320,8 @@ func (p *Peer) IsOffline() bool {
 	return p.state == Offline
 }
 
-// monitorConnection watches the underlying Connection.
-// Any data arriving via connection will be passed on to the peer manager.
-// If the connection dies, change state to Offline
-func (p *Peer) monitorConnection() {
-	defer func() {
-		if r := recover(); r != nil {
-			// p.conn ceased to exist
-		}
-	}()
-
-Monitor:
-	for {
-		select {
-		case <-p.stop: // manual stop, we need to tear down connection
-			p.logger.Debug("Manual stop")
-			p.state = Offline
-			p.connMutex.Lock()
-			if p.conn != nil {
-				p.conn.Stop()
-				p.conn = nil
-			}
-			p.connMutex.Unlock()
-			p.connectionAttemptCount = 0
-			break Monitor
-		case err := <-p.conn.Error: // if an error arrives here, the connection already stops itself
-			p.logger.WithError(err).Debug("Connection error")
-			p.state = Offline
-			p.logger.Debugf("State changed to %s", p.state.String())
-			p.connMutex.Lock()
-			if p.conn != nil {
-				p.conn = nil
-			}
-			p.connMutex.Unlock()
-
-			p.connectionAttemptCount = 0
-			break Monitor
-		case parcel := <-p.Receive:
-			p.logger.Debugf("Received incoming parcel: %v", parcel)
-			if newport := parcel.Header.PeerPort; newport != p.Port {
-				p.logger.WithFields(log.Fields{"old": p.Port, "new": newport}).Debugf("Listen port changed")
-				p.Port = newport
-			}
-			if nodeid := parcel.Header.NodeID; nodeid != p.NodeID {
-				p.logger.WithFields(log.Fields{"old": p.NodeID, "new": nodeid}).Debugf("NodeID changed")
-				p.NodeID = nodeid
-			}
-			p.LastReceive = time.Now()
-			p.net.peerManager.Receive <- PeerParcel{Peer: p, Parcel: parcel} // TODO this is potentially blocking
-		}
-	}
-}
-
 func (p *Peer) Shareable() bool {
-	return p.QualityScore >= p.net.conf.MinimumQualityScore && !p.Temporary && !p.Seed
-}
-
-func (p *Peer) PeerIdent() string {
-	return p.Hash[0:12] + "-" + p.Address + ":" + p.Port
-}
-
-func (p *Peer) PeerFixedIdent() string {
-	address := fmt.Sprintf("%16s", p.Address)
-	return p.Hash[0:12] + "-" + address + ":" + p.Port
+	return p.QualityScore >= p.net.conf.MinimumQualityScore && !p.Temporary
 }
 
 func (p *Peer) PeerLogFields() log.Fields {
@@ -325,7 +332,7 @@ func (p *Peer) PeerLogFields() log.Fields {
 	}
 }
 
-// sort.Sort interface implementation
+// PeerQualitySort sorts peers by quality score, ascending
 type PeerQualitySort []Peer
 
 func (p PeerQualitySort) Len() int {
@@ -338,7 +345,7 @@ func (p PeerQualitySort) Less(i, j int) bool {
 	return p[i].QualityScore < p[j].QualityScore
 }
 
-// sort.Sort interface implementation
+// PeerDistanceSort sorts peers by ip space location, ascending
 type PeerDistanceSort []*Peer
 
 func (p PeerDistanceSort) Len() int {

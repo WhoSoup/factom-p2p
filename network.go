@@ -32,7 +32,7 @@ func (n *Network) DebugMessage() (string, string) {
 	r := "TEMPORARY:\n"
 	offline := ""
 	for _, p := range n.peerManager.tempPeers.Slice() {
-		r += fmt.Sprintf("\tPeer %s %v\n", p.String(), p.state.String())
+		r += fmt.Sprintf("\tPeer %s %v %v\n", p.String(), p.state.String(), p.Temporary)
 	}
 	r += "\nONLINE:\n"
 	for _, p := range n.peerManager.peers.Slice() {
