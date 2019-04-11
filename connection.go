@@ -22,6 +22,7 @@ var conLogger = packageLogger.WithField("subpack", "connection")
 type Connection struct {
 	conn net.Conn
 
+	stop       chan bool
 	Send       ParcelChannel // messages from the other side
 	Receive    ParcelChannel // messages to the other side
 	Error      chan error    // connection died
@@ -72,6 +73,7 @@ func NewConnection(peerHash string, conn net.Conn, receive ParcelChannel, net *N
 	c.Send = NewParcelChannel(net.conf.ChannelCapacity)
 	c.Receive = receive
 	c.Error = make(chan error, 3) // two goroutines + close() = max 3 errors
+	c.stop = make(chan bool, 5)
 
 	c.logger = conLogger.WithFields(log.Fields{"address": conn.RemoteAddr(), "peer": peerHash, "node": net.conf.NodeName})
 	c.logger.Debug("Connection initialized")
@@ -80,6 +82,7 @@ func NewConnection(peerHash string, conn net.Conn, receive ParcelChannel, net *N
 	c.writeDeadline = net.conf.WriteDeadline
 
 	c.conn = conn
+
 	c.encoder = gob.NewEncoder(c.conn)
 	c.decoder = gob.NewDecoder(c.conn)
 
@@ -119,29 +122,33 @@ func (c *Connection) readLoop() {
 func (c *Connection) sendLoop() {
 	defer c.conn.Close() // close connection on fatal error
 	for {
-		parcel := <-c.Send
-
-		if parcel == nil {
-			c.logger.Error("Received <nil> pointer")
-			continue
-		}
-
-		c.conn.SetWriteDeadline(time.Now().Add(c.writeDeadline))
-		err := c.encoder.Encode(parcel)
-		if err != nil { // no error is recoverable
-			c.Error <- err
-			c.logger.WithError(err).Debug("Terminating sendLoop because of error")
+		select {
+		case <-c.stop:
 			return
-		}
+		case parcel := <-c.Send:
+			if parcel == nil {
+				c.logger.Error("Received <nil> pointer")
+				continue
+			}
 
-		c.metrics.BytesSent += parcel.Header.Length
-		c.metrics.MessagesSent++
-		c.LastSend = time.Now()
+			c.conn.SetWriteDeadline(time.Now().Add(c.writeDeadline))
+			err := c.encoder.Encode(parcel)
+			if err != nil { // no error is recoverable
+				c.Error <- err
+				c.logger.WithError(err).Debug("Terminating sendLoop because of error")
+				return
+			}
+
+			c.metrics.BytesSent += parcel.Header.Length
+			c.metrics.MessagesSent++
+			c.LastSend = time.Now()
+		}
 	}
 }
 
 func (c *Connection) Stop() {
 	c.logger.Debug("Stopping connection")
 	c.Error <- &GracefulShutdown{}
-	c.conn.Close() // this will force both sendLoop and readLoop to stop immediately
+	c.stop <- true // this will stop sendloop
+	c.conn.Close() // this will stop readloop
 }
