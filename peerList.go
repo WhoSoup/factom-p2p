@@ -63,3 +63,25 @@ func (pl *PeerList) Search(addr, port string) (*Peer, bool) {
 	}
 	return nil, false
 }
+
+func (pl *PeerList) SearchOffline(addr string) *Peer {
+	pl.mutex.RLock()
+	defer pl.mutex.RUnlock()
+	for _, p := range pl.list {
+		if p.Address == addr && p.IsOffline() {
+			return p
+		}
+	}
+	return nil
+}
+
+func (pl *PeerList) IsConnected(addr string) bool {
+	pl.mutex.RLock()
+	defer pl.mutex.RUnlock()
+	for _, p := range pl.list {
+		if p.Address == addr && !p.IsOffline() {
+			return true
+		}
+	}
+	return false
+}

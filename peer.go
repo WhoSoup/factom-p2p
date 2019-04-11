@@ -90,7 +90,7 @@ type Peer struct {
 }
 
 func NewPeer(net *Network, address string) *Peer {
-	p := &Peer{Address: address, state: Offline}
+	p := &Peer{Address: address, state: Uninitialized}
 	p.net = net
 	p.logger = peerLogger.WithFields(log.Fields{
 		"node":    net.conf.NodeName,
@@ -108,7 +108,7 @@ func NewPeer(net *Network, address string) *Peer {
 }
 
 func (p *Peer) Start() {
-	if p.state == Uninitialized {
+	if p.state != Uninitialized {
 		p.logger.Error("Tried to Start a peer that is already initialized")
 		return
 	}
@@ -138,8 +138,11 @@ func (p *Peer) Stop(hard bool) {
 
 func (p *Peer) setConnection(c *Connection) {
 	p.connMutex.Lock()
+	defer p.connMutex.Unlock()
 	if p.conn != nil { // stop active connection
-		p.conn.Stop()
+		defer func(old *Connection) {
+			old.Stop()
+		}(p.conn) // pass value as parameter
 	}
 	for len(p.Receive) > 0 { // drop old messages
 		<-p.Receive
@@ -151,13 +154,13 @@ func (p *Peer) setConnection(c *Connection) {
 		p.connError = nil
 		p.IsOutgoing = false
 	} else { // handle a new connection
-		p.logger.Debugf("Switching connection to accept %s", c.conn.RemoteAddr().String())
+		p.logger.Debugf("Accepting connection %s", c.conn.RemoteAddr().String())
 		p.state = Online
 		p.conn = c
 		p.connError = c.Error
 		p.IsOutgoing = p.IsOutgoing
+		p.connectionAttemptCount = 0
 	}
-	p.connMutex.Unlock()
 }
 
 // monitorConnection watches the underlying Connection and the connection channel
@@ -180,6 +183,7 @@ func (p *Peer) monitorConnection() {
 		case c := <-p.connChannel:
 			p.setConnection(c)
 		case parcel := <-p.Receive:
+			p.QualityScore++
 			p.logger.Debugf("Received incoming parcel: %v", parcel)
 			if newport := parcel.Header.PeerPort; newport != p.Port {
 				p.logger.WithFields(log.Fields{"old": p.Port, "new": newport}).Debugf("Listen port changed")
@@ -229,11 +233,11 @@ func (p *Peer) StartToDial() {
 		return
 	}
 
-	p.StopConnection()
+	//p.StopConnection()
 
 	var newcon *Connection
 	defer func() { // update peer after dialing is over
-		p.setConnection(newcon)
+		p.connChannel <- newcon
 	}()
 
 	p.connMutex.Lock()
@@ -242,6 +246,7 @@ func (p *Peer) StartToDial() {
 	p.state = Connecting
 	p.connectionAttempt = time.Now()
 	p.connectionAttemptCount++
+	p.logger.WithField("attempt", p.connectionAttemptCount).Debugf("Dialing to %s:%s", p.Address, p.Port)
 
 	if p.Location == 0 {
 		loc, err := IP2Location(p.Address)
@@ -257,7 +262,6 @@ func (p *Peer) StartToDial() {
 		p.logger.WithError(err).Errorf("Unable to resolve local interface \"%s:0\"", p.net.conf.BindIP)
 	}
 
-	p.logger.Debugf("State changed to %s", p.state.String())
 	remote, err := net.ResolveTCPAddr("tcp", fmt.Sprintf("%s:%s", p.Address, p.Port))
 	if err != nil {
 		p.logger.WithError(err).Infof("Unable to resolve remote address \"%s:%s\"", p.Address, p.Port)
@@ -266,7 +270,7 @@ func (p *Peer) StartToDial() {
 
 	p.state = Connecting
 	con, err := net.DialTCP("tcp", local, remote)
-	p.logger.WithField("attempt", p.connectionAttemptCount).Debugf("Dialing to %s", remote)
+
 	if err != nil {
 		p.logger.WithError(err).Infof("Unable to connect to peer")
 		return
@@ -274,7 +278,8 @@ func (p *Peer) StartToDial() {
 
 	newcon = NewConnection(p.Hash, con, p.Receive, p.net, true)
 	newcon.Start()
-	p.connChannel <- newcon
+
+	// newcon will update
 }
 
 func (p *Peer) HandleActiveConnection(con *Connection) {

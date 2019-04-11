@@ -83,6 +83,28 @@ func (pm *PeerMap) Search(addr, port string) (*Peer, bool) {
 	return nil, false
 }
 
+func (pm *PeerMap) SearchOffline(addr string) *Peer {
+	pm.lock.RLock()
+	defer pm.lock.RUnlock()
+	if list, ok := pm.byIP[addr]; ok {
+		return list.SearchOffline(addr)
+	}
+	return nil
+}
+
+func (pm *PeerMap) SearchDuplicate(needle *Peer) *Peer {
+	pm.lock.RLock()
+	defer pm.lock.RUnlock()
+	if list, ok := pm.byIP[needle.Address]; ok {
+		for _, p := range list.Slice() {
+			if p.Hash != needle.Hash && p.Port == needle.Port { // address already matches
+				return p
+			}
+		}
+	}
+	return nil
+}
+
 // IsConnected returns true if at least one peer with the given address is online or connecting
 func (pm *PeerMap) IsConnected(address string) bool {
 	pm.lock.RLock()

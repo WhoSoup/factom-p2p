@@ -83,6 +83,21 @@ func (pm *peerManager) Stop() {
 	}
 }
 
+func (pm *peerManager) search(addr, port string, temp bool) (*Peer, bool) {
+	p, exists := pm.peers.Search(addr, port)
+	if !exists && temp {
+		return pm.tempPeers.Search(addr, port)
+	}
+	return p, exists
+}
+
+func (pm *peerManager) isConnected(addr string) bool {
+	if c := pm.peers.IsConnected(addr); !c {
+		return pm.tempPeers.IsConnected(addr)
+	}
+	return true
+}
+
 func (pm *peerManager) bootStrapPeers() {
 	// TODO load peers.json
 
@@ -111,8 +126,12 @@ func (pm *peerManager) manageData() {
 
 		// upgrade peer
 		if peer.canUpgrade() {
-			pm.upgradePeer(peer)
+			//peer = pm.upgradePeer(peer)
+			//parcel.Header.TargetPeer = peer.Hash
+			peer.Temporary = false
 		}
+
+		pm.logger.Debugf("Received parcel type %s from %s", parcel.MessageType(), peer.ConnectAddress())
 
 		switch parcel.Header.Type {
 		case TypeMessagePart: // deprecated
@@ -149,19 +168,22 @@ func (pm *peerManager) manageData() {
 
 }
 
-// upgradePeer takes a temporary peer and adds it as a full peer
-func (pm *peerManager) upgradePeer(peer *Peer) {
-	pm.tempPeers.Remove(peer)
-	//oldhash := peer.Hash
-	if existing, ok := pm.peers.Search(peer.Address, peer.Port); ok {
-		// hand over active tcp connection to new peer
-		peer.HandleActiveConnection(existing.conn)
-		existing.Stop(false) // shut down the old one but keep connection alive
-		pm.logger.Debugf("Replacing existing peer with temporary")
-		pm.removePeer(existing)
+// upgradePeer takes a temporary peer and adds it as a full peer.
+// If a peer with that identity already exists, the new connection will
+// be passed to the existing peer
+func (pm *peerManager) upgradePeer(temp *Peer) *Peer {
+	pm.tempPeers.Remove(temp)
+	if existing, ok := pm.peers.Search(temp.Address, temp.Port); ok {
+		// hand over active tcp connection to existing peer
+		existing.HandleActiveConnection(temp.conn)
+		temp.Stop(false)
+		pm.logger.Debugf("Replacing existing peer %s's connection with temporary %s", existing.Hash, temp.Hash)
+		return existing
+	} else {
+		temp.Temporary = false
+		pm.addPeer(temp)
+		return temp
 	}
-	peer.Temporary = false
-	pm.addPeer(peer)
 }
 
 func (pm *peerManager) discoverSeeds() {
@@ -218,13 +240,11 @@ func (pm *peerManager) processPeers(peer *Peer, parcel *Parcel) {
 	for _, p := range list {
 		if !p.Verify() {
 			pm.logger.Infof("Peer %s tried to send us peer share with bad data: %s", peer, p)
+			return
 		}
 	}
 
 	for _, p := range list {
-		if p.Port == "" || p.Port == "0" {
-			continue
-		}
 		if !known[p.String()] {
 			known[p.String()] = true
 
@@ -235,8 +255,8 @@ func (pm *peerManager) processPeers(peer *Peer, parcel *Parcel) {
 
 // sharePeers creates a list of peers to share and sends it to peer
 func (pm *peerManager) sharePeers(peer *Peer) {
-	list := pm.filteredSharing()
-	pm.logger.Debugf("Sharing peers: %v", list)
+	list := pm.filteredSharing(peer)
+	pm.logger.Debugf("Sharing peers with %s: %v", peer, list)
 	json, ok := json.Marshal(list)
 	if ok != nil {
 		pm.logger.WithError(ok).Error("Failed to marshal peer list to json")
@@ -244,7 +264,6 @@ func (pm *peerManager) sharePeers(peer *Peer) {
 	}
 	parcel := NewParcel(TypePeerResponse, json)
 	peer.Send(parcel)
-
 }
 
 func (pm *peerManager) managePeers() {
@@ -253,7 +272,7 @@ func (pm *peerManager) managePeers() {
 			pm.managePeersDetectDuplicate()
 		}*/
 
-		pm.logger.Debugf("Managing peers")
+		//pm.logger.Debugf("Managing peers")
 
 		if time.Since(pm.lastSeedRefresh) > pm.net.conf.PeerReseedInterval {
 			pm.lastSeedRefresh = time.Now()
@@ -312,7 +331,7 @@ func (pm *peerManager) managePeersDialOutgoing() {
 		if len(filter) > 0 {
 			peers := pm.getOutgoingSelection(filter, want)
 			for _, p := range peers {
-				if !pm.peers.IsConnected(p.Address) {
+				if !pm.isConnected(p.Address) {
 					p.StartToDial()
 				}
 			}
@@ -320,16 +339,28 @@ func (pm *peerManager) managePeersDialOutgoing() {
 	}
 }
 
+func (pm *peerManager) findOrCreateOfflinePeer(address string) *Peer {
+	p := pm.peers.SearchOffline(address)
+	if p == nil {
+		p = NewPeer(pm.net, address)
+	} else {
+		pm.logger.Debugf("Recycling offline peer %s for new connection", p.String())
+	}
+	return p
+}
+
 func (pm *peerManager) SpawnTemporaryPeer(address string) *Peer {
-	p := NewPeer(pm.net, address)
+	p := pm.findOrCreateOfflinePeer(address)
 	p.Temporary = true
+	p.Start()
 	pm.tempPeers.Add(p)
 	return p
 }
 
 func (pm *peerManager) SpawnPeer(address string, port string) *Peer {
-	p := NewPeer(pm.net, address)
+	p := pm.findOrCreateOfflinePeer(address)
 	p.Port = port
+	p.Start()
 	pm.peers.Add(p)
 	return p
 }
@@ -370,8 +401,7 @@ func (pm *peerManager) HandleIncoming(con net.Conn) {
 
 	pm.logger.Debugf("Accepting temporary peer from %s", addr)
 
-	p := pm.SpawnTemporaryPeer(addr) // add a temporary peer
-	p.Start()
+	p := pm.SpawnPeer(addr, "0") // add a temporary peer
 	p.HandleActiveTCP(con)
 	pm.incoming++
 }
@@ -409,17 +439,15 @@ func (pm *peerManager) filteredOutgoing() []*Peer {
 	return filtered
 }
 
-func (pm *peerManager) filteredSharing() []PeerShare {
+func (pm *peerManager) filteredSharing(peer *Peer) []PeerShare {
 	var filtered []PeerShare
-	//pm.peerMutex.RLock()
-	// TODO sort by qualityscore
+	shared := make(map[string]bool)
 	for _, p := range pm.peers.Slice() {
-		if p.Shareable() {
+		if !shared[p.ConnectAddress()] && p.Shareable() && p.Hash != peer.Hash {
+			shared[p.ConnectAddress()] = true
 			filtered = append(filtered, p.PeerShare())
 		}
 	}
-	//pm.peerMutex.RUnlock()
-
 	return filtered
 }
 
