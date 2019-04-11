@@ -19,11 +19,9 @@ type peerManager struct {
 	stop    chan interface{}
 	Receive chan PeerParcel
 
-	//peerMutex  sync.RWMutex
 	tempPeers *PeerList
 	peers     *PeerMap
 
-	//onlinePeers map[string]bool // set of online peers
 	incoming uint
 	outgoing uint
 
@@ -317,7 +315,7 @@ func (pm *peerManager) managePeers() {
 func (pm *peerManager) managePeersDialOutgoing() {
 	var count uint // online OR dialing
 	for _, p := range pm.peers.Slice() {
-		if !p.IsOffline() {
+		if !p.IsOffline() && !p.IsIncoming {
 			count++
 			// TODO subtract special?
 		}
@@ -403,6 +401,7 @@ func (pm *peerManager) HandleIncoming(con net.Conn) {
 
 	p := pm.SpawnPeer(addr, "0") // add a temporary peer
 	p.HandleActiveTCP(con)
+	p.IsIncoming = true
 	pm.incoming++
 }
 
@@ -430,7 +429,7 @@ func (pm *peerManager) filteredOutgoing() []*Peer {
 	var filtered []*Peer
 	//pm.peerMutex.RLock()
 	for _, p := range pm.peers.Slice() {
-		if p.IsOffline() && p.CanDial() {
+		if !p.IsIncoming && p.IsOffline() && p.CanDial() {
 			filtered = append(filtered, p)
 		}
 	}

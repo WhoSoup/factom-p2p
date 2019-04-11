@@ -73,10 +73,11 @@ type Peer struct {
 	LastReceive            time.Time // Keep track of how long ago we talked to the peer.
 	LastSend               time.Time // Keep track of how long ago we talked to the peer.
 
-	Port      string
-	Temporary bool
-	Seed      bool
-	Dialable  bool
+	Port       string
+	Temporary  bool
+	Seed       bool
+	Dialable   bool
+	IsIncoming bool
 
 	QualityScore int32  // 0 is neutral quality, negative is a bad peer.
 	Address      string // Must be in form of x.x.x.x
