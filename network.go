@@ -44,7 +44,9 @@ func (n *Network) DebugMessage() (string, string) {
 		r += fmt.Sprintf("\tPeer %s %v %v %d\n", p.String(), p.state.String(), p.Temporary, p.QualityScore)
 		//		r += fmt.Sprintf("\t\tLast Send: %s\n", p.LastSend)
 		//		r += fmt.Sprintf("\t\tLast Revc: %s\n", p.LastReceive)
-		if p.IsOutgoing {
+		if p.IsIncoming {
+			hv += fmt.Sprintf("%s -> %s\n", p.Address, n.conf.BindIP)
+		} else {
 			hv += fmt.Sprintf("%s -> %s\n", n.conf.BindIP, p.Address)
 		}
 	}
