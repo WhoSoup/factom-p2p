@@ -44,10 +44,21 @@ func (n *Network) DebugMessage() (string, string) {
 		r += fmt.Sprintf("\tPeer %s %v %v %d\n", p.String(), p.state.String(), p.Temporary, p.QualityScore)
 		//		r += fmt.Sprintf("\t\tLast Send: %s\n", p.LastSend)
 		//		r += fmt.Sprintf("\t\tLast Revc: %s\n", p.LastReceive)
+		edge := ""
+		if n.conf.NodeID < 4 || p.NodeID < 4 {
+			min := n.conf.NodeID
+			if p.NodeID < min {
+				min = p.NodeID
+			}
+			if min != 0 {
+				color := []string{"red", "green", "blue"}[min-1]
+				edge = fmt.Sprintf(" {color:%s, weight=3}", color)
+			}
+		}
 		if p.IsIncoming {
-			hv += fmt.Sprintf("%s -> %s\n", p.Address, n.conf.BindIP)
+			hv += fmt.Sprintf("%s -> %s%s\n", p.Address, n.conf.BindIP, edge)
 		} else {
-			hv += fmt.Sprintf("%s -> %s\n", n.conf.BindIP, p.Address)
+			hv += fmt.Sprintf("%s -> %s%s\n", n.conf.BindIP, p.Address, edge)
 		}
 	}
 	r += "\nOFFLINE:\n" + offline
