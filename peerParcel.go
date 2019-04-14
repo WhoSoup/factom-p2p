@@ -5,3 +5,8 @@ type PeerParcel struct {
 	Peer   *Peer
 	Parcel *Parcel
 }
+
+type PeerStatus struct {
+	Peer   *Peer
+	Online bool
+}

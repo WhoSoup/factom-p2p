@@ -103,6 +103,10 @@ type Configuration struct {
 	// a connection unreachable
 	RedialAttempts uint
 
+	// HandshakeDeadline is the maximum acceptable time for an incoming conneciton
+	// to send the first parcel after connecting
+	HandshakeDeadline time.Duration
+
 	// ReadDeadline is the maximum acceptable time to read a single parcel
 	// if a connection takes longer, it is disconnected
 	ReadDeadline time.Duration
@@ -151,8 +155,9 @@ func DefaultP2PConfiguration() (c Configuration) {
 	c.RedialReset = time.Hour * 12
 	c.RedialAttempts = 5
 
-	c.ReadDeadline = time.Minute * 5  // high enough to accomodate large packets
-	c.WriteDeadline = time.Minute * 5 // but fail eventually
+	c.ReadDeadline = time.Minute * 5       // high enough to accomodate large packets
+	c.WriteDeadline = time.Minute * 5      // but fail eventually
+	c.HandshakeDeadline = time.Second * 10 // can be quite low
 
 	c.ProtocolVersion = 9
 	c.ProtocolVersionMinimum = 9

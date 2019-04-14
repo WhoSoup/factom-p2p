@@ -20,6 +20,9 @@ type Network struct {
 	controller  *controller
 	peerManager *peerManager
 
+	peerParcel chan PeerParcel
+	peerStatus chan PeerStatus
+
 	rng *rand.Rand
 
 	logger *log.Entry
@@ -31,9 +34,9 @@ func (n *Network) DebugMessage() (string, string) {
 	hv := ""
 	r := "TEMPORARY:\n"
 	offline := ""
-	for _, p := range n.peerManager.tempPeers.Slice() {
+	/*	for _, p := range n.peerManager.tempPeers.Slice() {
 		r += fmt.Sprintf("\tPeer %s %v %v %d\n", p.String(), p.state.String(), p.Temporary, p.QualityScore)
-	}
+	}*/
 	r += "\nONLINE:\n"
 	for _, p := range n.peerManager.peers.Slice() {
 		if p.IsOffline() {
@@ -75,6 +78,8 @@ func NewNetwork(conf Configuration) *Network {
 	n.controller = newController(n)
 	n.peerManager = newPeerManager(n)
 	n.rng = rand.New(rand.NewSource(time.Now().UnixNano()))
+
+	n.peerParcel = make(chan PeerParcel, conf.ChannelCapacity)
 
 	n.ToNetwork = NewParcelChannel(conf.ChannelCapacity)
 	n.FromNetwork = NewParcelChannel(conf.ChannelCapacity)

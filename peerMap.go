@@ -105,6 +105,19 @@ func (pm *PeerMap) SearchDuplicate(needle *Peer) *Peer {
 	return nil
 }
 
+func (pm *PeerMap) SearchDuplicateNodeID(needle *Peer) *Peer {
+	pm.lock.RLock()
+	defer pm.lock.RUnlock()
+	if list, ok := pm.byIP[needle.Address]; ok {
+		for _, p := range list.Slice() {
+			if p.Hash != needle.Hash && p.NodeID == needle.NodeID { // address already matches
+				return p
+			}
+		}
+	}
+	return nil
+}
+
 // IsConnected returns true if at least one peer with the given address is online or connecting
 func (pm *PeerMap) IsConnected(address string) bool {
 	pm.lock.RLock()

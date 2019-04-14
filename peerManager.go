@@ -15,12 +15,11 @@ var pmLogger = packageLogger.WithField("subpack", "peerManager")
 
 // peerManager is responsible for managing all the Peers, both online and offline
 type peerManager struct {
-	net     *Network
-	stop    chan interface{}
-	Receive chan PeerParcel
+	net  *Network
+	stop chan interface{}
 
-	tempPeers *PeerList
-	peers     *PeerMap
+	//	tempPeers *PeerList
+	peers *PeerMap
 
 	incoming uint
 	outgoing uint
@@ -47,10 +46,9 @@ func newPeerManager(network *Network) *peerManager {
 	pm.logger.WithField("peermanager_init", pm.net.conf).Debugf("Initializing Peer Manager")
 
 	pm.peers = NewPeerMap()
-	pm.tempPeers = NewPeerList()
+	//pm.tempPeers = NewPeerList()
 
 	pm.stop = make(chan interface{}, 1)
-	pm.Receive = make(chan PeerParcel, pm.net.conf.ChannelCapacity)
 
 	// TODO parse config special peers
 	return pm
@@ -83,15 +81,15 @@ func (pm *peerManager) Stop() {
 
 func (pm *peerManager) search(addr, port string, temp bool) (*Peer, bool) {
 	p, exists := pm.peers.Search(addr, port)
-	if !exists && temp {
+	/*	if !exists && temp {
 		return pm.tempPeers.Search(addr, port)
-	}
+	}*/
 	return p, exists
 }
 
 func (pm *peerManager) isConnected(addr string) bool {
 	if c := pm.peers.IsConnected(addr); !c {
-		return pm.tempPeers.IsConnected(addr)
+		return c //pm.tempPeers.IsConnected(addr)
 	}
 	return true
 }
@@ -105,7 +103,7 @@ func (pm *peerManager) bootStrapPeers() {
 
 func (pm *peerManager) manageData() {
 	for {
-		data := <-pm.Receive
+		data := <-pm.net.peerParcel
 		parcel := data.Parcel
 		peer := data.Peer
 
@@ -124,9 +122,7 @@ func (pm *peerManager) manageData() {
 
 		// upgrade peer
 		if peer.canUpgrade() {
-			//peer = pm.upgradePeer(peer)
-			//parcel.Header.TargetPeer = peer.Hash
-			peer.Temporary = false
+			pm.upgradePeer(peer)
 		}
 
 		pm.logger.Debugf("Received parcel type %s from %s", parcel.MessageType(), peer.ConnectAddress())
@@ -169,19 +165,15 @@ func (pm *peerManager) manageData() {
 // upgradePeer takes a temporary peer and adds it as a full peer.
 // If a peer with that identity already exists, the new connection will
 // be passed to the existing peer
-func (pm *peerManager) upgradePeer(temp *Peer) *Peer {
-	pm.tempPeers.Remove(temp)
-	if existing, ok := pm.peers.Search(temp.Address, temp.Port); ok {
-		// hand over active tcp connection to existing peer
-		existing.HandleActiveConnection(temp.conn)
-		temp.Stop(false)
-		pm.logger.Debugf("Replacing existing peer %s's connection with temporary %s", existing.Hash, temp.Hash)
-		return existing
-	} else {
-		temp.Temporary = false
-		pm.addPeer(temp)
-		return temp
+func (pm *peerManager) upgradePeer(temp *Peer) {
+	pm.logger.Debugf("Upgrading temporary node %s to full", temp)
+	exists := pm.peers.SearchDuplicateNodeID(temp)
+	if exists != nil { // disconnect old peers with this node id
+		exists.Stop(true)
+		pm.peers.Remove(exists)
+		pm.logger.Debugf("Replacing existing node %s with %s", exists, temp)
 	}
+	temp.Temporary = false
 }
 
 func (pm *peerManager) discoverSeeds() {
@@ -347,16 +339,17 @@ func (pm *peerManager) findOrCreateOfflinePeer(address string) *Peer {
 	return p
 }
 
-func (pm *peerManager) SpawnTemporaryPeer(address string) *Peer {
+/*func (pm *peerManager) SpawnTemporaryPeer(address string) *Peer {
 	p := pm.findOrCreateOfflinePeer(address)
 	p.Temporary = true
 	p.Start()
 	pm.tempPeers.Add(p)
 	return p
-}
+}*/
 
 func (pm *peerManager) SpawnPeer(address string, port string) *Peer {
 	p := pm.findOrCreateOfflinePeer(address)
+	p.Temporary = true
 	p.Port = port
 	p.Start()
 	pm.peers.Add(p)

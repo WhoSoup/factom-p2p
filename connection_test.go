@@ -26,8 +26,8 @@ func TestConnection(t *testing.T) {
 	pipe1, pipe2 := net.Pipe()
 
 	// test 1 write garbage
-	con1 := NewConnection("incoming1", pipe1, incoming1, netw)
-	con2 := NewConnection("incoming2", pipe2, incoming2, netw)
+	con1 := NewConnection("incoming1", pipe1, incoming1, netw, true)
+	con2 := NewConnection("incoming2", pipe2, incoming2, netw, false)
 
 	con1.Start()       // start via Start()
 	go con2.readLoop() // start "manually"

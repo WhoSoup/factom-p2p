@@ -38,6 +38,8 @@ func (ps PeerState) String() string {
 		return "Connecting"
 	case Online:
 		return "Online"
+	case Uninitialized:
+		return "Uninitialized"
 	default:
 		return "Unknown state"
 	}
@@ -127,14 +129,15 @@ func (p *Peer) Start() {
 	go p.monitorConnection()
 }
 
-func (p *Peer) StopConnection() {
-	p.connChannel <- nil
-}
-
-// Stop stops the peer's internal loop and returns it to being unitialized.
-// A hard stop will also sever the underlying connection
+// Stop disconnects the peer from its active connection
+//
+// A hard stop will also disable the peer's goroutines, preparing it for deletion
 func (p *Peer) Stop(hard bool) {
-	p.stop <- hard
+	if hard {
+		p.stop <- true
+	} else { // TODO this is not used
+		p.connChannel <- nil
+	}
 }
 
 func (p *Peer) setConnection(c *Connection) {
@@ -143,23 +146,23 @@ func (p *Peer) setConnection(c *Connection) {
 	if p.conn != nil { // stop active connection
 		defer func(old *Connection) {
 			old.Stop()
-		}(p.conn) // pass value as parameter
+		}(p.conn) // pass as value
 	}
+	p.conn = nil
+	p.connError = nil
+
 	for len(p.Receive) > 0 { // drop old messages
 		<-p.Receive
 	}
 	if c == nil { // go offline
 		p.logger.Debug("Going offline")
 		p.state = Offline
-		p.conn = nil
-		p.connError = nil
 		p.IsOutgoing = false
 	} else { // handle a new connection
 		p.logger.Debugf("Accepting connection %s", c.conn.RemoteAddr().String())
 		p.state = Online
 		p.conn = c
 		p.connError = c.Error
-		p.IsOutgoing = p.IsOutgoing
 		p.connectionAttemptCount = 0
 	}
 }
@@ -171,16 +174,13 @@ func (p *Peer) setConnection(c *Connection) {
 func (p *Peer) monitorConnection() {
 	for {
 		select {
+		case <-p.stop: // tear down the peer completely
+			p.logger.Debug("Connection shutting down")
+			p.setConnection(nil)
+			return
 		case err := <-p.connError: // if an error arrives here, the connection already stops itself
 			p.logger.WithError(err).Debug("Connection error")
 			p.setConnection(nil)
-		case hard := <-p.stop: // manual stop, we need to tear down connection
-			p.logger.Debugf("Manual stop. hard = %v", hard)
-			if hard {
-				p.setConnection(nil)
-			}
-			p.state = Uninitialized
-			return // exit this loop
 		case c := <-p.connChannel:
 			p.setConnection(c)
 		case parcel := <-p.Receive:
@@ -197,7 +197,7 @@ func (p *Peer) monitorConnection() {
 			}
 			p.LastReceive = time.Now()
 			select {
-			case p.net.peerManager.Receive <- PeerParcel{Peer: p, Parcel: parcel}:
+			case p.net.peerParcel <- PeerParcel{Peer: p, Parcel: parcel}:
 			default:
 				p.logger.Warn("Peer manager unable to handle load")
 			}
@@ -221,10 +221,14 @@ func (p *Peer) PeerShare() PeerShare {
 }
 
 func (p *Peer) canUpgrade() bool {
-	return p.Temporary && p.Port != "0" && p.Port != ""
+	return p.Temporary && p.NodeID != 0
 }
 
 func (p *Peer) StartToDial() {
+	go p.dialInternal()
+}
+
+func (p *Peer) dialInternal() {
 	if !p.CanDial() {
 		p.logger.Errorf("Maximum dial attempts reached")
 		return
@@ -234,10 +238,9 @@ func (p *Peer) StartToDial() {
 		return
 	}
 
-	//p.StopConnection()
-
 	var newcon *Connection
 	defer func() { // update peer after dialing is over
+		// will go offline if newcon ends up being nil
 		p.connChannel <- newcon
 	}()
 
@@ -280,7 +283,7 @@ func (p *Peer) StartToDial() {
 	newcon = NewConnection(p.Hash, con, p.Receive, p.net, true)
 	newcon.Start()
 
-	// newcon will update
+	// newcon will update through defer
 }
 
 func (p *Peer) HandleActiveConnection(con *Connection) {
@@ -349,17 +352,4 @@ func (p PeerQualitySort) Swap(i, j int) {
 }
 func (p PeerQualitySort) Less(i, j int) bool {
 	return p[i].QualityScore < p[j].QualityScore
-}
-
-// PeerDistanceSort sorts peers by ip space location, ascending
-type PeerDistanceSort []*Peer
-
-func (p PeerDistanceSort) Len() int {
-	return len(p)
-}
-func (p PeerDistanceSort) Swap(i, j int) {
-	p[i], p[j] = p[j], p[i]
-}
-func (p PeerDistanceSort) Less(i, j int) bool {
-	return p[i].Location < p[j].Location
 }
