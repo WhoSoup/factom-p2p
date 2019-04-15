@@ -72,10 +72,8 @@ func (pm *peerManager) Start() {
 func (pm *peerManager) Stop() {
 	pm.stop <- true
 
-	//pm.peerMutex.RLock()
-	//defer pm.peerMutex.RUnlock()
 	for _, p := range pm.peers.Slice() {
-		p.Stop(true)
+		p.Stop()
 	}
 }
 
@@ -121,7 +119,7 @@ func (pm *peerManager) manageData() {
 		}
 
 		// upgrade peer
-		if peer.canUpgrade() {
+		if peer.CanUpgrade() {
 			pm.upgradePeer(peer)
 		}
 
@@ -135,6 +133,7 @@ func (pm *peerManager) manageData() {
 		case TypeAlert:
 
 		case TypeMessage: // Application message, send it on.
+			fmt.Println("test")
 			ApplicationMessagesReceived++
 			pm.net.FromNetwork.Send(parcel)
 		case TypePeerRequest:
@@ -169,7 +168,7 @@ func (pm *peerManager) upgradePeer(temp *Peer) {
 	pm.logger.Debugf("Upgrading temporary node %s to full", temp)
 	exists := pm.peers.SearchDuplicateNodeID(temp)
 	if exists != nil { // disconnect old peers with this node id
-		exists.Stop(true)
+		exists.Stop()
 		pm.peers.Remove(exists)
 		pm.logger.Debugf("Replacing existing node %s with %s", exists, temp)
 	}
@@ -278,7 +277,7 @@ func (pm *peerManager) managePeers() {
 		incoming := uint(0)
 		for _, p := range pm.peers.Slice() {
 			if p.IsOnline() {
-				if !p.IsOutgoing {
+				if p.IsIncoming {
 					incoming++
 				}
 				if time.Since(p.lastPeerRequest) > pm.net.conf.PeerRequestInterval {
@@ -330,7 +329,7 @@ func (pm *peerManager) managePeersDialOutgoing() {
 }
 
 func (pm *peerManager) findOrCreateOfflinePeer(address string) *Peer {
-	p := pm.peers.SearchOffline(address)
+	p := pm.peers.SearchUnused(address)
 	if p == nil {
 		p = NewPeer(pm.net, address)
 	} else {
@@ -358,8 +357,6 @@ func (pm *peerManager) SpawnPeer(address string, port string) *Peer {
 
 // addPeer adds a peer to the manager system
 func (pm *peerManager) addPeer(peer *Peer) {
-	//pm.peerMutex.Lock()
-	//defer pm.peerMutex.Unlock()
 	pm.peers.Add(peer)
 }
 
@@ -368,9 +365,7 @@ func (pm *peerManager) banPeer(peer *Peer) {
 }
 
 func (pm *peerManager) removePeer(peer *Peer) {
-	//pm.peerMutex.Lock()
-	//defer pm.peerMutex.Unlock()
-	peer.Stop(true)
+	peer.Stop()
 	pm.peers.Remove(peer)
 }
 
@@ -390,27 +385,28 @@ func (pm *peerManager) HandleIncoming(con net.Conn) {
 		return
 	}
 
-	pm.logger.Debugf("Accepting temporary peer from %s", addr)
+	pm.logger.Debugf("Accepting new connection from %s", addr)
 
-	p := pm.SpawnPeer(addr, "0") // add a temporary peer
+	p := pm.SpawnPeer(addr, "0")
 	p.HandleActiveTCP(con)
 	p.IsIncoming = true
 	pm.incoming++
 }
 
 func (pm *peerManager) Broadcast(parcel *Parcel, full bool) {
-	//pm.peerMutex.RLock()
-	//defer pm.peerMutex.RUnlock()
 	if full {
 		for _, p := range pm.peers.Slice() {
-			p.Send(parcel)
+			if p.IsOnline() {
+				p.Send(parcel)
+			}
 		}
 		return
 	}
-
 	// fanout
 	selection := pm.selectRandomPeers(pm.net.conf.Fanout)
+	fmt.Println("selected", len(selection))
 	for _, p := range selection {
+		fmt.Println("sending to random peer", p.String())
 		p.Send(parcel)
 	}
 	// TODO always send to special
@@ -420,13 +416,11 @@ func (pm *peerManager) Broadcast(parcel *Parcel, full bool) {
 // are not already connected to
 func (pm *peerManager) filteredOutgoing() []*Peer {
 	var filtered []*Peer
-	//pm.peerMutex.RLock()
 	for _, p := range pm.peers.Slice() {
 		if !p.IsIncoming && p.IsOffline() && p.CanDial() {
 			filtered = append(filtered, p)
 		}
 	}
-	//pm.peerMutex.RUnlock()
 
 	return filtered
 }
@@ -450,6 +444,9 @@ func (pm *peerManager) filteredSharing(peer *Peer) []PeerShare {
 // ipv4 prefix, then iterates over those buckets and removes a random peer from each
 // one until it has enough
 func (pm *peerManager) getOutgoingSelection(filtered []*Peer, wanted int) []*Peer {
+	if wanted < 1 {
+		return nil
+	}
 	// we have just enough
 	if len(filtered) <= wanted {
 		pm.logger.Debugf("getOutgoingSelection returning %d peers", len(filtered))
@@ -492,14 +489,12 @@ func (pm *peerManager) getOutgoingSelection(filtered []*Peer, wanted int) []*Pee
 }
 
 func (pm *peerManager) selectRandomPeers(count uint) []*Peer {
-	//pm.peerMutex.RLock()
 	var peers []*Peer
 	for _, p := range pm.peers.Slice() {
 		if p.IsOnline() {
 			peers = append(peers, p)
 		}
 	}
-	//pm.peerMutex.RUnlock() // unlock early before a shuffle
 
 	// not enough to randomize
 	if uint(len(peers)) <= count {
@@ -523,8 +518,6 @@ func (pm *peerManager) ToPeer(hash string, parcel *Parcel) {
 			random[0].Send(parcel)
 		}
 	} else {
-		//pm.peerMutex.RLock()
-		//defer pm.peerMutex.RUnlock()
 		if peer := pm.peers.Get(hash); peer != nil {
 			peer.Send(parcel)
 		}

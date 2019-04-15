@@ -1,9 +1,60 @@
 package p2p
 
-import "testing"
+import (
+	"fmt"
+	"math/rand"
+	"sort"
+	"testing"
+)
+
+func createSet(locations ...uint32) *PeerDistance {
+	pd := new(PeerDistance)
+	pd.Pivot = locations[0]
+	for _, l := range locations[1:] {
+		pd.Sorted = append(pd.Sorted, &Peer{Location: l})
+	}
+	return pd
+}
+
+func checkSet(pd *PeerDistance) bool {
+	prev := uint32(0)
+	for _, l := range pd.Sorted {
+		if uintDistance(pd.Pivot, l.Location) < prev {
+			fmt.Printf("Failed location %d: %d < %d\n", l.Location, prev, uintDistance(pd.Pivot, l.Location))
+			return false
+		}
+	}
+	return true
+}
+
+func simpleTest(t *testing.T, name string, set ...uint32) {
+	s := createSet(set...)
+	sort.Sort(s)
+	if !checkSet(s) {
+		t.Errorf("%s not sorted right", name)
+	}
+	fmt.Printf("Test %s, Pivot: %d, list =", name, s.Pivot)
+	for _, p := range s.Sorted {
+		fmt.Printf(" %d", p.Location)
+	}
+	fmt.Println()
+}
 
 func Test_sorting(t *testing.T) {
+	simpleTest(t, "simple blank", 0)
+	simpleTest(t, "simple 0-5", 0, 1, 2, 3, 4, 5)
+	simpleTest(t, "simple alt", 10, 11, 9, 12, 8, 13)
+	simpleTest(t, "reverse", 0, 5, 4, 3, 2, 1)
+	simpleTest(t, "duplicates", 0, 1, 1, 2, 2, 2, 3, 3, 3, 3, 3, 3, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4)
+	simpleTest(t, "big", 4294967295/2, 4294967295/500, 4294967295/2, 4294967295, 5000, 800000)
 
+	r := rand.New(rand.NewSource(0))
+	set := make([]uint32, 1)
+	set[0] = 4294967295 / 2
+	for i := 0; i < 5000; i++ {
+		set = append(set, r.Uint32())
+	}
+	simpleTest(t, "random", set...)
 }
 
 func Test_uintDistance(t *testing.T) {

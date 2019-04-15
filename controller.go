@@ -46,7 +46,7 @@ func (c *controller) Start() {
 		<-c.stop
 	}
 	go c.listenLoop()
-	c.routeLoop()
+	go c.routeLoop()
 }
 
 // Stop shuts down the peer manager and all active connections
@@ -102,11 +102,15 @@ func (c *controller) handleParcel(parcel *Parcel) {
 	switch parcel.Header.TargetPeer {
 	case FullBroadcastFlag:
 		c.net.peerManager.Broadcast(parcel, true)
+		fmt.Println("did controller send full broad")
 	case BroadcastFlag:
-		c.net.peerManager.Broadcast(parcel, true)
+		c.net.peerManager.Broadcast(parcel, false)
+		fmt.Println("did controller send broad")
 	case RandomPeerFlag:
 		c.net.peerManager.ToPeer("", parcel)
+		fmt.Println("did controller send random")
 	default:
 		c.net.peerManager.ToPeer(parcel.Header.TargetPeer, parcel)
+		fmt.Println("did controller send single")
 	}
 }

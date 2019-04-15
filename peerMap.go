@@ -83,11 +83,11 @@ func (pm *PeerMap) Search(addr, port string) (*Peer, bool) {
 	return nil, false
 }
 
-func (pm *PeerMap) SearchOffline(addr string) *Peer {
+func (pm *PeerMap) SearchUnused(addr string) *Peer {
 	pm.lock.RLock()
 	defer pm.lock.RUnlock()
 	if list, ok := pm.byIP[addr]; ok {
-		return list.SearchOffline(addr)
+		return list.SearchUnused(addr)
 	}
 	return nil
 }

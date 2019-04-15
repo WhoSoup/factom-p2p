@@ -20,6 +20,8 @@ type Network struct {
 	controller  *controller
 	peerManager *peerManager
 
+	location uint32
+
 	peerParcel chan PeerParcel
 	peerStatus chan PeerStatus
 
@@ -79,6 +81,10 @@ func NewNetwork(conf Configuration) *Network {
 	n.peerManager = newPeerManager(n)
 	n.rng = rand.New(rand.NewSource(time.Now().UnixNano()))
 
+	if n.conf.BindIP != "" {
+		n.location, _ = IP2Location(n.conf.BindIP)
+	}
+
 	n.peerParcel = make(chan PeerParcel, conf.ChannelCapacity)
 
 	n.ToNetwork = NewParcelChannel(conf.ChannelCapacity)
@@ -96,8 +102,8 @@ func (n *Network) Start() {
 		n.running = true
 		n.logger.Info("Starting the P2P Network")
 
-		go n.peerManager.Start() // this will get peer manager ready to handle incoming connections
-		go n.controller.Start()
+		n.peerManager.Start() // this will get peer manager ready to handle incoming connections
+		n.controller.Start()
 	}
 }
 

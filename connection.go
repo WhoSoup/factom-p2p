@@ -22,11 +22,15 @@ var conLogger = packageLogger.WithField("subpack", "connection")
 type Connection struct {
 	conn net.Conn
 
-	stop       chan bool
-	Send       ParcelChannel // messages from the other side
-	Receive    ParcelChannel // messages to the other side
-	Error      chan error    // connection died
-	IsOutgoing bool
+	Socket   string
+	Address  string
+	stop     chan bool
+	Send     ParcelChannel // messages from the other side
+	Receive  ParcelChannel // messages to the other side
+	Error    chan error    // connection died
+	Outgoing bool
+
+	NodeID uint64
 
 	writeDeadline time.Duration
 	readDeadline  time.Duration
@@ -67,19 +71,21 @@ type ConnectionMetrics struct {
 	ConnectionNotes string // Connectivity notes for the connection
 }
 
-func NewConnection(peerHash string, conn net.Conn, receive ParcelChannel, net *Network, outgoing bool) *Connection {
+func NewConnection(n *Network, address string, conn net.Conn, receive ParcelChannel, outgoing bool) *Connection {
 	c := &Connection{}
-	c.IsOutgoing = outgoing
-	c.Send = NewParcelChannel(net.conf.ChannelCapacity)
+	c.Send = NewParcelChannel(n.conf.ChannelCapacity)
 	c.Receive = receive
 	c.Error = make(chan error, 3) // two goroutines + close() = max 3 errors
 	c.stop = make(chan bool, 5)
 
-	c.logger = conLogger.WithFields(log.Fields{"address": conn.RemoteAddr(), "peer": peerHash, "node": net.conf.NodeName})
+	c.Address = address
+	c.Socket = conn.RemoteAddr().String()
+
+	c.logger = conLogger.WithFields(log.Fields{"address": conn.RemoteAddr().String(), "node": n.conf.NodeName})
 	c.logger.Debug("Connection initialized")
 
-	c.readDeadline = net.conf.ReadDeadline
-	c.writeDeadline = net.conf.WriteDeadline
+	c.readDeadline = n.conf.ReadDeadline
+	c.writeDeadline = n.conf.WriteDeadline
 
 	c.conn = conn
 
@@ -87,6 +93,10 @@ func NewConnection(peerHash string, conn net.Conn, receive ParcelChannel, net *N
 	c.decoder = gob.NewDecoder(c.conn)
 
 	return c
+}
+
+func (c *Connection) String() string {
+	return c.conn.RemoteAddr().String()
 }
 
 // Start the connection, make it read and write from the connection
@@ -138,7 +148,7 @@ func (c *Connection) sendLoop() {
 				c.logger.WithError(err).Debug("Terminating sendLoop because of error")
 				return
 			}
-
+			c.logger.Debug("parcel sent")
 			c.metrics.BytesSent += parcel.Header.Length
 			c.metrics.MessagesSent++
 			c.LastSend = time.Now()

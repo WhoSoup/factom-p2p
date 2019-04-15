@@ -53,20 +53,26 @@ const (
 	Online
 )
 
+// Peer is a representation of another node in the network
+//
+// Peers exist in two forms: Temporary peers and regular peers
 type Peer struct {
 	net *Network
 
+	// connection related
 	connChannel chan *Connection
 	conn        *Connection
 	connError   chan error
 	connMutex   sync.RWMutex
 
-	state PeerState
+	// current state
+	state      PeerState
+	IsIncoming bool
 
 	//	stateMutex             sync.RWMutex
-	age                    time.Time
-	stop                   chan bool
-	IsOutgoing             bool
+	age  time.Time
+	stop chan bool
+
 	lastPeerRequest        time.Time
 	lastPeerSend           time.Time
 	Receive                ParcelChannel
@@ -75,11 +81,10 @@ type Peer struct {
 	LastReceive            time.Time // Keep track of how long ago we talked to the peer.
 	LastSend               time.Time // Keep track of how long ago we talked to the peer.
 
-	Port       string
-	Temporary  bool
-	Seed       bool
-	Dialable   bool
-	IsIncoming bool
+	Port      string
+	Temporary bool
+	Seed      bool
+	Dialable  bool
 
 	QualityScore int32  // 0 is neutral quality, negative is a bad peer.
 	Address      string // Must be in form of x.x.x.x
@@ -132,12 +137,8 @@ func (p *Peer) Start() {
 // Stop disconnects the peer from its active connection
 //
 // A hard stop will also disable the peer's goroutines, preparing it for deletion
-func (p *Peer) Stop(hard bool) {
-	if hard {
-		p.stop <- true
-	} else { // TODO this is not used
-		p.connChannel <- nil
-	}
+func (p *Peer) Stop() {
+	p.stop <- true
 }
 
 func (p *Peer) setConnection(c *Connection) {
@@ -157,7 +158,6 @@ func (p *Peer) setConnection(c *Connection) {
 	if c == nil { // go offline
 		p.logger.Debug("Going offline")
 		p.state = Offline
-		p.IsOutgoing = false
 	} else { // handle a new connection
 		p.logger.Debugf("Accepting connection %s", c.conn.RemoteAddr().String())
 		p.state = Online
@@ -220,7 +220,7 @@ func (p *Peer) PeerShare() PeerShare {
 		QualityScore: p.QualityScore}
 }
 
-func (p *Peer) canUpgrade() bool {
+func (p *Peer) CanUpgrade() bool {
 	return p.Temporary && p.NodeID != 0
 }
 
@@ -266,21 +266,21 @@ func (p *Peer) dialInternal() {
 		p.logger.WithError(err).Errorf("Unable to resolve local interface \"%s:0\"", p.net.conf.BindIP)
 	}
 
-	remote, err := net.ResolveTCPAddr("tcp", fmt.Sprintf("%s:%s", p.Address, p.Port))
-	if err != nil {
-		p.logger.WithError(err).Infof("Unable to resolve remote address \"%s:%s\"", p.Address, p.Port)
-		return
+	dialer := net.Dialer{
+		LocalAddr: local,
+		Timeout:   p.net.conf.DialTimeout,
 	}
 
 	p.state = Connecting
-	con, err := net.DialTCP("tcp", local, remote)
+	con, err := dialer.Dial("tcp", fmt.Sprintf("%s:%s", p.Address, p.Port))
+	//con, err := net.DialTCP("tcp", local, remote)
 
 	if err != nil {
 		p.logger.WithError(err).Infof("Unable to connect to peer")
 		return
 	}
 
-	newcon = NewConnection(p.Hash, con, p.Receive, p.net, true)
+	newcon = NewConnection(p.net, p.Address, con, p.Receive, true)
 	newcon.Start()
 
 	// newcon will update through defer
@@ -291,9 +291,10 @@ func (p *Peer) HandleActiveConnection(con *Connection) {
 }
 
 func (p *Peer) HandleActiveTCP(con net.Conn) {
-	newcon := NewConnection(p.Hash, con, p.Receive, p.net, false)
-	newcon.Start()
-	p.connChannel <- newcon
+
+	//newcon := NewConnection(p.Hash, con, p.Receive, p.net, false)
+	//newcon.Start()
+	//p.connChannel <- newcon
 }
 
 func (p *Peer) Send(parcel *Parcel) {
