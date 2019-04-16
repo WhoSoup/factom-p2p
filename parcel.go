@@ -24,19 +24,19 @@ type Parcel struct {
 const ParcelHeaderSize = 32
 
 type ParcelHeader struct {
-	Network     NetworkID         // 4 bytes - the network we are on (eg testnet, main net, etc.)
-	Version     uint16            // 2 bytes - the version of the protocol we are running.
-	Type        ParcelCommandType // 2 bytes - network level commands (eg: ping/pong)
-	Length      uint32            // 4 bytes - length of the payload (that follows this header) in bytes
-	TargetPeer  string            // ? bytes - "" or nil for broadcast, otherwise the destination peer's hash.
-	Crc32       uint32            // 4 bytes - data integrity hash (of the payload itself.)
-	_           uint16            // deprecated PartsNo
-	_           uint16            // deprecated PartsTotal
-	NodeID      uint64
-	PeerAddress string // address of the peer set by connection to know who sent message (for tracking source of other peers)
-	PeerPort    string // port of the peer , or we are listening on
-	AppHash     string // Application specific message hash, for tracing
-	AppType     string // Application specific message type, for tracing
+	Network    NetworkID         // 4 bytes - the network we are on (eg testnet, main net, etc.)
+	Version    uint16            // 2 bytes - the version of the protocol we are running.
+	Type       ParcelCommandType // 2 bytes - network level commands (eg: ping/pong)
+	Length     uint32            // 4 bytes - length of the payload (that follows this header) in bytes
+	TargetPeer string            // ? bytes - "" or nil for broadcast, otherwise the destination peer's hash.
+	Crc32      uint32            // 4 bytes - data integrity hash (of the payload itself.)
+	_          uint16            // deprecated PartsNo
+	_          uint16            // deprecated PartsTotal
+	_          uint64
+	_          string // address of the peer set by connection to know who sent message (for tracking source of other peers)
+	_          string // port of the peer , or we are listening on
+	AppHash    string // Application specific message hash, for tracing
+	AppType    string // Application specific message type, for tracing
 }
 
 type ParcelCommandType uint16
@@ -75,7 +75,7 @@ func (p *Parcel) LogEntry() *log.Entry {
 		"length":      p.Header.Length,
 		"target_peer": p.Header.TargetPeer,
 		"crc32":       p.Header.Crc32,
-		"node_id":     p.Header.NodeID,
+		//"node_id":     p.Header.NodeID,
 	})
 }
 
@@ -89,7 +89,7 @@ func NewParcel(command ParcelCommandType, payload []byte) *Parcel {
 	header.Version = 0 // ditto
 	header.Type = command
 	header.TargetPeer = "" // initially no target
-	header.PeerPort = ""   // store our listening port
+	//header.PeerPort = ""   // store our listening port
 	header.AppHash = "NetworkMessage"
 	header.AppType = "Network"
 

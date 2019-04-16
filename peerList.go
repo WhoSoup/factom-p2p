@@ -16,6 +16,17 @@ func NewPeerList() *PeerList {
 	return new(PeerList)
 }
 
+func (pl *PeerList) Find(hash string) *Peer {
+	pl.mutex.RLock()
+	defer pl.mutex.RUnlock()
+	for _, p := range pl.list {
+		if p.Hash == hash {
+			return p
+		}
+	}
+	return nil
+}
+
 // Add adds a given peer to the list
 func (pl *PeerList) Add(p *Peer) {
 	if p == nil {
@@ -34,7 +45,7 @@ func (pl *PeerList) Remove(needle *Peer) {
 	pl.mutex.Lock()
 	defer pl.mutex.Unlock()
 	for i, p := range pl.list {
-		if p.Hash == needle.Hash {
+		if p == needle { // pointer comparison
 			pl.list[i] = pl.list[len(pl.list)-1] // overwrite deleted peer
 			pl.list[len(pl.list)-1] = nil        // free reference
 			pl.list = pl.list[:len(pl.list)-1]   // truncate
@@ -50,6 +61,13 @@ func (pl *PeerList) Slice() []*Peer {
 	return append(pl.list[:0:0], pl.list...)
 }
 
+func (pl *PeerList) Len() int {
+	pl.mutex.RLock()
+	defer pl.mutex.RUnlock()
+	return len(pl.list)
+}
+
+/*
 // Search checks if the list contains an entry for the given address and port
 //
 // returns (peer, true) on success, (nil, false) if nothing was found
@@ -68,7 +86,7 @@ func (pl *PeerList) SearchUnused(addr string) *Peer {
 	pl.mutex.RLock()
 	defer pl.mutex.RUnlock()
 	for _, p := range pl.list {
-		if p.Address == addr && p.NodeID == 0 && p.IsOffline() {
+		if p.Address == addr && p.NodeID == 0 {
 			return p
 		}
 	}
@@ -79,9 +97,10 @@ func (pl *PeerList) IsConnected(addr string) bool {
 	pl.mutex.RLock()
 	defer pl.mutex.RUnlock()
 	for _, p := range pl.list {
-		if p.Address == addr && !p.IsOffline() {
+		if p.Address == addr {
 			return true
 		}
 	}
 	return false
 }
+*/

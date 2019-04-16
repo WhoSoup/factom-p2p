@@ -41,12 +41,12 @@ func (n *Network) DebugMessage() (string, string) {
 	}*/
 	r += "\nONLINE:\n"
 	for _, p := range n.peerManager.peers.Slice() {
-		if p.IsOffline() {
-			offline += fmt.Sprintf("\tPeer %s %v %v %d\n", p.String(), p.state.String(), p.Temporary, p.QualityScore)
-			continue
-		}
+		/*		if p.IsOffline() {
+				offline += fmt.Sprintf("\tPeer %s %v %v %d\n", p.String(), p.state.String(), p.Temporary, p.QualityScore)
+				continue
+			}*/
 
-		r += fmt.Sprintf("\tPeer %s %v %v %d\n", p.String(), p.state.String(), p.Temporary, p.QualityScore)
+		r += fmt.Sprintf("\tPeer %s %v %d\n", p.String(), p.Temporary, p.QualityScore)
 		//		r += fmt.Sprintf("\t\tLast Send: %s\n", p.LastSend)
 		//		r += fmt.Sprintf("\t\tLast Revc: %s\n", p.LastReceive)
 		edge := ""

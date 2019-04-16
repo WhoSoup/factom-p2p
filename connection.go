@@ -6,6 +6,7 @@ package p2p
 
 import (
 	"encoding/gob"
+	"fmt"
 	"net"
 	"time"
 
@@ -16,21 +17,14 @@ import (
 // or create more context loggers off of this
 var conLogger = packageLogger.WithField("subpack", "connection")
 
-// Connection represents a single connection to another peer over the network. It communicates with the application
-// via two channels, send and receive.  These channels take structs of type ConnectionCommand or ConnectionParcel
-// (defined below).
+// Connection is a simple TCP wrapper, sending data from Send and reading to Receive
 type Connection struct {
 	conn net.Conn
 
-	Socket   string
-	Address  string
-	stop     chan bool
-	Send     ParcelChannel // messages from the other side
-	Receive  ParcelChannel // messages to the other side
-	Error    chan error    // connection died
-	Outgoing bool
-
-	NodeID uint64
+	stop    chan bool
+	Send    ParcelChannel // messages from the other side
+	Receive ParcelChannel // messages to the other side
+	Error   chan error    // connection died
 
 	writeDeadline time.Duration
 	readDeadline  time.Duration
@@ -40,58 +34,24 @@ type Connection struct {
 	LastRead time.Time
 	LastSend time.Time
 
-	// and as "address" for sending messages to specific nodes.
-	metrics ConnectionMetrics // Metrics about this connection
-
 	// logging
 	logger *log.Entry
 }
 
-type GracefulShutdown struct {
-}
-
-func (g *GracefulShutdown) Error() string {
-	return "Graceful Shutdown initiated"
-}
-
-// ConnectionMetrics is used to encapsulate various metrics about the connection.
-type ConnectionMetrics struct {
-	MomentConnected  time.Time // when the connection started.
-	BytesSent        uint32    // Keeping track of the data sent/received for console
-	BytesReceived    uint32    // Keeping track of the data sent/received for console
-	MessagesSent     uint32    // Keeping track of the data sent/received for console
-	MessagesReceived uint32    // Keeping track of the data sent/received for console
-	PeerAddress      string    // Peer IP Address
-	PeerQuality      int32     // Quality of the connection.
-	PeerType         string    // Type of the peer (regular, special_config, ...)
-	// Red: Below -50
-	// Yellow: -50 - 100
-	// Green: > 100
-	ConnectionState string // Basic state of the connection
-	ConnectionNotes string // Connectivity notes for the connection
-}
-
-func NewConnection(n *Network, address string, conn net.Conn, receive ParcelChannel, outgoing bool) *Connection {
+func NewConnection(n *Network, conn net.Conn, send, receive ParcelChannel) *Connection {
 	c := &Connection{}
-	c.Send = NewParcelChannel(n.conf.ChannelCapacity)
-	c.Receive = receive
-	c.Error = make(chan error, 3) // two goroutines + close() = max 3 errors
-	c.stop = make(chan bool, 5)
-
-	c.Address = address
-	c.Socket = conn.RemoteAddr().String()
-
 	c.logger = conLogger.WithFields(log.Fields{"address": conn.RemoteAddr().String(), "node": n.conf.NodeName})
 	c.logger.Debug("Connection initialized")
 
+	c.Send = send
+	c.Receive = receive
+	c.Error = make(chan error, 3) // two goroutines + close() = max 3 errors
+	c.stop = make(chan bool, 5)
 	c.readDeadline = n.conf.ReadDeadline
 	c.writeDeadline = n.conf.WriteDeadline
-
 	c.conn = conn
-
 	c.encoder = gob.NewEncoder(c.conn)
 	c.decoder = gob.NewDecoder(c.conn)
-
 	return c
 }
 
@@ -116,12 +76,9 @@ func (c *Connection) readLoop() {
 		err := c.decoder.Decode(&message)
 		if err != nil {
 			c.Error <- err
-			c.logger.WithError(err).Debug("Terminating readLoop because of error")
 			return
 		}
 
-		c.metrics.BytesReceived += message.Header.Length
-		c.metrics.MessagesReceived++
 		c.LastRead = time.Now()
 		c.Receive.Send(&message)
 	}
@@ -145,12 +102,8 @@ func (c *Connection) sendLoop() {
 			err := c.encoder.Encode(parcel)
 			if err != nil { // no error is recoverable
 				c.Error <- err
-				c.logger.WithError(err).Debug("Terminating sendLoop because of error")
 				return
 			}
-			c.logger.Debug("parcel sent")
-			c.metrics.BytesSent += parcel.Header.Length
-			c.metrics.MessagesSent++
 			c.LastSend = time.Now()
 		}
 	}
@@ -158,7 +111,7 @@ func (c *Connection) sendLoop() {
 
 func (c *Connection) Stop() {
 	c.logger.Debug("Stopping connection")
-	c.Error <- &GracefulShutdown{}
+	c.Error <- fmt.Errorf("Manually initialized shutdown")
 	c.stop <- true // this will stop sendloop
-	c.conn.Close() // this will stop readloop
+	//c.conn.Close() // this will stop readloop
 }

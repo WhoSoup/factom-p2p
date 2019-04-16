@@ -1,8 +1,6 @@
 package p2p
 
-import "sync"
-
-type ConnectionManager struct {
+/*type ConnectionManager struct {
 	connsMutex sync.RWMutex
 	net        *Network
 	exists     map[string]bool
@@ -84,3 +82,4 @@ func (cm *ConnectionManager) replaceInto(con *Connection) {
 	}
 	cm.byNodeID[con.Address][con.NodeID] = con
 }
+*/
