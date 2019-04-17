@@ -34,21 +34,14 @@ var packageLogger = log.WithField("package", "p2p")
 
 func (n *Network) DebugMessage() (string, string) {
 	hv := ""
-	r := "TEMPORARY:\n"
-	offline := ""
+	r := ""
+
 	/*	for _, p := range n.peerManager.tempPeers.Slice() {
 		r += fmt.Sprintf("\tPeer %s %v %v %d\n", p.String(), p.state.String(), p.Temporary, p.QualityScore)
 	}*/
 	r += "\nONLINE:\n"
 	for _, p := range n.peerManager.peers.Slice() {
-		/*		if p.IsOffline() {
-				offline += fmt.Sprintf("\tPeer %s %v %v %d\n", p.String(), p.state.String(), p.Temporary, p.QualityScore)
-				continue
-			}*/
-
 		r += fmt.Sprintf("\tPeer %s %v %d\n", p.String(), p.Temporary, p.QualityScore)
-		//		r += fmt.Sprintf("\t\tLast Send: %s\n", p.LastSend)
-		//		r += fmt.Sprintf("\t\tLast Revc: %s\n", p.LastReceive)
 		edge := ""
 		if n.conf.NodeID < 4 || p.NodeID < 4 {
 			min := n.conf.NodeID
@@ -66,7 +59,11 @@ func (n *Network) DebugMessage() (string, string) {
 			hv += fmt.Sprintf("%s -> %s%s\n", n.conf.BindIP, p.Address, edge)
 		}
 	}
-	r += "\nOFFLINE:\n" + offline
+	known := ""
+	for ip := range n.peerManager.endpoints.known {
+		known += ip + " "
+	}
+	r += "\nKNOWN:\n" + known
 	return r, hv
 }
 

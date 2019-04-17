@@ -76,7 +76,7 @@ func NewPeer(net *Network, addr string, hs Handshake, disconnect chan *Peer) *Pe
 
 	p.Port = hs.Port
 	p.NodeID = hs.NodeID
-	p.Hash = fmt.Sprintf("%s:%s %x", p.Address, hs.Port, hs.NodeID)
+	p.Hash = fmt.Sprintf("%s:%s %016x", p.Address, hs.Port, hs.NodeID)
 
 	p.logger = peerLogger.WithFields(log.Fields{
 		"node":    net.conf.NodeName,
@@ -91,7 +91,7 @@ func NewPeer(net *Network, addr string, hs Handshake, disconnect chan *Peer) *Pe
 	p.receive = NewParcelChannel(net.conf.ChannelCapacity)
 	p.send = NewParcelChannel(net.conf.ChannelCapacity)
 	p.error = make(chan error, 10)
-	//p.Hash = fmt.Sprintf("%x", net.rng.Int63())
+
 	p.logger.Debugf("Creating new peer")
 	return p
 }
@@ -150,7 +150,7 @@ func (p *Peer) monitorConnection() {
 			if p.conn != nil {
 				p.conn.Close()
 			}
-			p.conn = nil
+			//p.conn = nil
 			return
 		case err := <-p.error:
 			p.logger.WithError(err).Debug("Connection error")

@@ -21,7 +21,7 @@ type peerManager struct {
 	peerDisconnect chan *Peer
 
 	//	tempPeers *PeerList
-	peers     *PeerList
+	peers     *PeerStore
 	endpoints *EndpointMap
 
 	lastPeerDial    time.Time
@@ -42,7 +42,7 @@ func newPeerManager(network *Network) *peerManager {
 		"network": pm.net.conf.Network})
 	pm.logger.WithField("peermanager_init", pm.net.conf).Debugf("Initializing Peer Manager")
 
-	pm.peers = NewPeerList()
+	pm.peers = NewPeerStore()
 	pm.endpoints = NewEndpointMap(pm.net)
 	//pm.tempPeers = NewPeerList()
 
@@ -65,6 +65,7 @@ func (pm *peerManager) Start() {
 	//go pm.receiveData()
 	go pm.managePeers()
 	go pm.manageData()
+	go pm.manageOnline()
 }
 
 // Stop shuts down the peer manager and all active connections
@@ -80,6 +81,15 @@ func (pm *peerManager) bootStrapPeers() {
 	// TODO load peers.json
 	pm.lastSeedRefresh = time.Now()
 	pm.discoverSeeds()
+}
+
+func (pm *peerManager) manageOnline() {
+	for {
+		select {
+		case p := <-pm.peerDisconnect:
+			pm.peers.Remove(p)
+		}
+	}
 }
 
 func (pm *peerManager) manageData() {
@@ -147,15 +157,11 @@ func (pm *peerManager) discoverSeeds() {
 				pm.logger.Debugf("Discovered ourself in seed list")
 				continue
 			}
-			if ep := pm.endpoints.Get(address, port); ep != nil { // check if seed exists already
-				ep.Seed = true
-				continue
-			}
 
-			if ep, err := pm.endpoints.Create(address, port); err != nil {
+			if ip, err := NewIP(address, port); err != nil {
 				pm.logger.WithError(err).Debugf("Invalid endpoint in seed list: %s", line)
 			} else {
-				ep.Seed = true
+				pm.endpoints.Register(ip, false)
 			}
 
 		} else {
@@ -183,9 +189,11 @@ func (pm *peerManager) processPeers(peer *Peer, parcel *Parcel) {
 	}
 
 	for _, p := range list {
-		_, err := pm.endpoints.Create(p.Address, p.Port)
+		ip, err := NewIP(p.Address, p.Port)
 		if err != nil {
 			pm.logger.WithError(err).Infof("Unable to register endpoint %s:%s from peer %s", p.Address, p.Port, peer)
+		} else {
+			pm.endpoints.Register(ip, false)
 		}
 	}
 }
@@ -244,23 +252,21 @@ func (pm *peerManager) managePeers() {
 }
 
 func (pm *peerManager) managePeersDialOutgoing() {
-	//pm.logger.Debugf("We have %d peers online or connecting", pm.endpoints.Online)
+	pm.logger.Debugf("We have %d peers online or connecting", pm.peers.Count())
 
-	// TODO rewrite to endpoints
-
-	/*count := uint(pm.peers.Len())
+	count := uint(pm.peers.Count())
 	if want := int(pm.net.conf.Outgoing - count); want > 0 {
 		filter := pm.filteredOutgoing()
 
 		if len(filter) > 0 {
 			peers := pm.getOutgoingSelection(filter, want)
 			for _, p := range peers {
-				if !pm.endpoints.Get() {
-					p.StartToDial()
+				if !pm.peers.IsConnected(p.Address) {
+					pm.Dial(p)
 				}
 			}
 		}
-	}*/
+	}
 }
 
 func (pm *peerManager) HandleIncoming(con net.Conn) {
@@ -272,28 +278,30 @@ func (pm *peerManager) HandleIncoming(con net.Conn) {
 	}
 
 	// TODO allow special peers
-	if uint(pm.peers.Len()) >= pm.net.conf.Incoming {
+	if uint(pm.peers.Count()) >= pm.net.conf.Incoming {
 		pm.logger.Infof("Refusing incoming connection from %s because we are maxed out", con.RemoteAddr().String())
 		con.Close()
 		return
 	}
 
-	endpoint, err := pm.endpoints.Create(addr, "")
-	if err != nil {
-		pm.logger.WithError(err).Debugf("Unable to register endpoint %s", addr)
+	ip, err := NewIP(addr, "")
+	if err != nil { // should never happen for incoming
+		pm.logger.WithError(err).Debugf("Unable to decode address %s", addr)
+		con.Close()
+		return
 	}
 
 	// TODO limit by endpoint
 
-	go pm.processHandshake(endpoint, con, true)
+	go pm.processHandshake(ip, con, true)
 }
 
-func (pm *peerManager) Dial(addr, port string) {
-	pm.logger.Debugf("Dialing to %s:%s", addr, port)
-
-	endpoint, err := pm.endpoints.Create(addr, port)
-	if err != nil {
-		pm.logger.WithError(err).Errorf("Unable to create endpoint %s:%s", addr, port)
+func (pm *peerManager) Dial(ip IP) {
+	if ip.Port == "" {
+		ip.Port = pm.net.conf.ListenPort // TODO add a "default port"?
+		pm.logger.Debugf("Dialing to %s (with no previously known port)", ip)
+	} else {
+		pm.logger.Debugf("Dialing to %s", ip)
 	}
 
 	local, err := net.ResolveTCPAddr("tcp", fmt.Sprintf("%s:0", pm.net.conf.BindIP))
@@ -306,26 +314,30 @@ func (pm *peerManager) Dial(addr, port string) {
 		LocalAddr: local,
 		Timeout:   pm.net.conf.DialTimeout,
 	}
-	con, err := dialer.Dial("tcp", fmt.Sprintf("%s:%s", addr, port))
+	con, err := dialer.Dial("tcp", ip.String())
 
 	if err != nil {
-		pm.logger.WithError(err).Infof("Unable to reach peer %s:%s", addr, port)
+		pm.logger.WithError(err).Infof("Unable to reach peer %s", ip)
 		return
 	}
 
-	go pm.processHandshake(endpoint, con, false)
+	go pm.processHandshake(ip, con, false)
 }
 
-func (pm *peerManager) processHandshake(endpoint *Endpoint, con net.Conn, incoming bool) {
-	addr := endpoint.Address
+func (pm *peerManager) processHandshake(ip IP, con net.Conn, incoming bool) {
+	addr := ip.Address
 	tmplogger := pm.logger.WithField("addr", addr)
 	timeout := time.Now().Add(pm.net.conf.HandshakeTimeout)
 	handshake := Handshake{
 		NodeID:  pm.net.conf.NodeID,
 		Port:    pm.net.conf.ListenPort,
-		Version: pm.net.conf.ProtocolVersion}
+		Version: pm.net.conf.ProtocolVersion,
+		Network: pm.net.conf.Network}
+
+	decoder := gob.NewDecoder(con)
 	encoder := gob.NewEncoder(con)
 	con.SetWriteDeadline(timeout)
+	con.SetReadDeadline(timeout)
 	err := encoder.Encode(handshake)
 
 	if err != nil {
@@ -334,8 +346,6 @@ func (pm *peerManager) processHandshake(endpoint *Endpoint, con net.Conn, incomi
 		return
 	}
 
-	decoder := gob.NewDecoder(con)
-	con.SetReadDeadline(timeout)
 	err = decoder.Decode(&handshake)
 	if err != nil {
 		tmplogger.WithError(err).Debugf("Failed to read handshake from incoming connection")
@@ -351,7 +361,16 @@ func (pm *peerManager) processHandshake(endpoint *Endpoint, con net.Conn, incomi
 	}
 
 	peer := NewPeer(pm.net, addr, handshake, pm.peerDisconnect)
-	pm.peers.Add(peer)
+	old := pm.peers.Replace(peer)
+
+	if ip.Port == "" {
+		ip.Port = handshake.Port
+	}
+
+	pm.endpoints.Register(ip, incoming)
+	if old != nil {
+		old.Stop()
+	}
 	peer.StartWithConnection(con, incoming)
 }
 
@@ -374,32 +393,29 @@ func (pm *peerManager) Broadcast(parcel *Parcel, full bool) {
 
 // filteredOutgoing generates a subset of peers that we can dial and
 // are not already connected to
-func (pm *peerManager) filteredOutgoing() []*Peer {
-	// TODO rework with endpoint
-	return nil
-	/*	var filtered []*Peer
-		for _, p := range pm.peers.Slice() {
-			if !p.IsIncoming && p.IsOffline() && p.CanDial() {
-				filtered = append(filtered, p)
-			}
+func (pm *peerManager) filteredOutgoing() []IP {
+	var filtered []IP
+	for _, p := range pm.endpoints.IPs {
+		if !pm.endpoints.IsIncoming(p) {
+			filtered = append(filtered, p)
 		}
+	}
 
-		return filtered*/
+	return filtered
 }
 
 func (pm *peerManager) filteredSharing(peer *Peer) []PeerShare {
 	var filtered []PeerShare
-	return filtered
-	// TODO rework with endpoint
-	/*
-		shared := make(map[string]bool)
-		for _, p := range pm.peers.Slice() {
-			if !shared[p.ConnectAddress()] && p.Shareable() && p.Hash != peer.Hash {
-				shared[p.ConnectAddress()] = true
-				filtered = append(filtered, p.PeerShare())
-			}
+	for _, ip := range pm.endpoints.IPs {
+		if ip.Address != peer.Address {
+			filtered = append(filtered, PeerShare{
+				Address:      ip.Address,
+				Port:         ip.Port,
+				QualityScore: 1,
+			})
 		}
-		return filtered*/
+	}
+	return filtered
 }
 
 // getOutgoingSelection creates a subset of total connectable peers by getting
@@ -408,7 +424,7 @@ func (pm *peerManager) filteredSharing(peer *Peer) []PeerShare {
 // Takes the input and spreads peers out over n equally sized buckets based on their
 // ipv4 prefix, then iterates over those buckets and removes a random peer from each
 // one until it has enough
-func (pm *peerManager) getOutgoingSelection(filtered []*Peer, wanted int) []*Peer {
+func (pm *peerManager) getOutgoingSelection(filtered []IP, wanted int) []IP {
 	if wanted < 1 {
 		return nil
 	}
@@ -420,11 +436,11 @@ func (pm *peerManager) getOutgoingSelection(filtered []*Peer, wanted int) []*Pee
 
 	if wanted == 1 { // edge case
 		rand := pm.net.rng.Intn(len(filtered))
-		return []*Peer{filtered[rand]}
+		return []IP{filtered[rand]}
 	}
 
 	// generate a list of peers distant to each other
-	buckets := make([][]*Peer, wanted)
+	buckets := make([][]IP, wanted)
 	bucketSize := uint32(4294967295/uint32(wanted)) + 1 // 33554432 for wanted=128
 
 	// distribute peers over n buckets
@@ -434,7 +450,7 @@ func (pm *peerManager) getOutgoingSelection(filtered []*Peer, wanted int) []*Pee
 	}
 
 	// pick random peers from each bucket
-	var picked []*Peer
+	var picked []IP
 	for len(picked) < wanted {
 		offset := pm.net.rng.Intn(len(buckets)) // start at a random point in the bucket array
 		for i := 0; i < len(buckets); i++ {
@@ -481,8 +497,11 @@ func (pm *peerManager) ToPeer(hash string, parcel *Parcel) {
 			random[0].Send(parcel)
 		}
 	} else {
-		if peer := pm.peers.Find(hash); peer != nil {
-			peer.Send(parcel)
+		for _, p := range pm.peers.Slice() {
+			if p.Hash == hash {
+				p.Send(parcel)
+				return
+			}
 		}
 	}
 }

@@ -1,10 +1,20 @@
 package p2p
 
-import "time"
+import (
+	"fmt"
+	"sync"
+	"time"
+)
 
 type EndpointMap struct {
-	net  *Network
-	ends map[string]*Endpoint
+	mtx sync.RWMutex
+
+	net      *Network
+	ends     map[string]*Endpoint // address -> endpoint
+	metrics  map[string]bool      // address:nodeid -> metrics
+	known    map[string]bool      // address:port -> bool
+	incoming map[string]bool      // address:port -> bool
+	IPs      []IP
 
 	// TODO implement
 	special map[string]bool
@@ -14,37 +24,24 @@ type EndpointMap struct {
 func NewEndpointMap(n *Network) *EndpointMap {
 	epm := new(EndpointMap)
 	epm.net = n
-	epm.ends = make(map[string]*Endpoint)
+	//epm.ends = make(map[string]*Endpoint)
+	epm.known = make(map[string]bool)
+	epm.incoming = make(map[string]bool)
 	return epm
 }
 
-func (epm *EndpointMap) Create(address, port string) (*Endpoint, error) {
-	if e, ok := epm.ends[address]; ok {
-		e.knownPorts[port] = true
-		return e, nil
+func (epm *EndpointMap) Register(ip IP, incoming bool) {
+	epm.mtx.Lock()
+	defer epm.mtx.Unlock()
+	if !epm.known[ip.String()] {
+		epm.known[fmt.Sprintf("%s:%s", ip.Address, ip.Port)] = true
+		epm.IPs = append(epm.IPs, ip)
 	}
-	e, err := NewEndpoint(address)
-	if err != nil {
-		return nil, err
-	}
-	epm.ends[address] = e
-	e.knownPorts[port] = true
-	return e, nil
+	epm.incoming[ip.String()] = epm.incoming[ip.String()] || incoming
 }
 
-func (epm *EndpointMap) Get(address, port string) *Endpoint {
-	if e, ok := epm.ends[address]; ok {
-		if e.knownPorts[port] {
-			return e
-		}
-	}
-	return nil
-}
-
-func (epm *EndpointMap) Known(address, port string) bool {
-	if e, ok := epm.ends[address]; ok {
-		return e.knownPorts[port]
-	}
-	return false
-
+func (epm *EndpointMap) IsIncoming(ip IP) bool {
+	epm.mtx.RLock()
+	defer epm.mtx.RUnlock()
+	return epm.incoming[ip.String()]
 }
