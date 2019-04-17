@@ -3,7 +3,6 @@ package p2p
 import (
 	"fmt"
 	"math/rand"
-	"sync"
 	"time"
 
 	log "github.com/sirupsen/logrus"
@@ -12,9 +11,6 @@ import (
 type Network struct {
 	ToNetwork   ParcelChannel
 	FromNetwork ParcelChannel
-
-	running      bool
-	runningMutex sync.Mutex
 
 	conf        *Configuration
 	controller  *controller
@@ -32,16 +28,14 @@ type Network struct {
 
 var packageLogger = log.WithField("package", "p2p")
 
-func (n *Network) DebugMessage() (string, string) {
+func (n *Network) DebugMessage() (string, string, int) {
 	hv := ""
-	r := ""
+	r := fmt.Sprintf("%v\nONLINE:\n", n.peerManager.peers.connected)
+	s := n.peerManager.peers.Slice()
+	count := len(s)
+	for _, p := range s {
 
-	/*	for _, p := range n.peerManager.tempPeers.Slice() {
-		r += fmt.Sprintf("\tPeer %s %v %v %d\n", p.String(), p.state.String(), p.Temporary, p.QualityScore)
-	}*/
-	r += "\nONLINE:\n"
-	for _, p := range n.peerManager.peers.Slice() {
-		r += fmt.Sprintf("\tPeer %s %v %d\n", p.String(), p.Temporary, p.QualityScore)
+		r += fmt.Sprintf("\tPeer %s %d\n", p.String(), p.QualityScore)
 		edge := ""
 		if n.conf.NodeID < 4 || p.NodeID < 4 {
 			min := n.conf.NodeID
@@ -64,13 +58,13 @@ func (n *Network) DebugMessage() (string, string) {
 		known += ip + " "
 	}
 	r += "\nKNOWN:\n" + known
-	return r, hv
+	return r, hv, count
 }
 
 func NewNetwork(conf Configuration) *Network {
 	myconf := conf
 	n := new(Network)
-	n.logger = packageLogger.WithField("subpackage", "Network")
+	n.logger = packageLogger.WithField("subpackage", "Network").WithField("node", conf.NodeName)
 
 	n.conf = &myconf
 
@@ -91,23 +85,13 @@ func NewNetwork(conf Configuration) *Network {
 
 // Start initializes the network by starting the peer manager and listening to incoming connections
 func (n *Network) Start() {
-	n.runningMutex.Lock()
-	defer n.runningMutex.Unlock()
-	if n.running {
-		n.logger.Error("Tried to start the P2P Network even though it's already running")
-	} else {
-		n.running = true
-		n.logger.Info("Starting the P2P Network")
-
-		n.peerManager.Start() // this will get peer manager ready to handle incoming connections
-		n.controller.Start()
-	}
+	n.logger.Info("Starting the P2P Network")
+	n.peerManager.Start() // this will get peer manager ready to handle incoming connections
+	n.controller.Start()
 }
 
 func (n *Network) Stop() {
-	n.runningMutex.Lock()
-	defer n.runningMutex.Unlock()
+	n.logger.Info("Stopping the P2P Network")
 	n.peerManager.Stop()
 	n.controller.Stop()
-	n.running = false
 }

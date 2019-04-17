@@ -10,7 +10,7 @@ type EndpointMap struct {
 	mtx sync.RWMutex
 
 	net      *Network
-	ends     map[string]*Endpoint // address -> endpoint
+	ends     map[string]*Endpoint // address:port -> endpoint
 	metrics  map[string]bool      // address:nodeid -> metrics
 	known    map[string]bool      // address:port -> bool
 	incoming map[string]bool      // address:port -> bool
@@ -24,7 +24,7 @@ type EndpointMap struct {
 func NewEndpointMap(n *Network) *EndpointMap {
 	epm := new(EndpointMap)
 	epm.net = n
-	//epm.ends = make(map[string]*Endpoint)
+	epm.ends = make(map[string]*Endpoint)
 	epm.known = make(map[string]bool)
 	epm.incoming = make(map[string]bool)
 	return epm

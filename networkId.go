@@ -1,10 +1,9 @@
 package p2p
 
 import (
+	"crypto/sha256"
 	"encoding/binary"
 	"fmt"
-
-	"github.com/FactomProject/factomd/common/primitives"
 )
 
 // NetworkIdentifier represents the P2P network we are participating in (eg: test, nmain, etc.)
@@ -24,8 +23,8 @@ const (
 
 // NewNetworkID converts a string to a network id
 func NewNetworkID(name string) NetworkID {
-	hashSuffix := primitives.Sha([]byte(name)).Bytes()[:4]
-	return NetworkID(binary.BigEndian.Uint32(hashSuffix))
+	hashSuffix := sha256.Sum256([]byte(name))
+	return NetworkID(binary.BigEndian.Uint32(hashSuffix[:4]))
 }
 
 func (n *NetworkID) String() string {

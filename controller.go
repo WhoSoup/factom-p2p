@@ -14,8 +14,9 @@ var controllerLogger = packageLogger.WithField("subpack", "controller")
 
 // controller manages the peer to peer network.
 type controller struct {
-	net  *Network
-	stop chan interface{}
+	net           *Network
+	stop          chan bool
+	stopListening chan bool
 
 	logger *log.Entry
 }
@@ -37,7 +38,8 @@ func newController(network *Network) *controller {
 		"port":    network.conf.ListenPort,
 		"network": fmt.Sprintf("%#x", network.conf.Network)})
 	c.net = network
-	c.stop = make(chan interface{}, 1) // controller -> self
+	c.stop = make(chan bool, 1)          // controller -> self
+	c.stopListening = make(chan bool, 1) // controller -> self
 	return c
 }
 

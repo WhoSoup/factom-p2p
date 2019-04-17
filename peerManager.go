@@ -16,13 +16,18 @@ var pmLogger = packageLogger.WithField("subpack", "peerManager")
 
 // peerManager is responsible for managing all the Peers, both online and offline
 type peerManager struct {
-	net            *Network
-	stop           chan interface{}
+	net *Network
+
 	peerDisconnect chan *Peer
+
+	stopPeers  chan bool
+	stopData   chan bool
+	stopOnline chan bool
 
 	//	tempPeers *PeerList
 	peers     *PeerStore
 	endpoints *EndpointMap
+	dialer    *Dialer
 
 	lastPeerDial    time.Time
 	lastSeedRefresh time.Time
@@ -45,9 +50,13 @@ func newPeerManager(network *Network) *peerManager {
 	pm.peers = NewPeerStore()
 	pm.endpoints = NewEndpointMap(pm.net)
 	//pm.tempPeers = NewPeerList()
+	pm.dialer = NewDialer(pm.net)
 
-	pm.stop = make(chan interface{}, 1)
 	pm.peerDisconnect = make(chan *Peer, 10) // TODO reconsider this value
+
+	pm.stopPeers = make(chan bool, 1)
+	pm.stopData = make(chan bool, 1)
+	pm.stopOnline = make(chan bool, 1)
 
 	// TODO parse config special peers
 	return pm
@@ -70,11 +79,16 @@ func (pm *peerManager) Start() {
 
 // Stop shuts down the peer manager and all active connections
 func (pm *peerManager) Stop() {
-	pm.stop <- true
+	pm.stopData <- true
+	pm.stopPeers <- true
 
 	for _, p := range pm.peers.Slice() {
 		p.Stop()
 	}
+
+	time.AfterFunc(time.Second*2, func() {
+		pm.stopOnline <- true
+	})
 }
 
 func (pm *peerManager) bootStrapPeers() {
@@ -84,8 +98,12 @@ func (pm *peerManager) bootStrapPeers() {
 }
 
 func (pm *peerManager) manageOnline() {
+	pm.logger.Debug("Start manageOnline()")
+	defer pm.logger.Debug("Stop manageOnline()")
 	for {
 		select {
+		case <-pm.stopOnline:
+			return
 		case p := <-pm.peerDisconnect:
 			pm.peers.Remove(p)
 		}
@@ -93,45 +111,50 @@ func (pm *peerManager) manageOnline() {
 }
 
 func (pm *peerManager) manageData() {
+	pm.logger.Debug("Start manageData()")
+	defer pm.logger.Debug("Stop manageData()")
 	for {
-		data := <-pm.net.peerParcel
-		parcel := data.Parcel
-		peer := data.Peer
+		select {
+		case <-pm.stopData:
+			return
+		case data := <-pm.net.peerParcel:
+			parcel := data.Parcel
+			peer := data.Peer
 
-		pm.logger.Debugf("Received parcel type %s from %s", parcel.MessageType(), peer.Hash)
+			pm.logger.Debugf("Received parcel type %s from %s", parcel.MessageType(), peer.Hash)
 
-		switch parcel.Header.Type {
-		case TypeMessagePart: // deprecated
-		case TypeHeartbeat: // deprecated
-		case TypePing:
-		case TypePong:
-		case TypeAlert:
+			switch parcel.Header.Type {
+			case TypeMessagePart: // deprecated
+			case TypeHeartbeat: // deprecated
+			case TypePing:
+			case TypePong:
+			case TypeAlert:
 
-		case TypeMessage: // Application message, send it on.
-			fmt.Println("test")
-			ApplicationMessagesReceived++
-			pm.net.FromNetwork.Send(parcel)
-		case TypePeerRequest:
-			go pm.sharePeers(peer)
-			/*			if time.Since(peer.lastPeerSend) >= pm.net.conf.PeerRequestInterval {
-							peer.lastPeerSend = time.Now()
+			case TypeMessage: // Application message, send it on.
+				fmt.Println("test")
+				ApplicationMessagesReceived++
+				pm.net.FromNetwork.Send(parcel)
+			case TypePeerRequest:
+				go pm.sharePeers(peer)
+				/*			if time.Since(peer.lastPeerSend) >= pm.net.conf.PeerRequestInterval {
+								peer.lastPeerSend = time.Now()
 
-						} else {
-							pm.logger.Warnf("Peer %s requested peer share sooner than expected", peer)
-						}*/
-		case TypePeerResponse:
-			go pm.processPeers(peer, parcel)
-			/*			// TODO check here if we asked them for a peer request
-						if time.Since(peer.lastPeerRequest) >= pm.net.conf.PeerRequestInterval {
-							peer.lastPeerRequest = time.Now()
+							} else {
+								pm.logger.Warnf("Peer %s requested peer share sooner than expected", peer)
+							}*/
+			case TypePeerResponse:
+				go pm.processPeers(peer, parcel)
+				/*			// TODO check here if we asked them for a peer request
+							if time.Since(peer.lastPeerRequest) >= pm.net.conf.PeerRequestInterval {
+								peer.lastPeerRequest = time.Now()
 
-						} else {
-							pm.logger.Warnf("Peer %s sent us an umprompted peer share", peer)
-						}*/
-		default:
-			pm.logger.Warnf("Peer %s sent unknown parcel.Header.Type?: %+v ", peer, parcel)
+							} else {
+								pm.logger.Warnf("Peer %s sent us an umprompted peer share", peer)
+							}*/
+			default:
+				pm.logger.Warnf("Peer %s sent unknown parcel.Header.Type?: %+v ", peer, parcel)
+			}
 		}
-
 	}
 
 }
@@ -212,6 +235,9 @@ func (pm *peerManager) sharePeers(peer *Peer) {
 }
 
 func (pm *peerManager) managePeers() {
+	pm.logger.Debug("Start managePeers()")
+	defer pm.logger.Debug("Stop managePeers()")
+
 	for {
 		/*if time.Since(pm.lastPeerDuplicateCheck) > pm.net.conf.RedialInterval {
 			pm.managePeersDetectDuplicate()
@@ -247,7 +273,13 @@ func (pm *peerManager) managePeers() {
 		}
 
 		// manager peers every second
-		time.Sleep(time.Second)
+
+		select {
+		case <-pm.stopPeers:
+			return
+		case <-time.After(time.Second):
+		}
+
 	}
 }
 
@@ -304,20 +336,9 @@ func (pm *peerManager) Dial(ip IP) {
 		pm.logger.Debugf("Dialing to %s", ip)
 	}
 
-	local, err := net.ResolveTCPAddr("tcp", fmt.Sprintf("%s:0", pm.net.conf.BindIP))
+	con, err := pm.dialer.Dial(ip)
 	if err != nil {
-		pm.logger.WithError(err).Errorf("Unable to resolve local interface \"%s:0\"", pm.net.conf.BindIP)
-		return
-	}
-
-	dialer := net.Dialer{
-		LocalAddr: local,
-		Timeout:   pm.net.conf.DialTimeout,
-	}
-	con, err := dialer.Dial("tcp", ip.String())
-
-	if err != nil {
-		pm.logger.WithError(err).Infof("Unable to reach peer %s", ip)
+		pm.logger.WithError(err).Infof("Failed to dial to %s", ip)
 		return
 	}
 
@@ -372,6 +393,7 @@ func (pm *peerManager) processHandshake(ip IP, con net.Conn, incoming bool) {
 		old.Stop()
 	}
 	peer.StartWithConnection(con, incoming)
+	pm.dialer.Reset(ip)
 }
 
 func (pm *peerManager) Broadcast(parcel *Parcel, full bool) {
@@ -396,7 +418,7 @@ func (pm *peerManager) Broadcast(parcel *Parcel, full bool) {
 func (pm *peerManager) filteredOutgoing() []IP {
 	var filtered []IP
 	for _, p := range pm.endpoints.IPs {
-		if !pm.endpoints.IsIncoming(p) {
+		if pm.dialer.CanDial(p) && !pm.endpoints.IsIncoming(p) {
 			filtered = append(filtered, p)
 		}
 	}

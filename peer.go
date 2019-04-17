@@ -47,16 +47,13 @@ type Peer struct {
 	LastReceive            time.Time // Keep track of how long ago we talked to the peer.
 	LastSend               time.Time // Keep track of how long ago we talked to the peer.
 
-	Port      string
-	Temporary bool
-	Seed      bool
-	Dialable  bool
+	Port string
+	Seed bool
 
 	QualityScore int32  // 0 is neutral quality, negative is a bad peer.
 	Address      string // Must be in form of x.x.x.x
 	NodeID       uint64 // a nonce to distinguish multiple nodes behind one IP address
 	Hash         string // This is more of a connection ID than hash right now.
-	Location     uint32 // IP address as an int.
 
 	// logging
 	logger *log.Entry
@@ -88,15 +85,16 @@ func NewPeer(net *Network, addr string, hs Handshake, disconnect chan *Peer) *Pe
 	p.age = time.Now()
 	p.stop = make(chan bool, 1)
 	p.stopSending = make(chan bool, 1)
-	p.receive = NewParcelChannel(net.conf.ChannelCapacity)
-	p.send = NewParcelChannel(net.conf.ChannelCapacity)
-	p.error = make(chan error, 10)
 
 	p.logger.Debugf("Creating new peer")
 	return p
 }
 
 func (p *Peer) StartWithConnection(tcp net.Conn, incoming bool) {
+	p.receive = NewParcelChannel(p.net.conf.ChannelCapacity)
+	p.send = NewParcelChannel(p.net.conf.ChannelCapacity)
+	p.error = make(chan error, 10)
+
 	p.IsIncoming = incoming
 	p.conn = tcp
 	p.encoder = gob.NewEncoder(p.conn)
@@ -109,34 +107,13 @@ func (p *Peer) StartWithConnection(tcp net.Conn, incoming bool) {
 
 // Stop disconnects the peer from its active connection
 func (p *Peer) Stop() {
+	p.send = nil
+	p.receive = nil
+	p.error = nil
+
 	p.stop <- true
 	p.stopSending <- true
 }
-
-/*func (p *Peer) dialInternal() {
-	p.logger.Debugf("Dialing to %s:%s", p.Address, p.Port)
-
-	local, err := net.ResolveTCPAddr("tcp", fmt.Sprintf("%s:0", p.net.conf.BindIP))
-	if err != nil {
-		p.logger.WithError(err).Errorf("Unable to resolve local interface \"%s:0\"", p.net.conf.BindIP)
-		return
-	}
-
-	dialer := net.Dialer{
-		LocalAddr: local,
-		Timeout:   p.net.conf.DialTimeout,
-	}
-	con, err := dialer.Dial("tcp", fmt.Sprintf("%s:%s", p.Address, p.Port))
-
-	if err != nil {
-		p.logger.WithError(err).Infof("Unable to connect to peer")
-		return
-	}
-
-	newcon := NewConnection(p.net, con, p.send, p.receive)
-	newcon.Start()
-	p.monitorConnection() // we're already in a goroutine
-}*/
 
 // monitorConnection watches the underlying Connection and the connection channel
 //
@@ -145,16 +122,19 @@ func (p *Peer) Stop() {
 func (p *Peer) monitorConnection() {
 	for {
 		select {
-		case <-p.stop: // tear down the peer completely
-			p.logger.Debug("Peer shutting down")
+		case hard := <-p.stop: // tear down the peer completely
+			p.logger.Debug("Peer shutting down, hard =", hard)
 			if p.conn != nil {
 				p.conn.Close()
+			}
+			if hard {
+				p.net.peerManager.peerDisconnect <- p
 			}
 			//p.conn = nil
 			return
 		case err := <-p.error:
 			p.logger.WithError(err).Debug("Connection error")
-			p.stop <- true
+			p.stop <- false
 		case parcel := <-p.receive:
 			p.QualityScore++
 			p.logger.Debugf("Received incoming parcel: %v", parcel)
@@ -179,6 +159,7 @@ func (p *Peer) Send(parcel *Parcel) {
 
 func (p *Peer) readLoop() {
 	defer p.conn.Close() // close connection on fatal error
+	defer p.logger.Debug("Closing readLoop()")
 	for {
 		var message Parcel
 
@@ -198,6 +179,7 @@ func (p *Peer) readLoop() {
 // to the tcp connection
 func (p *Peer) sendLoop() {
 	defer p.conn.Close() // close connection on fatal error
+	defer p.logger.Debug("Closing sendLoop()")
 	for {
 		select {
 		case <-p.stopSending:

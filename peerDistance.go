@@ -3,7 +3,7 @@ package p2p
 // PeerDistance is a sorting metric for sorting peers by location relative to a specific peer
 type PeerDistance struct {
 	Pivot  uint32
-	Sorted []*Peer
+	Sorted []IP
 }
 
 func (pd *PeerDistance) Len() int {
