@@ -48,9 +48,9 @@ func (n *Network) DebugMessage() (string, string, int) {
 			}
 		}
 		if p.IsIncoming {
-			hv += fmt.Sprintf("%s -> %s%s\n", p.Address, n.conf.BindIP, edge)
+			hv += fmt.Sprintf("%s:%s -> %s:%s%s\n", p.Address, p.Port, n.conf.BindIP, n.conf.ListenPort, edge)
 		} else {
-			hv += fmt.Sprintf("%s -> %s%s\n", n.conf.BindIP, p.Address, edge)
+			hv += fmt.Sprintf("%s:%s -> %s:%s%s\n", n.conf.BindIP, n.conf.ListenPort, p.Address, p.Port, edge)
 		}
 	}
 	known := ""

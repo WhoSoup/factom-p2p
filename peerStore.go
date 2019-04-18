@@ -59,7 +59,7 @@ func (ps *PeerStore) Remove(p *Peer) {
 	}
 }
 
-func (ps *PeerStore) Count() int {
+func (ps *PeerStore) Total() int {
 	ps.mtx.RLock()
 	defer ps.mtx.RUnlock()
 	return ps.Incoming + ps.Outgoing
@@ -75,6 +75,12 @@ func (ps *PeerStore) IsConnected(addr string) bool {
 	ps.mtx.RLock()
 	defer ps.mtx.RUnlock()
 	return ps.connected[addr] > 0
+}
+
+func (ps *PeerStore) Count(addr string) int {
+	ps.mtx.RLock()
+	defer ps.mtx.RUnlock()
+	return ps.connected[addr]
 }
 
 func (ps *PeerStore) Slice() []*Peer {

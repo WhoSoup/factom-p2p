@@ -231,7 +231,19 @@ func (pm *peerManager) sharePeers(peer *Peer) {
 	parcel := NewParcel(TypePeerResponse, json)
 	peer.Send(parcel)
 }
-
+func (pm *peerManager) filteredSharing(peer *Peer) []PeerShare {
+	var filtered []PeerShare
+	for _, ip := range pm.endpoints.IPs {
+		if ip.Address != peer.Address || ip.Port != peer.Port {
+			filtered = append(filtered, PeerShare{
+				Address:      ip.Address,
+				Port:         ip.Port,
+				QualityScore: 1,
+			})
+		}
+	}
+	return filtered
+}
 func (pm *peerManager) managePeers() {
 	pm.logger.Debug("Start managePeers()")
 	defer pm.logger.Debug("Stop managePeers()")
@@ -275,9 +287,9 @@ func (pm *peerManager) managePeers() {
 }
 
 func (pm *peerManager) managePeersDialOutgoing() {
-	pm.logger.Debugf("We have %d peers online or connecting", pm.peers.Count())
+	pm.logger.Debugf("We have %d peers online or connecting", pm.peers.Total())
 
-	count := uint(pm.peers.Count())
+	count := uint(pm.peers.Total())
 	if want := int(pm.net.conf.Outgoing - count); want > 0 {
 		filter := pm.filteredOutgoing()
 
@@ -292,6 +304,24 @@ func (pm *peerManager) managePeersDialOutgoing() {
 	}
 }
 
+func (pm *peerManager) allowConnection(addr string) error {
+	// TODO allow special peers
+
+	if pm.net.conf.RefuseIncoming {
+		return fmt.Errorf("Refusing all incoming connections")
+	}
+
+	if uint(pm.peers.Total()) >= pm.net.conf.Incoming {
+		return fmt.Errorf("Refusing incoming connection from %s because we are maxed out", addr)
+	}
+
+	if pm.net.conf.PeerIPLimit > 0 && uint(pm.peers.Count(addr)) >= pm.net.conf.PeerIPLimit {
+		return fmt.Errorf("Rejecting %s due to per ip limit of %d", addr, pm.net.conf.PeerIPLimit)
+	}
+
+	return nil
+}
+
 func (pm *peerManager) HandleIncoming(con net.Conn) {
 	addr, _, err := net.SplitHostPort(con.RemoteAddr().String())
 	if err != nil {
@@ -300,16 +330,15 @@ func (pm *peerManager) HandleIncoming(con net.Conn) {
 		return
 	}
 
-	// TODO allow special peers
-	if uint(pm.peers.Count()) >= pm.net.conf.Incoming {
-		pm.logger.Infof("Refusing incoming connection from %s because we are maxed out", con.RemoteAddr().String())
+	ip, err := NewIP(addr, "")
+	if err != nil { // should never happen for incoming
+		pm.logger.WithError(err).Debugf("Unable to decode address %s", addr)
 		con.Close()
 		return
 	}
 
-	ip, err := NewIP(addr, "")
-	if err != nil { // should never happen for incoming
-		pm.logger.WithError(err).Debugf("Unable to decode address %s", addr)
+	if err = pm.allowConnection(addr); err != nil {
+		pm.logger.WithError(err).Infof("Rejecting connection")
 		con.Close()
 		return
 	}
@@ -386,20 +415,6 @@ func (pm *peerManager) filteredOutgoing() []IP {
 		}
 	}
 
-	return filtered
-}
-
-func (pm *peerManager) filteredSharing(peer *Peer) []PeerShare {
-	var filtered []PeerShare
-	for _, ip := range pm.endpoints.IPs {
-		if ip.Address != peer.Address {
-			filtered = append(filtered, PeerShare{
-				Address:      ip.Address,
-				Port:         ip.Port,
-				QualityScore: 1,
-			})
-		}
-	}
 	return filtered
 }
 

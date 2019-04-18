@@ -1,7 +1,6 @@
 package p2p
 
 import (
-	"fmt"
 	"sync"
 	"time"
 )
@@ -34,7 +33,7 @@ func (epm *EndpointMap) Register(ip IP, incoming bool) {
 	epm.mtx.Lock()
 	defer epm.mtx.Unlock()
 	if !epm.known[ip.String()] {
-		epm.known[fmt.Sprintf("%s:%s", ip.Address, ip.Port)] = true
+		epm.known[ip.String()] = true
 		epm.IPs = append(epm.IPs, ip)
 	}
 	epm.incoming[ip.String()] = epm.incoming[ip.String()] || incoming
