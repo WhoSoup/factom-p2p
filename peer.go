@@ -8,6 +8,7 @@ import (
 	"encoding/gob"
 	"fmt"
 	"net"
+	"sync"
 	"time"
 
 	log "github.com/sirupsen/logrus"
@@ -28,13 +29,12 @@ type Peer struct {
 	IsIncoming bool
 
 	//	stateMutex             sync.RWMutex
-	age         time.Time
-	stop        chan bool
-	stopSending chan bool
+	age     time.Time
+	stopper sync.Once
+	stop    chan bool
 
 	lastPeerRequest time.Time
 	lastPeerSend    time.Time
-	receive         ParcelChannel
 	send            ParcelChannel
 	error           chan error
 	disconnect      chan *Peer
@@ -84,68 +84,45 @@ func NewPeer(net *Network, addr string, hs Handshake, disconnect chan *Peer) *Pe
 	})
 	p.age = time.Now()
 	p.stop = make(chan bool, 1)
-	p.stopSending = make(chan bool, 1)
 
 	p.logger.Debugf("Creating new peer")
 	return p
 }
 
 func (p *Peer) StartWithConnection(tcp net.Conn, incoming bool) {
-	p.receive = NewParcelChannel(p.net.conf.ChannelCapacity)
 	p.send = NewParcelChannel(p.net.conf.ChannelCapacity)
 	p.error = make(chan error, 10)
-
 	p.IsIncoming = incoming
 	p.conn = tcp
 	p.encoder = gob.NewEncoder(p.conn)
 	p.decoder = gob.NewDecoder(p.conn)
 
-	go p.monitorConnection()
+	//go p.monitorConnection()
 	go p.readLoop()
 	go p.sendLoop()
 }
 
 // Stop disconnects the peer from its active connection
 func (p *Peer) Stop() {
-	p.send = nil
-	p.receive = nil
-	p.error = nil
+	p.stopper.Do(func() {
+		sc := p.send
 
-	p.stop <- true
-	p.stopSending <- true
-}
+		p.send = nil
+		p.error = nil
 
-// monitorConnection watches the underlying Connection and the connection channel
-//
-// Any data arriving via connection will be passed on to the peer manager.
-// If the connection dies, change state to Offline. If a new connection arrives, handle it.
-func (p *Peer) monitorConnection() {
-	for {
 		select {
-		case hard := <-p.stop: // tear down the peer completely
-			p.logger.Debug("Peer shutting down, hard =", hard)
-			if p.conn != nil {
-				p.conn.Close()
-			}
-			if hard {
-				p.net.peerManager.peerDisconnect <- p
-			}
-			//p.conn = nil
-			return
-		case err := <-p.error:
-			p.logger.WithError(err).Debug("Connection error")
-			p.stop <- false
-		case parcel := <-p.receive:
-			p.QualityScore++
-			p.logger.Debugf("Received incoming parcel: %v", parcel)
-			p.LastReceive = time.Now()
-			select {
-			case p.net.peerParcel <- PeerParcel{Peer: p, Parcel: parcel}:
-			default:
-				p.logger.Warn("Peer manager unable to handle load, dropping")
-			}
+		case p.stop <- true:
+		default:
 		}
-	}
+
+		if p.conn != nil {
+			p.conn.Close()
+		}
+
+		close(sc)
+
+		p.net.peerManager.peerDisconnect <- p
+	})
 }
 
 func (p *Peer) String() string {
@@ -159,19 +136,25 @@ func (p *Peer) Send(parcel *Parcel) {
 
 func (p *Peer) readLoop() {
 	defer p.conn.Close() // close connection on fatal error
-	defer p.logger.Debug("Closing readLoop()")
 	for {
 		var message Parcel
 
 		p.conn.SetReadDeadline(time.Now().Add(p.net.conf.ReadDeadline))
 		err := p.decoder.Decode(&message)
 		if err != nil {
-			p.error <- err
+			p.logger.WithError(err).Debug("connection error (readLoop)")
+			p.Stop()
 			return
 		}
 
 		p.LastReceive = time.Now()
-		p.receive.Send(&message)
+		p.QualityScore++
+		p.logger.Debugf("Received incoming parcel: %v", message)
+		select {
+		case p.net.peerParcel <- PeerParcel{Peer: p, Parcel: &message}:
+		default:
+			p.logger.Warn("Peer manager unable to handle load, dropping")
+		}
 	}
 }
 
@@ -179,10 +162,9 @@ func (p *Peer) readLoop() {
 // to the tcp connection
 func (p *Peer) sendLoop() {
 	defer p.conn.Close() // close connection on fatal error
-	defer p.logger.Debug("Closing sendLoop()")
 	for {
 		select {
-		case <-p.stopSending:
+		case <-p.stop:
 			return
 		case parcel := <-p.send:
 			if parcel == nil {
@@ -193,7 +175,8 @@ func (p *Peer) sendLoop() {
 			p.conn.SetWriteDeadline(time.Now().Add(p.net.conf.WriteDeadline))
 			err := p.encoder.Encode(parcel)
 			if err != nil { // no error is recoverable
-				p.error <- err
+				p.logger.WithError(err).Debug("connection error (sendLoop)")
+				p.Stop()
 				return
 			}
 			p.LastSend = time.Now()

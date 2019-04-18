@@ -6,6 +6,7 @@ package p2p
 
 import (
 	"fmt"
+	"net"
 
 	log "github.com/sirupsen/logrus"
 )
@@ -14,9 +15,9 @@ var controllerLogger = packageLogger.WithField("subpack", "controller")
 
 // controller manages the peer to peer network.
 type controller struct {
-	net           *Network
-	stop          chan bool
-	stopListening chan bool
+	net      *Network
+	stop     chan bool
+	listener *LimitedListener
 
 	logger *log.Entry
 }
@@ -38,15 +39,11 @@ func newController(network *Network) *controller {
 		"port":    network.conf.ListenPort,
 		"network": fmt.Sprintf("%#x", network.conf.Network)})
 	c.net = network
-	c.stop = make(chan bool, 1)          // controller -> self
-	c.stopListening = make(chan bool, 1) // controller -> self
 	return c
 }
 
 func (c *controller) Start() {
-	for len(c.stop) > 0 {
-		<-c.stop
-	}
+	c.stop = make(chan bool, 1)
 	go c.listenLoop()
 	go c.routeLoop()
 }
@@ -54,6 +51,9 @@ func (c *controller) Start() {
 // Stop shuts down the peer manager and all active connections
 func (c *controller) Stop() {
 	c.stop <- true
+	if c.listener != nil {
+		c.listener.Close()
+	}
 }
 
 // listenLoop listens for incoming TCP connections and passes them off to peer manager
@@ -63,19 +63,25 @@ func (c *controller) listenLoop() {
 
 	addr := fmt.Sprintf("%s:%s", c.net.conf.BindIP, c.net.conf.ListenPort)
 
-	listener, err := NewLimitedListener(addr, c.net.conf.ListenLimit)
+	l, err := NewLimitedListener(addr, c.net.conf.ListenLimit)
 	if err != nil {
 		tmpLogger.WithError(err).Error("controller.Start() unable to start limited listener")
 		return
 	}
-	defer listener.Close()
+
+	c.listener = l
 
 	// start permanent loop
 	// terminates on program exit
 	for {
-		conn, err := listener.Accept()
+		conn, err := c.listener.Accept()
 		if err != nil {
-			tmpLogger.WithError(err).Warn("controller.acceptLoop() error accepting")
+			if ne, ok := err.(*net.OpError); ok && !ne.Timeout() {
+				if !ne.Temporary() {
+					tmpLogger.WithError(err).Warn("controller.acceptLoop() error accepting")
+					return
+				}
+			}
 			continue
 		}
 

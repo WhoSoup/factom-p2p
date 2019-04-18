@@ -9,8 +9,7 @@ import (
 // LimitedListener will block multiple connection attempts from a single ip
 // within a specific timeframe
 type LimitedListener struct {
-	net.Listener
-
+	listener       net.Listener
 	limit          time.Duration
 	lastConnection time.Time
 	history        []limitedConnect
@@ -22,15 +21,15 @@ type limitedConnect struct {
 }
 
 func NewLimitedListener(address string, limit time.Duration) (*LimitedListener, error) {
+	if limit < 0 {
+		return nil, fmt.Errorf("Invalid time limit (negative)")
+	}
 	l, err := net.Listen("tcp", address)
 	if err != nil {
 		return nil, err
 	}
-	if limit < 0 {
-		return nil, fmt.Errorf("Invalid time limit (negative)")
-	}
 	return &LimitedListener{
-		Listener:       l,
+		listener:       l,
 		limit:          limit,
 		lastConnection: time.Time{},
 		history:        nil,
@@ -85,7 +84,8 @@ func (ll *LimitedListener) addToHistory(addr string) {
 // Accept accepts a connection if no other connection attempt from that ip has been made
 // in the specified time frame
 func (ll *LimitedListener) Accept() (net.Conn, error) {
-	con, err := ll.Listener.Accept()
+	//ll.listener.SetDeadline(time.Now().Add(time.Second))
+	con, err := ll.listener.Accept()
 	if err != nil {
 		return nil, err
 	}
@@ -103,4 +103,8 @@ func (ll *LimitedListener) Accept() (net.Conn, error) {
 
 	ll.addToHistory(addr)
 	return con, nil
+}
+
+func (ll *LimitedListener) Close() {
+	ll.listener.Close()
 }
