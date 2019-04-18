@@ -40,17 +40,18 @@ type peerManager struct {
 func newPeerManager(network *Network) *peerManager {
 	pm := &peerManager{}
 	pm.net = network
+	c := network.conf
 
 	pm.logger = pmLogger.WithFields(log.Fields{
-		"node":    pm.net.conf.NodeName,
-		"port":    pm.net.conf.ListenPort,
-		"network": pm.net.conf.Network})
-	pm.logger.WithField("peermanager_init", pm.net.conf).Debugf("Initializing Peer Manager")
+		"node":    c.NodeName,
+		"port":    c.ListenPort,
+		"network": c.Network})
+	pm.logger.WithField("peermanager_init", c).Debugf("Initializing Peer Manager")
 
 	pm.peers = NewPeerStore()
 	pm.endpoints = NewEndpointMap(pm.net)
 	//pm.tempPeers = NewPeerList()
-	pm.dialer = NewDialer(pm.net)
+	pm.dialer = NewDialer(c.BindIP, c.RedialInterval, c.DialTimeout, c.RedialAttempts)
 
 	pm.peerDisconnect = make(chan *Peer, 10) // TODO reconsider this value
 

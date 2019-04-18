@@ -105,6 +105,10 @@ func (ll *LimitedListener) Accept() (net.Conn, error) {
 	return con, nil
 }
 
+func (ll *LimitedListener) Addr() net.Addr {
+	return ll.listener.Addr()
+}
+
 func (ll *LimitedListener) Close() {
 	ll.listener.Close()
 }

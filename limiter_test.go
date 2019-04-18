@@ -53,7 +53,7 @@ func createLLHistory() *LimitedListener {
 	presence := limitedConnect{"presence", time.Now()}
 	future := limitedConnect{"future", time.Now().Add(time.Hour * 2)}
 	return &LimitedListener{
-		Listener:       nil,
+		listener:       nil,
 		limit:          time.Hour,
 		lastConnection: time.Now(),
 		history:        []limitedConnect{past, presence, future}, // order matters, old < new

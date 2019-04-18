@@ -11,7 +11,7 @@ func createSet(locations ...uint32) *PeerDistance {
 	pd := new(PeerDistance)
 	pd.Pivot = locations[0]
 	for _, l := range locations[1:] {
-		pd.Sorted = append(pd.Sorted, &Peer{Location: l})
+		pd.Sorted = append(pd.Sorted, IP{Location: l})
 	}
 	return pd
 }

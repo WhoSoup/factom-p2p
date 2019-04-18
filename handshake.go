@@ -27,7 +27,7 @@ func (h Handshake) Verify(id uint64, min uint16, n NetworkID) error {
 
 	port, err := strconv.Atoi(h.Port)
 	if err != nil {
-		return fmt.Errorf("unable to parse port %s: %v", err)
+		return fmt.Errorf("unable to parse port %s: %v", h.Port, err)
 	}
 
 	if port < 1 || port > 65535 {

@@ -7,8 +7,11 @@ import (
 )
 
 type Dialer struct {
-	net      *Network
-	attempts map[string]attempt
+	bindip      string
+	interval    time.Duration
+	timeout     time.Duration
+	maxattempts uint
+	attempts    map[string]attempt
 }
 
 type attempt struct {
@@ -16,9 +19,12 @@ type attempt struct {
 	c uint
 }
 
-func NewDialer(n *Network) *Dialer {
+func NewDialer(ip string, interval, timeout time.Duration, maxattempts uint) *Dialer {
 	d := new(Dialer)
-	d.net = n
+	d.bindip = ip
+	d.interval = interval
+	d.timeout = timeout
+	d.maxattempts = maxattempts
 	d.attempts = make(map[string]attempt)
 	return d
 }
@@ -29,11 +35,11 @@ func (d *Dialer) CanDial(ip IP) bool {
 		return true
 	}
 
-	if time.Since(a.t) < d.net.conf.RedialInterval {
+	if time.Since(a.t) < d.interval {
 		return false
 	}
 
-	if a.c >= d.net.conf.RedialAttempts {
+	if a.c >= d.maxattempts {
 		return false
 	}
 
@@ -41,13 +47,13 @@ func (d *Dialer) CanDial(ip IP) bool {
 }
 
 func (d *Dialer) Dial(ip IP) (net.Conn, error) {
-	local, err := net.ResolveTCPAddr("tcp", fmt.Sprintf("%s:0", d.net.conf.BindIP))
+	local, err := net.ResolveTCPAddr("tcp", fmt.Sprintf("%s:0", d.bindip))
 	if err != nil {
 		return nil, err
 	}
 	dialer := net.Dialer{
 		LocalAddr: local,
-		Timeout:   d.net.conf.DialTimeout,
+		Timeout:   d.timeout,
 	}
 
 	a, ok := d.attempts[ip.String()]
