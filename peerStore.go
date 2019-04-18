@@ -2,11 +2,11 @@ package p2p
 
 import "sync"
 
-// [address][nodeid] = peer
+// [p.hash] = peer
 type PeerStore struct {
 	mtx       sync.RWMutex
-	peers     map[string]map[uint64]*Peer
-	connected map[string]int // address -> count
+	peers     map[string]*Peer // hash -> peer
+	connected map[string]int   // address -> count
 	curSlice  []*Peer
 	Incoming  int
 	Outgoing  int
@@ -14,24 +14,17 @@ type PeerStore struct {
 
 func NewPeerStore() *PeerStore {
 	ps := new(PeerStore)
-	ps.peers = make(map[string]map[uint64]*Peer)
+	ps.peers = make(map[string]*Peer)
 	ps.connected = make(map[string]int)
 	return ps
-}
-
-func (ps *PeerStore) makeAddr(addr string) {
-	if _, ok := ps.peers[addr]; !ok {
-		ps.peers[addr] = make(map[uint64]*Peer)
-	}
 }
 
 func (ps *PeerStore) Replace(p *Peer) *Peer {
 	ps.mtx.Lock()
 	defer ps.mtx.Unlock()
-	ps.makeAddr(p.Address)
-	old := ps.peers[p.Address][p.NodeID]
+	old := ps.peers[p.Hash]
 	ps.curSlice = nil
-	ps.peers[p.Address][p.NodeID] = p
+	ps.peers[p.Hash] = p
 	ps.connected[p.Address]++
 
 	if p.IsIncoming {
@@ -54,18 +47,15 @@ func (ps *PeerStore) Replace(p *Peer) *Peer {
 func (ps *PeerStore) Remove(p *Peer) {
 	ps.mtx.Lock()
 	defer ps.mtx.Unlock()
-	if _, ok := ps.peers[p.Address]; ok {
-		old, ok := ps.peers[p.Address][p.NodeID]
-		if ok {
-			ps.connected[p.Address]--
-			if old.IsIncoming {
-				ps.Incoming--
-			} else {
-				ps.Outgoing--
-			}
+	if old, ok := ps.peers[p.Hash]; ok && old == p { // pointer comparison
+		ps.connected[p.Address]--
+		if old.IsIncoming {
+			ps.Incoming--
+		} else {
+			ps.Outgoing--
 		}
 		ps.curSlice = nil
-		delete(ps.peers[p.Address], p.NodeID)
+		delete(ps.peers, p.Hash)
 	}
 }
 
@@ -73,6 +63,12 @@ func (ps *PeerStore) Count() int {
 	ps.mtx.RLock()
 	defer ps.mtx.RUnlock()
 	return ps.Incoming + ps.Outgoing
+}
+
+func (ps *PeerStore) Get(hash string) *Peer {
+	ps.mtx.RLock()
+	defer ps.mtx.RUnlock()
+	return ps.peers[hash]
 }
 
 func (ps *PeerStore) IsConnected(addr string) bool {
@@ -89,10 +85,8 @@ func (ps *PeerStore) Slice() []*Peer {
 		return ps.curSlice
 	}
 	r := make([]*Peer, 0)
-	for _, addr := range ps.peers {
-		for _, p := range addr {
-			r = append(r, p)
-		}
+	for _, p := range ps.peers {
+		r = append(r, p)
 	}
 	ps.curSlice = r
 	return r

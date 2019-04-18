@@ -2,7 +2,6 @@ package p2p
 
 import (
 	"bufio"
-	"encoding/gob"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -82,14 +81,12 @@ func (pm *peerManager) Start() {
 func (pm *peerManager) Stop() {
 	pm.stopData <- true
 	pm.stopPeers <- true
+	pm.stopOnline <- true
 
 	for _, p := range pm.peers.Slice() {
-		p.Stop()
+		p.Stop(false)
+		pm.peers.Remove(p)
 	}
-
-	time.AfterFunc(time.Second*2, func() {
-		pm.stopOnline <- true
-	})
 }
 
 func (pm *peerManager) bootStrapPeers() {
@@ -240,12 +237,6 @@ func (pm *peerManager) managePeers() {
 	defer pm.logger.Debug("Stop managePeers()")
 
 	for {
-		/*if time.Since(pm.lastPeerDuplicateCheck) > pm.net.conf.RedialInterval {
-			pm.managePeersDetectDuplicate()
-		}*/
-
-		//pm.logger.Debugf("Managing peers")
-
 		if time.Since(pm.lastSeedRefresh) > pm.net.conf.PeerReseedInterval {
 			pm.lastSeedRefresh = time.Now()
 			pm.discoverSeeds()
@@ -267,7 +258,6 @@ func (pm *peerManager) managePeers() {
 			}
 
 			if time.Since(p.LastSend) > pm.net.conf.PingInterval {
-				pm.logger.Debugf("Pinging %s", p.Hash)
 				ping := NewParcel(TypePing, []byte("Ping"))
 				p.Send(ping)
 			}
@@ -295,7 +285,7 @@ func (pm *peerManager) managePeersDialOutgoing() {
 			peers := pm.getOutgoingSelection(filter, want)
 			for _, p := range peers {
 				if !pm.peers.IsConnected(p.Address) {
-					pm.Dial(p)
+					go pm.Dial(p)
 				}
 			}
 		}
@@ -325,8 +315,20 @@ func (pm *peerManager) HandleIncoming(con net.Conn) {
 	}
 
 	// TODO limit by endpoint
+	peer := NewPeer(pm.net, pm.peerDisconnect)
+	if peer.StartWithHandshake(ip, con, true) {
+		old := pm.peers.Replace(peer)
 
-	go pm.processHandshake(ip, con, true)
+		if ip.Port == "" {
+			ip.Port = peer.Port
+		}
+
+		pm.endpoints.Register(ip, false)
+		if old != nil {
+			old.Stop(false)
+		}
+		pm.dialer.Reset(ip)
+	}
 }
 
 func (pm *peerManager) Dial(ip IP) {
@@ -343,58 +345,18 @@ func (pm *peerManager) Dial(ip IP) {
 		return
 	}
 
-	go pm.processHandshake(ip, con, false)
-}
+	peer := NewPeer(pm.net, pm.peerDisconnect)
+	if peer.StartWithHandshake(ip, con, false) {
+		if ip.Port == "" {
+			ip.Port = peer.Port
+		}
+		if old := pm.peers.Replace(peer); old != nil {
+			old.Stop(false)
+		}
 
-func (pm *peerManager) processHandshake(ip IP, con net.Conn, incoming bool) {
-	addr := ip.Address
-	tmplogger := pm.logger.WithField("addr", addr)
-	timeout := time.Now().Add(pm.net.conf.HandshakeTimeout)
-	handshake := Handshake{
-		NodeID:  pm.net.conf.NodeID,
-		Port:    pm.net.conf.ListenPort,
-		Version: pm.net.conf.ProtocolVersion,
-		Network: pm.net.conf.Network}
-
-	decoder := gob.NewDecoder(con)
-	encoder := gob.NewEncoder(con)
-	con.SetWriteDeadline(timeout)
-	con.SetReadDeadline(timeout)
-	err := encoder.Encode(handshake)
-
-	if err != nil {
-		tmplogger.WithError(err).Debugf("Failed to send handshake to incoming connection")
-		con.Close()
-		return
+		pm.endpoints.Register(ip, false)
+		pm.dialer.Reset(ip)
 	}
-
-	err = decoder.Decode(&handshake)
-	if err != nil {
-		tmplogger.WithError(err).Debugf("Failed to read handshake from incoming connection")
-		con.Close()
-		return
-	}
-
-	err = handshake.Verify(pm.net.conf.NodeID, pm.net.conf.ProtocolVersionMinimum, pm.net.conf.Network)
-	if err != nil {
-		tmplogger.WithError(err).Debug("Handshake failed")
-		con.Close()
-		return
-	}
-
-	peer := NewPeer(pm.net, addr, handshake, pm.peerDisconnect)
-	old := pm.peers.Replace(peer)
-
-	if ip.Port == "" {
-		ip.Port = handshake.Port
-	}
-
-	pm.endpoints.Register(ip, incoming)
-	if old != nil {
-		old.Stop()
-	}
-	peer.StartWithConnection(con, incoming)
-	pm.dialer.Reset(ip)
 }
 
 func (pm *peerManager) Broadcast(parcel *Parcel, full bool) {
@@ -493,10 +455,7 @@ func (pm *peerManager) getOutgoingSelection(filtered []IP, wanted int) []IP {
 }
 
 func (pm *peerManager) selectRandomPeers(count uint) []*Peer {
-	var peers []*Peer
-	for _, p := range pm.peers.Slice() {
-		peers = append(peers, p)
-	}
+	peers := pm.peers.Slice()
 
 	// not enough to randomize
 	if uint(len(peers)) <= count {
@@ -520,11 +479,9 @@ func (pm *peerManager) ToPeer(hash string, parcel *Parcel) {
 			random[0].Send(parcel)
 		}
 	} else {
-		for _, p := range pm.peers.Slice() {
-			if p.Hash == hash {
-				p.Send(parcel)
-				return
-			}
+		p := pm.peers.Get(hash)
+		if p != nil {
+			p.Send(parcel)
 		}
 	}
 }

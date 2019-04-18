@@ -30,13 +30,8 @@ type ParcelHeader struct {
 	Length     uint32            // 4 bytes - length of the payload (that follows this header) in bytes
 	TargetPeer string            // ? bytes - "" or nil for broadcast, otherwise the destination peer's hash.
 	Crc32      uint32            // 4 bytes - data integrity hash (of the payload itself.)
-	_          uint16            // deprecated PartsNo
-	_          uint16            // deprecated PartsTotal
-	_          uint64
-	_          string // address of the peer set by connection to know who sent message (for tracking source of other peers)
-	_          string // port of the peer , or we are listening on
-	AppHash    string // Application specific message hash, for tracing
-	AppType    string // Application specific message type, for tracing
+	AppHash    string            // Application specific message hash, for tracing
+	AppType    string            // Application specific message type, for tracing
 }
 
 type ParcelCommandType uint16
