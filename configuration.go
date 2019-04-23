@@ -52,6 +52,11 @@ type Configuration struct {
 	// ip is considered special
 	Special string
 
+	// PeerFile is the filepath to the file to save peers
+	PeerFile string
+	// how often to save these
+	PersistInterval time.Duration
+
 	// === Gossip Behavior ===
 	// Outgoing is the number of peers this node attempts to connect to
 	Outgoing uint
@@ -72,8 +77,6 @@ type Configuration struct {
 	RefuseIncoming bool
 	// Refuse unknown peers from connecting but allow special peers
 	RefuseUnknown bool
-	// PeersFile is the path to the file where peers will be stored
-	PeersFile string
 	// SeedURL is the URL of the remote seed file
 	SeedURL string // URL to a source of peer info
 
@@ -111,6 +114,11 @@ type Configuration struct {
 	// to reconnect before considering dialing to them
 	DisconnectLock time.Duration
 
+	// ManualBan is the duration to ban an address for when banned manually
+	ManualBan time.Duration
+	// AutoBan is the duration to ban an address for when their qualityscore drops too low
+	AutoBan time.Duration
+
 	// HandshakeDeadline is the maximum acceptable time for an incoming conneciton
 	// to send the first parcel after connecting
 	HandshakeTimeout time.Duration
@@ -146,6 +154,11 @@ func DefaultP2PConfiguration() (c Configuration) {
 	c.PeerReseedInterval = time.Hour * 4
 	c.PeerIPLimitIncoming = 0
 	c.PeerIPLimitOutgoing = 0
+	c.ManualBan = time.Hour * 24 * 7 // a week
+	c.AutoBan = time.Hour * 24 * 7   // a week
+
+	c.PeerFile = ""
+	c.PersistInterval = time.Minute * 15
 
 	c.Outgoing = 32
 	c.Incoming = 150

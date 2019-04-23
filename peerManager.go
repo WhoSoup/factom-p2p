@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
@@ -28,9 +29,11 @@ type peerManager struct {
 	endpoints *EndpointMap
 	dialer    *Dialer
 	special   map[string]bool
+	bans      map[string]time.Time
 
 	lastPeerDial    time.Time
 	lastSeedRefresh time.Time
+	lastPersist     time.Time
 
 	logger *log.Entry
 }
@@ -52,6 +55,7 @@ func newPeerManager(network *Network) *peerManager {
 	pm.endpoints = NewEndpointMap(pm.net)
 	//pm.tempPeers = NewPeerList()
 	pm.dialer = NewDialer(c.BindIP, c.RedialInterval, c.DialTimeout, c.RedialAttempts)
+	pm.lastPersist = time.Now()
 
 	pm.peerDisconnect = make(chan *Peer, 10) // TODO reconsider this value
 
@@ -60,10 +64,44 @@ func newPeerManager(network *Network) *peerManager {
 	pm.stopOnline = make(chan bool, 1)
 
 	pm.special = make(map[string]bool)
+	pm.bans = make(map[string]time.Time)
 
 	// TODO parse config special peers
 	pm.parseSpecial(pm.net.conf.Special)
+	pm.load()
+
 	return pm
+}
+
+func (pm *peerManager) ban(hash string, duration time.Duration) {
+	peer := pm.peers.Get(hash)
+	if peer != nil {
+		pm.bans[peer.IP.Address] = time.Now().Add(duration)
+		peer.Stop(true)
+	}
+}
+
+func (pm *peerManager) merit(hash string) {
+	peer := pm.peers.Get(hash)
+	if peer != nil {
+		peer.quality(1)
+	}
+}
+
+func (pm *peerManager) demerit(hash string) {
+	peer := pm.peers.Get(hash)
+	if peer != nil {
+		if peer.quality(-1) < pm.net.conf.MinimumQualityScore {
+			pm.ban(hash, pm.net.conf.AutoBan)
+		}
+	}
+}
+
+func (pm *peerManager) disconnect(hash string) {
+	peer := pm.peers.Get(hash)
+	if peer != nil {
+		peer.Stop(true)
+	}
 }
 
 func (pm *peerManager) parseSpecial(raw string) {
@@ -272,6 +310,11 @@ func (pm *peerManager) managePeers() {
 	defer pm.logger.Debug("Stop managePeers()")
 
 	for {
+		if time.Since(pm.lastPersist) > pm.net.conf.PersistInterval {
+			pm.lastPersist = time.Now()
+			pm.persist()
+		}
+
 		if time.Since(pm.lastSeedRefresh) > pm.net.conf.PeerReseedInterval {
 			pm.lastSeedRefresh = time.Now()
 			pm.discoverSeeds()
@@ -522,4 +565,64 @@ func (pm *peerManager) ToPeer(hash string, parcel *Parcel) {
 			p.Send(parcel)
 		}
 	}
+}
+
+func (pm *peerManager) persist() {
+	path := pm.net.conf.PeerFile
+	if path == "" {
+		return
+	}
+
+	file, err := os.Create(path)
+	if err != nil {
+		pm.logger.WithError(err).Errorf("persist(): File create error for %s", path)
+		return
+	}
+	defer file.Close()
+	writer := bufio.NewWriter(file)
+	encoder := json.NewEncoder(writer)
+
+	p := Persist{}
+	// persist endpoints, bans
+	p.IPs = pm.endpoints.IPs
+	for addr, t := range pm.bans {
+		p.Bans = append(p.Bans, PersistBan{addr, t})
+	}
+
+	err = encoder.Encode(p)
+	if err != nil {
+		pm.logger.WithError(err).Errorf("persist(): Encode error for %s", path)
+	}
+	writer.Flush()
+
+	pm.logger.Debugf("Persisted %d ips and %d bans", len(p.IPs), len(p.Bans))
+}
+
+func (pm *peerManager) load() {
+	path := pm.net.conf.PeerFile
+	if path == "" {
+		return
+	}
+	file, err := os.Open(path)
+	if err != nil {
+		pm.logger.WithError(err).Errorf("load(): file open error for %s", path)
+		return
+	}
+	p := Persist{}
+	dec := json.NewDecoder(bufio.NewReader(file))
+	err = dec.Decode(&p)
+
+	if err != nil {
+		pm.logger.WithError(err).Errorf("load(): error decoding")
+		return
+	}
+
+	for _, ip := range p.IPs {
+		pm.endpoints.Register(ip, false)
+	}
+	for _, b := range p.Bans {
+		pm.bans[b.Address] = b.Time
+	}
+
+	pm.logger.Debugf("Loaded %d ips and %d bans", len(p.IPs), len(p.Bans))
 }

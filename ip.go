@@ -3,9 +3,9 @@ package p2p
 import "fmt"
 
 type IP struct {
-	Address  string
-	Port     string
-	Location uint32
+	Address  string `json:"address"`
+	Port     string `json:"port"`
+	Location uint32 `json:"location,omitempty"`
 }
 
 func NewIP(addr, port string) (IP, error) {

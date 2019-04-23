@@ -63,7 +63,7 @@ func (n *Network) DebugMessage() (string, string, int) {
 }
 
 func NewNetwork(conf Configuration) *Network {
-	myconf := conf
+	myconf := conf // copy
 	n := new(Network)
 	n.logger = packageLogger.WithField("subpackage", "Network").WithField("node", conf.NodeName)
 
@@ -99,4 +99,24 @@ func (n *Network) Stop() {
 	n.logger.Info("Stopping the P2P Network")
 	n.peerManager.Stop()
 	n.controller.Stop()
+}
+
+func (n *Network) Merit(hash string) {
+	n.logger.Debugf("Received merit for %s from application", hash)
+	go n.peerManager.merit(hash)
+}
+
+func (n *Network) Demerit(hash string) {
+	n.logger.Debugf("Received demerit for %s from application", hash)
+	go n.peerManager.demerit(hash)
+}
+
+func (n *Network) Ban(hash string) {
+	n.logger.Debugf("Received ban for %s from application", hash)
+	go n.peerManager.ban(hash, n.conf.ManualBan)
+}
+
+func (n *Network) Disconnect(hash string) {
+	n.logger.Debugf("Received disconnect for %s from application", hash)
+	go n.peerManager.disconnect(hash)
 }

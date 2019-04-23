@@ -173,6 +173,13 @@ func (p *Peer) Send(parcel *Parcel) {
 	p.send.Send(parcel)
 }
 
+func (p *Peer) quality(diff int32) int32 {
+	p.metricsMtx.Lock()
+	defer p.metricsMtx.Unlock()
+	p.QualityScore += diff
+	return p.QualityScore
+}
+
 func (p *Peer) readLoop() {
 	defer p.conn.Close() // close connection on fatal error
 	for {
