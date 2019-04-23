@@ -10,7 +10,7 @@ type Endpoint struct {
 	ConnectionAttempt  time.Time
 	ConnectionAttempts uint
 
-	Age      time.Time
-	Seed     bool
-	Incoming bool
+	Age          time.Time
+	Seed         bool
+	IncomingLock time.Duration
 }

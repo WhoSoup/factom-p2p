@@ -19,9 +19,10 @@ type Network struct {
 	location uint32
 
 	peerParcel chan PeerParcel
-	peerStatus chan PeerStatus
 
 	rng *rand.Rand
+
+	metricsHook func(pm map[string]PeerMetrics)
 
 	logger *log.Entry
 }
@@ -48,9 +49,9 @@ func (n *Network) DebugMessage() (string, string, int) {
 			}
 		}
 		if p.IsIncoming {
-			hv += fmt.Sprintf("%s:%s -> %s:%s%s\n", p.Address, p.Port, n.conf.BindIP, n.conf.ListenPort, edge)
+			hv += fmt.Sprintf("%s -> %s:%s%s\n", p.IP, n.conf.BindIP, n.conf.ListenPort, edge)
 		} else {
-			hv += fmt.Sprintf("%s:%s -> %s:%s%s\n", n.conf.BindIP, n.conf.ListenPort, p.Address, p.Port, edge)
+			hv += fmt.Sprintf("%s:%s -> %s%s\n", n.conf.BindIP, n.conf.ListenPort, p.IP, edge)
 		}
 	}
 	known := ""
@@ -81,6 +82,10 @@ func NewNetwork(conf Configuration) *Network {
 	n.ToNetwork = NewParcelChannel(conf.ChannelCapacity)
 	n.FromNetwork = NewParcelChannel(conf.ChannelCapacity)
 	return n
+}
+
+func (n *Network) SetMetricsHook(f func(pm map[string]PeerMetrics)) {
+	n.metricsHook = f
 }
 
 // Start initializes the network by starting the peer manager and listening to incoming connections

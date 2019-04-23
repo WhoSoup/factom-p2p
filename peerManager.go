@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"strings"
 	"time"
 
 	log "github.com/sirupsen/logrus"
@@ -23,10 +24,10 @@ type peerManager struct {
 	stopData   chan bool
 	stopOnline chan bool
 
-	//	tempPeers *PeerList
 	peers     *PeerStore
 	endpoints *EndpointMap
 	dialer    *Dialer
+	special   map[string]bool
 
 	lastPeerDial    time.Time
 	lastSeedRefresh time.Time
@@ -58,8 +59,26 @@ func newPeerManager(network *Network) *peerManager {
 	pm.stopData = make(chan bool, 1)
 	pm.stopOnline = make(chan bool, 1)
 
+	pm.special = make(map[string]bool)
+
 	// TODO parse config special peers
+	pm.parseSpecial(pm.net.conf.Special)
 	return pm
+}
+
+func (pm *peerManager) parseSpecial(raw string) {
+	if len(raw) == 0 {
+		return
+	}
+	split := strings.Split(raw, ",")
+	for _, e := range split {
+		ip := net.ParseIP(e)
+		if ip == nil {
+			pm.logger.Warnf("Unable to parse IP in special configuration: %s", e)
+		} else {
+			pm.special[e] = true
+		}
+	}
 }
 
 // Start starts the peer manager
@@ -103,6 +122,9 @@ func (pm *peerManager) manageOnline() {
 		case <-pm.stopOnline:
 			return
 		case p := <-pm.peerDisconnect:
+			if p.IsIncoming {
+				pm.endpoints.SetConnectionLock(p.IP)
+			}
 			pm.peers.Remove(p)
 		}
 	}
@@ -231,10 +253,11 @@ func (pm *peerManager) sharePeers(peer *Peer) {
 	parcel := NewParcel(TypePeerResponse, json)
 	peer.Send(parcel)
 }
+
 func (pm *peerManager) filteredSharing(peer *Peer) []PeerShare {
 	var filtered []PeerShare
 	for _, ip := range pm.endpoints.IPs {
-		if ip.Address != peer.Address || ip.Port != peer.Port {
+		if ip != peer.IP {
 			filtered = append(filtered, PeerShare{
 				Address:      ip.Address,
 				Port:         ip.Port,
@@ -260,7 +283,10 @@ func (pm *peerManager) managePeers() {
 			pm.managePeersDialOutgoing()
 		}
 
+		metrics := make(map[string]PeerMetrics)
 		for _, p := range pm.peers.Slice() {
+			metrics[p.Hash] = p.GetMetrics()
+
 			if time.Since(p.lastPeerRequest) > pm.net.conf.PeerRequestInterval {
 				p.lastPeerRequest = time.Now()
 
@@ -275,7 +301,11 @@ func (pm *peerManager) managePeers() {
 			}
 		}
 
-		// manager peers every second
+		if pm.net.metricsHook != nil {
+			go pm.net.metricsHook(metrics)
+		}
+
+		// manages peers every second
 
 		select {
 		case <-pm.stopPeers:
@@ -291,21 +321,34 @@ func (pm *peerManager) managePeersDialOutgoing() {
 
 	count := uint(pm.peers.Total())
 	if want := int(pm.net.conf.Outgoing - count); want > 0 {
-		filter := pm.filteredOutgoing()
+		var filtered []IP
+		for _, p := range pm.endpoints.IPs {
+			if pm.allowOutgoing(p) {
+				filtered = append(filtered, p)
+			}
+		}
 
-		if len(filter) > 0 {
-			peers := pm.getOutgoingSelection(filter, want)
+		if len(filtered) > 0 {
+			peers := pm.getOutgoingSelection(filtered, want)
+			ogl := pm.net.conf.PeerIPLimitOutgoing
 			for _, p := range peers {
-				if !pm.peers.IsConnected(p.Address) {
-					go pm.Dial(p)
+				if ogl > 0 && uint(pm.peers.Count(p.Address)) >= ogl {
+					continue
 				}
+				go pm.Dial(p)
 			}
 		}
 	}
 }
 
-func (pm *peerManager) allowConnection(addr string) error {
-	// TODO allow special peers
+func (pm *peerManager) allowOutgoing(ip IP) bool {
+	return pm.special[ip.Address] || pm.dialer.CanDial(ip) && !pm.endpoints.ConnectionLocked(ip)
+}
+
+func (pm *peerManager) allowIncoming(addr string) error {
+	if pm.special[addr] { // always allow special
+		return nil
+	}
 
 	if pm.net.conf.RefuseIncoming {
 		return fmt.Errorf("Refusing all incoming connections")
@@ -315,8 +358,8 @@ func (pm *peerManager) allowConnection(addr string) error {
 		return fmt.Errorf("Refusing incoming connection from %s because we are maxed out", addr)
 	}
 
-	if pm.net.conf.PeerIPLimit > 0 && uint(pm.peers.Count(addr)) >= pm.net.conf.PeerIPLimit {
-		return fmt.Errorf("Rejecting %s due to per ip limit of %d", addr, pm.net.conf.PeerIPLimit)
+	if pm.net.conf.PeerIPLimitIncoming > 0 && uint(pm.peers.Count(addr)) >= pm.net.conf.PeerIPLimitIncoming {
+		return fmt.Errorf("Rejecting %s due to per ip limit of %d", addr, pm.net.conf.PeerIPLimitIncoming)
 	}
 
 	return nil
@@ -337,7 +380,7 @@ func (pm *peerManager) HandleIncoming(con net.Conn) {
 		return
 	}
 
-	if err = pm.allowConnection(addr); err != nil {
+	if err = pm.allowIncoming(addr); err != nil {
 		pm.logger.WithError(err).Infof("Rejecting connection")
 		con.Close()
 		return
@@ -348,15 +391,11 @@ func (pm *peerManager) HandleIncoming(con net.Conn) {
 	if peer.StartWithHandshake(ip, con, true) {
 		old := pm.peers.Replace(peer)
 
-		if ip.Port == "" {
-			ip.Port = peer.Port
-		}
-
-		pm.endpoints.Register(ip, false)
+		pm.endpoints.Register(peer.IP, false)
 		if old != nil {
 			old.Stop(false)
 		}
-		pm.dialer.Reset(ip)
+		pm.dialer.Reset(peer.IP)
 	}
 }
 
@@ -376,15 +415,12 @@ func (pm *peerManager) Dial(ip IP) {
 
 	peer := NewPeer(pm.net, pm.peerDisconnect)
 	if peer.StartWithHandshake(ip, con, false) {
-		if ip.Port == "" {
-			ip.Port = peer.Port
-		}
 		if old := pm.peers.Replace(peer); old != nil {
 			old.Stop(false)
 		}
 
-		pm.endpoints.Register(ip, false)
-		pm.dialer.Reset(ip)
+		pm.endpoints.Register(peer.IP, false)
+		pm.dialer.Reset(peer.IP)
 	}
 }
 
@@ -403,19 +439,6 @@ func (pm *peerManager) Broadcast(parcel *Parcel, full bool) {
 		p.Send(parcel)
 	}
 	// TODO always send to special
-}
-
-// filteredOutgoing generates a subset of peers that we can dial and
-// are not already connected to
-func (pm *peerManager) filteredOutgoing() []IP {
-	var filtered []IP
-	for _, p := range pm.endpoints.IPs {
-		if pm.dialer.CanDial(p) && !pm.endpoints.IsIncoming(p) {
-			filtered = append(filtered, p)
-		}
-	}
-
-	return filtered
 }
 
 // getOutgoingSelection creates a subset of total connectable peers by getting

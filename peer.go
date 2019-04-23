@@ -28,8 +28,6 @@ type Peer struct {
 	// current state
 	IsIncoming bool
 
-	//	stateMutex             sync.RWMutex
-	age     time.Time
 	stopper sync.Once
 	stop    chan bool
 
@@ -44,16 +42,22 @@ type Peer struct {
 
 	connectionAttempt      time.Time
 	connectionAttemptCount uint
-	LastReceive            time.Time // Keep track of how long ago we talked to the peer.
-	LastSend               time.Time // Keep track of how long ago we talked to the peer.
 
-	Port string
 	Seed bool
 
-	QualityScore int32  // 0 is neutral quality, negative is a bad peer.
-	Address      string // Must be in form of x.x.x.x
-	NodeID       uint64 // a nonce to distinguish multiple nodes behind one IP address
-	Hash         string // This is more of a connection ID than hash right now.
+	IP     IP
+	NodeID uint64 // a nonce to distinguish multiple nodes behind one IP address
+	Hash   string // This is more of a connection ID than hash right now.
+
+	metricsMtx      sync.RWMutex
+	Connected       time.Time
+	QualityScore    int32     // 0 is neutral quality, negative is a bad peer.
+	LastReceive     time.Time // Keep track of how long ago we talked to the peer.
+	LastSend        time.Time // Keep track of how long ago we talked to the peer.
+	ParcelsSent     uint64
+	ParcelsReceived uint64
+	BytesSent       uint64
+	BytesReceived   uint64
 
 	// logging
 	logger *log.Entry
@@ -72,11 +76,10 @@ func NewPeer(net *Network, disconnect chan *Peer) *Peer {
 	p.logger = peerLogger.WithFields(log.Fields{
 		"node":    net.conf.NodeName,
 		"hash":    p.Hash,
-		"address": p.Address,
-		"Port":    p.Port,
+		"address": p.IP.Address,
+		"Port":    p.IP.Port,
 		"version": p.handshake.Version,
 	})
-	p.age = time.Now()
 	p.stop = make(chan bool, 1)
 
 	p.logger.Debugf("Creating blank peer")
@@ -84,7 +87,6 @@ func NewPeer(net *Network, disconnect chan *Peer) *Peer {
 }
 
 func (p *Peer) StartWithHandshake(ip IP, con net.Conn, incoming bool) bool {
-	addr := ip.Address
 	tmplogger := p.logger.WithField("addr", ip.Address)
 	timeout := time.Now().Add(p.net.conf.HandshakeTimeout)
 	handshake := Handshake{
@@ -119,15 +121,16 @@ func (p *Peer) StartWithHandshake(ip IP, con net.Conn, incoming bool) bool {
 		return false
 	}
 
+	ip.Port = handshake.Port
 	p.handshake = handshake
-	p.Address = addr
-	p.Port = handshake.Port
+	p.IP = ip
 	p.NodeID = handshake.NodeID
-	p.Hash = fmt.Sprintf("%s:%s %016x", p.Address, handshake.Port, handshake.NodeID)
+	p.Hash = fmt.Sprintf("%s:%s %016x", ip.Address, ip.Port, p.NodeID)
 	p.send = NewParcelChannel(p.net.conf.ChannelCapacity)
 	p.error = make(chan error, 10)
 	p.IsIncoming = incoming
 	p.conn = con
+	p.Connected = time.Now()
 
 	go p.sendLoop()
 	go p.readLoop()
@@ -183,9 +186,14 @@ func (p *Peer) readLoop() {
 			return
 		}
 
+		p.metricsMtx.Lock()
 		p.LastReceive = time.Now()
 		p.QualityScore++
-		p.logger.Debugf("Received incoming parcel: %v", message)
+		p.ParcelsReceived++
+		p.BytesReceived += uint64(len(message.Payload))
+		p.metricsMtx.Unlock()
+
+		p.logger.Debugf("Received incoming parcel: %v", message.Header.Type)
 		select {
 		case p.net.peerParcel <- PeerParcel{Peer: p, Parcel: &message}:
 		default:
@@ -215,7 +223,27 @@ func (p *Peer) sendLoop() {
 				p.Stop(false)
 				return
 			}
+
+			p.metricsMtx.Lock()
+			p.ParcelsSent++
+			p.BytesSent += uint64(len(parcel.Payload))
 			p.LastSend = time.Now()
+			p.metricsMtx.Unlock()
 		}
+	}
+}
+
+func (p *Peer) GetMetrics() PeerMetrics {
+	p.metricsMtx.RLock()
+	defer p.metricsMtx.RUnlock()
+	return PeerMetrics{
+		Connected:       p.Connected,
+		LastReceive:     p.LastReceive,
+		LastSend:        p.LastSend,
+		BytesReceived:   p.BytesReceived,
+		BytesSent:       p.BytesSent,
+		ParcelsReceived: p.ParcelsReceived,
+		ParcelsSent:     p.ParcelsSent,
+		Incoming:        p.IsIncoming,
 	}
 }

@@ -8,12 +8,12 @@ import (
 type EndpointMap struct {
 	mtx sync.RWMutex
 
-	net      *Network
-	ends     map[string]*Endpoint // address:port -> endpoint
-	metrics  map[string]bool      // address:nodeid -> metrics
-	known    map[string]bool      // address:port -> bool
-	incoming map[string]bool      // address:port -> bool
-	IPs      []IP
+	net     *Network
+	ends    map[string]*Endpoint // address:port -> endpoint
+	metrics map[string]bool      // address:nodeid -> metrics
+	known   map[string]bool      // address:port -> bool
+	lock    map[IP]time.Time     // ip -> time of disconnect
+	IPs     []IP
 
 	// TODO implement
 	special map[string]bool
@@ -25,7 +25,7 @@ func NewEndpointMap(n *Network) *EndpointMap {
 	epm.net = n
 	epm.ends = make(map[string]*Endpoint)
 	epm.known = make(map[string]bool)
-	epm.incoming = make(map[string]bool)
+	epm.lock = make(map[IP]time.Time)
 	return epm
 }
 
@@ -36,11 +36,15 @@ func (epm *EndpointMap) Register(ip IP, incoming bool) {
 		epm.known[ip.String()] = true
 		epm.IPs = append(epm.IPs, ip)
 	}
-	epm.incoming[ip.String()] = epm.incoming[ip.String()] || incoming
 }
 
-func (epm *EndpointMap) IsIncoming(ip IP) bool {
+func (epm *EndpointMap) SetConnectionLock(ip IP) {
 	epm.mtx.RLock()
 	defer epm.mtx.RUnlock()
-	return epm.incoming[ip.String()]
+	epm.lock[ip] = time.Now()
+}
+func (epm *EndpointMap) ConnectionLocked(ip IP) bool {
+	epm.mtx.RLock()
+	defer epm.mtx.RUnlock()
+	return time.Since(epm.lock[ip]) < epm.net.conf.DisconnectLock
 }

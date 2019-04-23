@@ -45,7 +45,12 @@ type Configuration struct {
 	// PeerIPLimit specifies the maximum amount of peers to accept from a single
 	// ip address
 	// 0 for unlimited
-	PeerIPLimit uint
+	PeerIPLimitIncoming uint
+	PeerIPLimitOutgoing uint
+
+	// Special is a list of special peers, separated by comma. If no port is specified, the entire
+	// ip is considered special
+	Special string
 
 	// === Gossip Behavior ===
 	// Outgoing is the number of peers this node attempts to connect to
@@ -102,6 +107,9 @@ type Configuration struct {
 	// RedialAttempts is the number of redial attempts to make before considering
 	// a connection unreachable
 	RedialAttempts uint
+	// DisconnectLock dictates how long the peer manager should wait for an incoming peer
+	// to reconnect before considering dialing to them
+	DisconnectLock time.Duration
 
 	// HandshakeDeadline is the maximum acceptable time for an incoming conneciton
 	// to send the first parcel after connecting
@@ -136,7 +144,8 @@ func DefaultP2PConfiguration() (c Configuration) {
 	c.PeerSaveInterval = time.Second * 30
 	c.PeerRequestInterval = time.Minute * 3
 	c.PeerReseedInterval = time.Hour * 4
-	c.PeerIPLimit = 0
+	c.PeerIPLimitIncoming = 0
+	c.PeerIPLimitOutgoing = 0
 
 	c.Outgoing = 32
 	c.Incoming = 150
@@ -155,6 +164,7 @@ func DefaultP2PConfiguration() (c Configuration) {
 	c.RedialInterval = time.Second * 20
 	c.RedialReset = time.Hour * 12
 	c.RedialAttempts = 5
+	c.DisconnectLock = time.Minute * 3 // RedialInterval * RedialAttempts + 80 seconds
 
 	c.ReadDeadline = time.Minute * 5      // high enough to accomodate large packets
 	c.WriteDeadline = time.Minute * 5     // but fail eventually

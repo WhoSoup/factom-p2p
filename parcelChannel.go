@@ -10,7 +10,7 @@ func NewParcelChannel(capacity uint) ParcelChannel {
 }
 
 func (pc ParcelChannel) Send(parcel *Parcel) {
-	select { // hits default if sending message would block.
+	select {
 	case pc <- parcel:
 	default:
 		pcLogger.Warnf("ParcelChannel.Send() - Channel is full!")

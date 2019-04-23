@@ -25,7 +25,7 @@ func (ps *PeerStore) Replace(p *Peer) *Peer {
 	old := ps.peers[p.Hash]
 	ps.curSlice = nil
 	ps.peers[p.Hash] = p
-	ps.connected[p.Address]++
+	ps.connected[p.IP.Address]++
 
 	if p.IsIncoming {
 		ps.Incoming++
@@ -34,7 +34,7 @@ func (ps *PeerStore) Replace(p *Peer) *Peer {
 	}
 
 	if old != nil {
-		ps.connected[p.Address]--
+		ps.connected[p.IP.Address]--
 		if old.IsIncoming {
 			ps.Incoming--
 		} else {
@@ -48,7 +48,7 @@ func (ps *PeerStore) Remove(p *Peer) {
 	ps.mtx.Lock()
 	defer ps.mtx.Unlock()
 	if old, ok := ps.peers[p.Hash]; ok && old == p { // pointer comparison
-		ps.connected[p.Address]--
+		ps.connected[p.IP.Address]--
 		if old.IsIncoming {
 			ps.Incoming--
 		} else {
