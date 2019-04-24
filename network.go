@@ -11,7 +11,6 @@ import (
 type Network struct {
 	ToNetwork   ParcelChannel
 	FromNetwork ParcelChannel
-
 	conf        *Configuration
 	controller  *controller
 	peerManager *peerManager
@@ -55,8 +54,8 @@ func (n *Network) DebugMessage() (string, string, int) {
 		}
 	}
 	known := ""
-	for ip := range n.peerManager.endpoints.known {
-		known += ip + " "
+	for _, ip := range n.peerManager.endpoints.IPs() {
+		known += ip.Address + " "
 	}
 	r += "\nKNOWN:\n" + known
 	return r, hv, count

@@ -1,25 +1,13 @@
 package p2p
 
 import (
-	"hash/crc32"
 	"time"
 )
 
 const (
-	StandardChannelSize = 5000
-	BroadcastFlag       = "<BROADCAST>"
-	FullBroadcastFlag   = "<FULLBORADCAST>"
-	RandomPeerFlag      = "<RANDOMPEER>"
-)
-
-// Global variables for the p2p protocol
-var (
-	// Testing metrics
-	TotalMessagesReceived       uint64
-	TotalMessagesSent           uint64
-	ApplicationMessagesReceived uint64
-
-	CRCKoopmanTable = crc32.MakeTable(crc32.Koopman)
+	BroadcastFlag     = "<BROADCAST>"
+	FullBroadcastFlag = "<FULLBORADCAST>"
+	RandomPeerFlag    = "<RANDOMPEER>"
 )
 
 // Configuration defines the behavior of the gossip network protocol
@@ -79,11 +67,6 @@ type Configuration struct {
 	RefuseUnknown bool
 	// SeedURL is the URL of the remote seed file
 	SeedURL string // URL to a source of peer info
-
-	// ConfigPeers is a list of persistent peers from the factomd.conf file
-	ConfigPeers string
-	// CmdLinePeers is a list of peers passed via command line parameter
-	CmdLinePeers string
 
 	// === Connection Settings ===
 

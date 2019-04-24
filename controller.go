@@ -98,7 +98,7 @@ func (c *controller) routeLoop() {
 		// blocking read on ToNetwork, and c.stop
 		select {
 		case message := <-c.net.ToNetwork:
-			c.handleParcel(message)
+			c.handleParcelRoute(message)
 		// stop this loop if anything shows up
 		case <-c.stop:
 			return
@@ -106,19 +106,15 @@ func (c *controller) routeLoop() {
 	}
 }
 
-func (c *controller) handleParcel(parcel *Parcel) {
+func (c *controller) handleParcelRoute(parcel *Parcel) {
 	switch parcel.Header.TargetPeer {
 	case FullBroadcastFlag:
 		c.net.peerManager.Broadcast(parcel, true)
-		fmt.Println("did controller send full broad")
 	case BroadcastFlag:
 		c.net.peerManager.Broadcast(parcel, false)
-		fmt.Println("did controller send broad")
 	case RandomPeerFlag:
 		c.net.peerManager.ToPeer("", parcel)
-		fmt.Println("did controller send random")
 	default:
 		c.net.peerManager.ToPeer(parcel.Header.TargetPeer, parcel)
-		fmt.Println("did controller send single")
 	}
 }

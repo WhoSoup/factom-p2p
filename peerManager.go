@@ -26,7 +26,7 @@ type peerManager struct {
 	stopOnline chan bool
 
 	peers     *PeerStore
-	endpoints *EndpointMap
+	endpoints *Endpoints
 	dialer    *Dialer
 	special   map[string]bool
 	bans      map[string]time.Time
@@ -52,7 +52,7 @@ func newPeerManager(network *Network) *peerManager {
 	pm.logger.WithField("peermanager_init", c).Debugf("Initializing Peer Manager")
 
 	pm.peers = NewPeerStore()
-	pm.endpoints = NewEndpointMap(pm.net)
+	pm.endpoints = NewEndpoints()
 	//pm.tempPeers = NewPeerList()
 	pm.dialer = NewDialer(c.BindIP, c.RedialInterval, c.DialTimeout, c.RedialAttempts)
 	pm.lastPersist = time.Now()
@@ -68,16 +68,21 @@ func newPeerManager(network *Network) *peerManager {
 
 	// TODO parse config special peers
 	pm.parseSpecial(pm.net.conf.Special)
-	pm.load()
-
 	return pm
 }
 
+// ban bans the peer indicated by the hash as well as any other peer from that ip
+// address
 func (pm *peerManager) ban(hash string, duration time.Duration) {
 	peer := pm.peers.Get(hash)
 	if peer != nil {
 		pm.bans[peer.IP.Address] = time.Now().Add(duration)
-		peer.Stop(true)
+		pm.endpoints.Deregister(peer.IP)
+		for _, p := range pm.peers.Slice() {
+			if p.IP.Address == peer.IP.Address {
+				peer.Stop(true)
+			}
+		}
 	}
 }
 
@@ -147,7 +152,7 @@ func (pm *peerManager) Stop() {
 }
 
 func (pm *peerManager) bootStrapPeers() {
-	// TODO load peers.json
+	pm.load()
 	pm.lastSeedRefresh = time.Now()
 	pm.discoverSeeds()
 }
@@ -189,8 +194,7 @@ func (pm *peerManager) manageData() {
 			case TypeAlert:
 
 			case TypeMessage: // Application message, send it on.
-				fmt.Println("test")
-				ApplicationMessagesReceived++
+				//				ApplicationMessagesReceived++
 				pm.net.FromNetwork.Send(parcel)
 			case TypePeerRequest:
 				go pm.sharePeers(peer)
@@ -294,7 +298,7 @@ func (pm *peerManager) sharePeers(peer *Peer) {
 
 func (pm *peerManager) filteredSharing(peer *Peer) []PeerShare {
 	var filtered []PeerShare
-	for _, ip := range pm.endpoints.IPs {
+	for _, ip := range pm.endpoints.IPs() {
 		if ip != peer.IP {
 			filtered = append(filtered, PeerShare{
 				Address:      ip.Address,
@@ -305,6 +309,9 @@ func (pm *peerManager) filteredSharing(peer *Peer) []PeerShare {
 	}
 	return filtered
 }
+
+// managePeers is responsible for everything that involves proactive management
+// not based on reactions. runs once a second
 func (pm *peerManager) managePeers() {
 	pm.logger.Debug("Start managePeers()")
 	defer pm.logger.Debug("Stop managePeers()")
@@ -365,32 +372,44 @@ func (pm *peerManager) managePeersDialOutgoing() {
 	count := uint(pm.peers.Total())
 	if want := int(pm.net.conf.Outgoing - count); want > 0 {
 		var filtered []IP
-		for _, p := range pm.endpoints.IPs {
-			if pm.allowOutgoing(p) {
-				filtered = append(filtered, p)
+		var special []IP
+		for _, ip := range pm.endpoints.IPs() {
+			if pm.special[ip.Address] {
+				if !pm.peers.IsConnected(ip.Address) {
+					special = append(special, ip)
+				}
+			} else if pm.dialer.CanDial(ip) && pm.endpoints.ConnectionLock(ip) < pm.net.conf.DisconnectLock {
+				filtered = append(filtered, ip)
 			}
 		}
 
+		pm.logger.Debugf("special: %d, filtered: %d", len(special), len(filtered))
+
+		if len(special) > 0 {
+			for _, ip := range special {
+				go pm.Dial(ip)
+			}
+		}
 		if len(filtered) > 0 {
-			peers := pm.getOutgoingSelection(filtered, want)
-			ogl := pm.net.conf.PeerIPLimitOutgoing
-			for _, p := range peers {
-				if ogl > 0 && uint(pm.peers.Count(p.Address)) >= ogl {
+			ips := pm.getOutgoingSelection(filtered, want)
+			limit := pm.net.conf.PeerIPLimitOutgoing
+			for _, ip := range ips {
+				if limit > 0 && uint(pm.peers.Count(ip.Address)) >= limit {
 					continue
 				}
-				go pm.Dial(p)
+				go pm.Dial(ip)
 			}
 		}
 	}
 }
 
-func (pm *peerManager) allowOutgoing(ip IP) bool {
-	return pm.special[ip.Address] || pm.dialer.CanDial(ip) && !pm.endpoints.ConnectionLocked(ip)
-}
-
 func (pm *peerManager) allowIncoming(addr string) error {
 	if pm.special[addr] { // always allow special
 		return nil
+	}
+
+	if time.Now().Before(pm.bans[addr]) {
+		return fmt.Errorf("Address %s is banned", addr)
 	}
 
 	if pm.net.conf.RefuseIncoming {
@@ -582,12 +601,21 @@ func (pm *peerManager) persist() {
 	writer := bufio.NewWriter(file)
 	encoder := json.NewEncoder(writer)
 
-	p := Persist{}
+	var ips []IP
 	// persist endpoints, bans
-	p.IPs = pm.endpoints.IPs
-	for addr, t := range pm.bans {
-		p.Bans = append(p.Bans, PersistBan{addr, t})
+	for _, ip := range pm.endpoints.IPs() {
+		if last := pm.endpoints.LastSeen(ip); last.IsZero() || time.Since(last) > pm.net.conf.PeerAgeLimit {
+			continue
+		}
+		ips = append(ips, ip)
 	}
+
+	var bans []PersistBan
+	for addr, t := range pm.bans {
+		bans = append(bans, PersistBan{addr, t})
+	}
+
+	p := Persist{IPs: ips, Bans: bans}
 
 	err = encoder.Encode(p)
 	if err != nil {

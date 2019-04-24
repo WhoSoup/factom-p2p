@@ -16,13 +16,10 @@ import (
 
 var peerLogger = packageLogger.WithField("subpack", "peer")
 
-// Peer is a representation of another node in the network
-//
-// Peers exist in two forms: Temporary peers and regular peers
+// Peer is an active connection to an endpoint in the network
 type Peer struct {
-	net  *Network
-	conn net.Conn
-	//	endpoint  *Endpoint
+	net       *Network
+	conn      net.Conn
 	handshake Handshake
 
 	// current state
@@ -49,6 +46,7 @@ type Peer struct {
 	NodeID uint64 // a nonce to distinguish multiple nodes behind one IP address
 	Hash   string // This is more of a connection ID than hash right now.
 
+	// Metrics
 	metricsMtx      sync.RWMutex
 	Connected       time.Time
 	QualityScore    int32     // 0 is neutral quality, negative is a bad peer.

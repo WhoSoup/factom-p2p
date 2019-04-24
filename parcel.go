@@ -11,7 +11,10 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-var parcelLogger = packageLogger.WithField("subpack", "connection")
+var (
+	crcTable     = crc32.MakeTable(crc32.Koopman)
+	parcelLogger = packageLogger.WithField("subpack", "connection")
+)
 
 // Parcel is the atomic level of communication for the p2p network.  It contains within it the necessary info for
 // the networking protocol, plus the message that the Application is sending.
@@ -102,6 +105,6 @@ func NewParcel(command ParcelCommandType, payload []byte) *Parcel {
 
 func (p *Parcel) SetPayload(payload []byte) {
 	p.Payload = payload
-	p.Header.Crc32 = crc32.Checksum(p.Payload, CRCKoopmanTable)
+	p.Header.Crc32 = crc32.Checksum(p.Payload, crcTable)
 	p.Header.Length = uint32(len(p.Payload))
 }
