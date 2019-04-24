@@ -1,75 +1,117 @@
 package p2p
 
 import (
+	"encoding/json"
 	"sync"
 	"time"
 )
 
 type Endpoints struct {
 	mtx  sync.RWMutex
-	ends map[IP]endpoint // ip -> bool
+	Ends map[string]Endpoint `json:"endpoints"`
 	ips  []IP
+
+	Bans map[string]time.Time `json:"bans"`
 }
 
-type endpoint struct {
-	lock time.Time
-	seen time.Time
+type Endpoint struct {
+	ip     IP
+	lock   time.Time
+	Seen   time.Time            `json:"seen"`
+	Source map[string]time.Time `json:"source"`
 }
 
 func NewEndpoints() *Endpoints {
 	epm := new(Endpoints)
-	epm.ends = make(map[IP]endpoint)
+	epm.Ends = make(map[string]Endpoint)
+	epm.Bans = make(map[string]time.Time)
 	return epm
 }
 
-func (epm *Endpoints) Register(ip IP, incoming bool) {
+func (epm *Endpoints) Register(ip IP, incoming bool, source string) {
 	epm.mtx.Lock()
 	defer epm.mtx.Unlock()
-	if ep, ok := epm.ends[ip]; ok {
-		ep.seen = time.Now()
-		epm.ends[ip] = ep
+	if ep, ok := epm.Ends[ip.String()]; ok {
+		ep.Seen = time.Now()
+		ep.Source[source] = time.Now()
+		epm.Ends[ip.String()] = ep
 	} else {
-		epm.ends[ip] = endpoint{seen: time.Now()}
+		ep := Endpoint{ip: ip, Seen: time.Now()}
+		ep.Source = make(map[string]time.Time)
+		ep.Source[source] = time.Now()
+		epm.Ends[ip.String()] = ep
 		epm.ips = nil
 	}
 }
+
+func (epm *Endpoints) Refresh(ip IP) {
+	epm.mtx.Lock()
+	defer epm.mtx.Unlock()
+	if ep, ok := epm.Ends[ip.String()]; ok {
+		ep.Seen = time.Now()
+		epm.Ends[ip.String()] = ep
+	}
+}
+
 func (epm *Endpoints) Deregister(ip IP) {
 	epm.mtx.Lock()
 	defer epm.mtx.Unlock()
-	delete(epm.ends, ip)
+	delete(epm.Ends, ip.String())
 	epm.ips = nil
+}
+
+func (epm *Endpoints) Ban(addr string, t time.Time) {
+	epm.mtx.Lock()
+	defer epm.mtx.Unlock()
+	for ip := range epm.Ends {
+		if ip == addr {
+			delete(epm.Ends, ip)
+		}
+	}
+	epm.Bans[addr] = t
+	epm.ips = nil
+}
+
+func (epm *Endpoints) Banned(addr string) bool {
+	return time.Now().Before(epm.Bans[addr])
 }
 
 func (epm *Endpoints) LastSeen(ip IP) time.Time {
 	epm.mtx.RLock()
 	defer epm.mtx.RUnlock()
-	return epm.ends[ip].seen
+	return epm.Ends[ip.String()].Seen
 }
 
 func (epm *Endpoints) SetConnectionLock(ip IP) {
 	epm.mtx.Lock()
 	defer epm.mtx.Unlock()
-	if ep, ok := epm.ends[ip]; ok {
+	if ep, ok := epm.Ends[ip.String()]; ok {
 		ep.lock = time.Now()
-		epm.ends[ip] = ep
+		epm.Ends[ip.String()] = ep
 	}
 }
 func (epm *Endpoints) ConnectionLock(ip IP) time.Duration {
 	epm.mtx.RLock()
 	defer epm.mtx.RUnlock()
-	return time.Since(epm.ends[ip].lock)
+	return time.Since(epm.Ends[ip.String()].lock)
 }
 
 func (epm *Endpoints) IPs() []IP {
 	epm.mtx.RLock()
 	defer epm.mtx.RUnlock()
 
-	if epm.ips != nil || len(epm.ends) == 0 {
+	if epm.ips != nil || len(epm.Ends) == 0 {
 		return epm.ips
 	}
 
-	for ip := range epm.ends {
-		epm.ips = append(epm.ips, ip)
+	for _, ep := range epm.Ends {
+		epm.ips = append(epm.ips, ep.ip)
 	}
 	return epm.ips
+}
+
+func (epm *Endpoints) Persist() ([]byte, error) {
+	epm.mtx.RLock()
+	defer epm.mtx.RUnlock()
+	return json.Marshal(epm)
 }

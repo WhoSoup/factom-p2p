@@ -29,6 +29,7 @@ type Peer struct {
 	stop    chan bool
 
 	lastPeerRequest time.Time
+	peerShareAsk    bool
 	lastPeerSend    time.Time
 	send            ParcelChannel
 	error           chan error
