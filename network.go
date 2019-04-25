@@ -168,13 +168,13 @@ func (n *Network) listenLoop() {
 	n.listener = l
 
 	// start permanent loop
-	// terminates on program exit
+	// terminates on program exit or when listener is closed
 	for {
 		conn, err := n.listener.Accept()
 		if err != nil {
 			if ne, ok := err.(*net.OpError); ok && !ne.Timeout() {
 				if !ne.Temporary() {
-					tmpLogger.WithError(err).Warn("controller.acceptLoop() error accepting")
+					tmpLogger.WithError(err).Warn("controller.acceptLoop() error accepting, shutting down")
 					return
 				}
 			}
