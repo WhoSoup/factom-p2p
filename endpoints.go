@@ -30,17 +30,15 @@ func NewEndpoints() *Endpoints {
 func (epm *Endpoints) Register(ip IP, incoming bool, source string) {
 	epm.mtx.Lock()
 	defer epm.mtx.Unlock()
-	if ep, ok := epm.Ends[ip.String()]; ok {
-		ep.Seen = time.Now()
-		ep.Source[source] = time.Now()
-		epm.Ends[ip.String()] = ep
-	} else {
-		ep := Endpoint{IP: ip, Seen: time.Now()}
+	ep := epm.Ends[ip.String()]
+	if ep.Source == nil {
 		ep.Source = make(map[string]time.Time)
-		ep.Source[source] = time.Now()
-		epm.Ends[ip.String()] = ep
-		epm.ips = nil
 	}
+	ep.Seen = time.Now()
+	ep.Source[source] = time.Now()
+	ep.IP = ip
+	epm.Ends[ip.String()] = ep
+	epm.ips = nil
 }
 
 func (epm *Endpoints) Refresh(ip IP) {
@@ -109,8 +107,26 @@ func (epm *Endpoints) IPs() []IP {
 	return epm.ips
 }
 
-func (epm *Endpoints) Persist() ([]byte, error) {
+func (epm *Endpoints) cleanup(cutoff time.Duration) uint {
+	removed := uint(0)
+	for addr, ep := range epm.Ends {
+		if time.Since(ep.Seen) > cutoff {
+			delete(epm.Ends, addr)
+			removed++
+		}
+	}
+	for addr, ban := range epm.Bans {
+		if ban.Before(time.Now()) {
+			delete(epm.Bans, addr)
+		}
+	}
+	epm.ips = nil
+	return removed
+}
+
+func (epm *Endpoints) Persist(cutoff time.Duration) ([]byte, error) {
 	epm.mtx.RLock()
 	defer epm.mtx.RUnlock()
+	epm.cleanup(cutoff)
 	return json.Marshal(epm)
 }

@@ -380,6 +380,7 @@ func (pm *peerManager) managePeersDialOutgoing() {
 		}
 
 		pm.logger.Debugf("special: %d, filtered: %d", len(special), len(filtered))
+		//fmt.Println(filtered)
 
 		if len(special) > 0 {
 			for _, ip := range special {
@@ -448,7 +449,7 @@ func (pm *peerManager) HandleIncoming(con net.Conn) {
 	peer := NewPeer(pm.net, pm.peerDisconnect)
 	if peer.StartWithHandshake(ip, con, true) {
 		old := pm.peers.Replace(peer)
-
+		fmt.Println(peer.IP)
 		pm.endpoints.Register(peer.IP, false, "Incoming")
 		if old != nil {
 			old.Stop(false)
@@ -596,7 +597,7 @@ func (pm *peerManager) persist() {
 	defer file.Close()
 	writer := bufio.NewWriter(file)
 
-	persist, err := pm.endpoints.Persist()
+	persist, err := pm.endpoints.Persist(pm.net.conf.PeerAgeLimit)
 	if err != nil {
 		pm.logger.WithError(err).Error("persist(): Unable to encode endpoints")
 		return

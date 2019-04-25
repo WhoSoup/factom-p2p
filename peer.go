@@ -164,7 +164,8 @@ func (p *Peer) String() string {
 }
 
 func (p *Peer) Send(parcel *Parcel) {
-	// send this parcel from this peer
+	parcel.Header.Network = p.net.conf.Network
+	parcel.Header.Version = p.net.conf.ProtocolVersion
 	p.send.Send(parcel)
 }
 
@@ -194,6 +195,8 @@ func (p *Peer) readLoop() {
 		p.ParcelsReceived++
 		p.BytesReceived += uint64(len(message.Payload))
 		p.metricsMtx.Unlock()
+
+		message.Header.TargetPeer = p.Hash
 
 		p.logger.Debugf("Received incoming parcel: %v", message.Header.Type)
 		select {
