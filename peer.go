@@ -1,7 +1,3 @@
-// Copyright 2017 Factom Foundation
-// Use of this source code is governed by the MIT
-// license that can be found in the LICENSE file.
-
 package p2p
 
 import (
@@ -35,8 +31,8 @@ type Peer struct {
 	error           chan error
 	disconnect      chan *Peer
 
-	encoder *gob.Encoder // Wire format is gobs in this version, may switch to binary
-	decoder *gob.Decoder // Wire format is gobs in this version, may switch to binary
+	encoder *gob.Encoder
+	decoder *gob.Decoder
 
 	connectionAttempt      time.Time
 	connectionAttemptCount uint

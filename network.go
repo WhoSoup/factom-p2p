@@ -14,7 +14,6 @@ type Network struct {
 	FromNetwork ParcelChannel
 
 	conf        *Configuration
-	controller  *controller
 	peerManager *peerManager
 
 	stopRoute   chan bool
@@ -69,7 +68,6 @@ func NewNetwork(conf Configuration) *Network {
 
 	n.conf = &myconf
 
-	n.controller = newController(n)
 	n.peerManager = newPeerManager(n)
 	n.rng = rand.New(rand.NewSource(time.Now().UnixNano()))
 
@@ -100,7 +98,6 @@ func (n *Network) Start() {
 func (n *Network) Stop() {
 	n.logger.Info("Stopping the P2P Network")
 	n.peerManager.Stop()
-	n.controller.Stop()
 	n.stopRoute <- true
 	if n.listener != nil {
 		n.listener.Close()
