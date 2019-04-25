@@ -7,18 +7,17 @@ import (
 )
 
 type Endpoints struct {
-	mtx  sync.RWMutex
-	Ends map[string]Endpoint `json:"endpoints"`
-	ips  []IP
-
+	Ends map[string]Endpoint  `json:"endpoints"`
 	Bans map[string]time.Time `json:"bans"`
+	mtx  sync.RWMutex
+	ips  []IP
 }
 
 type Endpoint struct {
-	ip     IP
-	lock   time.Time
+	IP     IP                   `json:"ip"`
 	Seen   time.Time            `json:"seen"`
 	Source map[string]time.Time `json:"source"`
+	lock   time.Time
 }
 
 func NewEndpoints() *Endpoints {
@@ -36,7 +35,7 @@ func (epm *Endpoints) Register(ip IP, incoming bool, source string) {
 		ep.Source[source] = time.Now()
 		epm.Ends[ip.String()] = ep
 	} else {
-		ep := Endpoint{ip: ip, Seen: time.Now()}
+		ep := Endpoint{IP: ip, Seen: time.Now()}
 		ep.Source = make(map[string]time.Time)
 		ep.Source[source] = time.Now()
 		epm.Ends[ip.String()] = ep
@@ -105,7 +104,7 @@ func (epm *Endpoints) IPs() []IP {
 	}
 
 	for _, ep := range epm.Ends {
-		epm.ips = append(epm.ips, ep.ip)
+		epm.ips = append(epm.ips, ep.IP)
 	}
 	return epm.ips
 }

@@ -12,21 +12,18 @@ import (
 type Network struct {
 	ToNetwork   ParcelChannel
 	FromNetwork ParcelChannel
+
 	conf        *Configuration
 	controller  *controller
 	peerManager *peerManager
 
-	stopRoute chan bool
-	listener  *LimitedListener
-
-	location uint32
-
-	peerParcel chan PeerParcel
-
-	rng *rand.Rand
-
+	stopRoute   chan bool
+	peerParcel  chan PeerParcel
+	listener    *LimitedListener
+	location    uint32
 	metricsHook func(pm map[string]PeerMetrics)
 
+	rng    *rand.Rand
 	logger *log.Entry
 }
 

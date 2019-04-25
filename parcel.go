@@ -81,25 +81,17 @@ func (p *Parcel) MessageType() string {
 	return fmt.Sprintf("[%s]", CommandStrings[p.Header.Type])
 }
 
-func NewParcel(command ParcelCommandType, payload []byte) *Parcel {
-	header := new(ParcelHeader)
-	header.Network = 0 // auto-filled upon send
-	header.Version = 0 // ditto
-	header.Type = command
-	header.TargetPeer = "" // initially no target
-	//header.PeerPort = ""   // store our listening port
-	header.AppHash = "NetworkMessage"
-	header.AppType = "Network"
+func (p *Parcel) String() string {
+	return fmt.Sprintf("[%s] %dB v%d", CommandStrings[p.Header.Type], p.Header.Length, p.Header.Version)
+}
 
+func NewParcel(command ParcelCommandType, payload []byte) *Parcel {
 	parcel := new(Parcel)
-	parcel.Header = ParcelHeader{
-		Network: 0,
-		Version: 0,
+	parcel.Header = ParcelHeader{ // the header information will get filled more when sending
 		Type:    command,
 		AppHash: "NetworkMessage",
 		AppType: "Network"}
-
-	parcel.SetPayload(payload) // Updates the header with info about payload.
+	parcel.SetPayload(payload)
 	return parcel
 }
 
@@ -107,4 +99,30 @@ func (p *Parcel) SetPayload(payload []byte) {
 	p.Payload = payload
 	p.Header.Crc32 = crc32.Checksum(p.Payload, crcTable)
 	p.Header.Length = uint32(len(p.Payload))
+}
+
+func (p *Parcel) Valid() error {
+	if p == nil {
+		return fmt.Errorf("nil parcel")
+	}
+
+	head := p.Header
+	if head.Version == 0 {
+		return fmt.Errorf("invalid version")
+	}
+
+	if head.Type >= ParcelCommandType(len(CommandStrings)) {
+		return fmt.Errorf("unknown parcel type %d", head.Type)
+	}
+
+	if head.Length != uint32(len(p.Payload)) {
+		return fmt.Errorf("length in header does not match payload")
+	}
+
+	csum := crc32.Checksum(p.Payload, crcTable)
+	if csum != head.Crc32 {
+		return fmt.Errorf("invalid checksum")
+	}
+
+	return nil
 }

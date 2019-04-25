@@ -6,12 +6,13 @@ import (
 	"time"
 )
 
+// Dialer is a construct to throttle dialing and limit by attempts
 type Dialer struct {
 	bindip      string
 	interval    time.Duration
 	timeout     time.Duration
 	maxattempts uint
-	attempts    map[string]attempt
+	attempts    map[IP]attempt
 }
 
 type attempt struct {
@@ -19,18 +20,20 @@ type attempt struct {
 	c uint
 }
 
+// NewDialer creates a new Dialer
 func NewDialer(ip string, interval, timeout time.Duration, maxattempts uint) *Dialer {
 	d := new(Dialer)
 	d.bindip = ip
 	d.interval = interval
 	d.timeout = timeout
 	d.maxattempts = maxattempts
-	d.attempts = make(map[string]attempt)
+	d.attempts = make(map[IP]attempt)
 	return d
 }
 
+// CanDial checks if the given ip can be dialed yet
 func (d *Dialer) CanDial(ip IP) bool {
-	a, ok := d.attempts[ip.String()]
+	a, ok := d.attempts[ip]
 	if !ok {
 		return true
 	}
@@ -46,6 +49,7 @@ func (d *Dialer) CanDial(ip IP) bool {
 	return true
 }
 
+// Dial an ip. Returns the active TCP connection or error if it failed to connect
 func (d *Dialer) Dial(ip IP) (net.Conn, error) {
 	local, err := net.ResolveTCPAddr("tcp", fmt.Sprintf("%s:0", d.bindip))
 	if err != nil {
@@ -56,14 +60,14 @@ func (d *Dialer) Dial(ip IP) (net.Conn, error) {
 		Timeout:   d.timeout,
 	}
 
-	a, ok := d.attempts[ip.String()]
+	a, ok := d.attempts[ip]
 	if ok {
 		a.c++
 		a.t = time.Now()
 	} else {
 		a = attempt{time.Now(), 1}
 	}
-	d.attempts[ip.String()] = a
+	d.attempts[ip] = a
 
 	con, err := dialer.Dial("tcp", ip.String())
 	if err != nil {
@@ -72,10 +76,11 @@ func (d *Dialer) Dial(ip IP) (net.Conn, error) {
 	return con, nil
 }
 
+// Reset an ip's attempt count and interval
 func (d *Dialer) Reset(ip IP) {
-	a, ok := d.attempts[ip.String()]
+	a, ok := d.attempts[ip]
 	if ok {
 		a.c = 0
-		d.attempts[ip.String()] = a
+		d.attempts[ip] = a
 	}
 }

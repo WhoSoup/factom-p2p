@@ -181,17 +181,21 @@ func (pm *peerManager) manageData() {
 			parcel := data.Parcel
 			peer := data.Peer
 
-			pm.logger.Debugf("Received parcel type %s from %s", parcel.MessageType(), peer.Hash)
+			if err := parcel.Valid(); err != nil {
+				pm.logger.WithError(err).Warnf("received invalid parcel, disconnecting peer %s", peer)
+				peer.Stop(true)
+				continue
+			}
+			pm.logger.Debugf("Received parcel %s from %s", parcel, peer)
 
 			switch parcel.Header.Type {
-			case TypeMessagePart: // deprecated
-			case TypeHeartbeat: // deprecated
 			case TypePing:
-			case TypePong:
-			case TypeAlert:
-
-			case TypeMessage: // Application message, send it on.
-				//				ApplicationMessagesReceived++
+				go func() {
+					parcel := NewParcel(TypePong, []byte("Pong"))
+					peer.Send(parcel)
+				}()
+			case TypeMessage:
+				// TODO ApplicationMessagesReceived++
 				pm.net.FromNetwork.Send(parcel)
 			case TypePeerRequest:
 				if time.Since(peer.lastPeerSend) >= pm.net.conf.PeerRequestInterval {
@@ -208,7 +212,7 @@ func (pm *peerManager) manageData() {
 					pm.logger.Warnf("Peer %s sent us an umprompted peer share", peer)
 				}
 			default:
-				pm.logger.Warnf("Peer %s sent unknown parcel.Header.Type?: %+v ", peer, parcel)
+				//not handled
 			}
 		}
 	}
@@ -350,13 +354,11 @@ func (pm *peerManager) managePeers() {
 		}
 
 		// manages peers every second
-
 		select {
 		case <-pm.stopPeers:
 			return
 		case <-time.After(time.Second):
 		}
-
 	}
 }
 
