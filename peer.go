@@ -136,7 +136,7 @@ func (p *Peer) StartWithHandshakeV10(ip IP, con net.Conn, incoming bool) bool {
 	return true
 }
 
-func (p *Peer) StartWithHandshake(ip IP, con net.Conn, incoming bool) bool {
+func (p *Peer) StartWithHandshake(ip IP, con net.Conn, incoming bool) (bool, error) {
 	tmplogger := p.logger.WithField("addr", ip.Address)
 	timeout := time.Now().Add(p.net.conf.HandshakeTimeout)
 	request := NewParcel(TypePeerRequest, []byte("Peer Request"))
@@ -153,20 +153,20 @@ func (p *Peer) StartWithHandshake(ip IP, con net.Conn, incoming bool) bool {
 	if err != nil {
 		tmplogger.WithError(err).Debugf("Failed to send handshake to incoming connection")
 		con.Close()
-		return false
+		return false, err
 	}
 
 	err = p.decoder.Decode(&request)
 	if err != nil {
 		tmplogger.WithError(err).Debugf("Failed to read handshake from incoming connection")
 		con.Close()
-		return false
+		return false, err
 	}
 
-	failfunc := func(err error) bool {
+	failfunc := func(err error) (bool, error) {
 		tmplogger.WithError(err).Debug("Handshake failed")
 		con.Close()
-		return false
+		return false, err
 	}
 
 	h := request.Header
@@ -203,17 +203,17 @@ func (p *Peer) StartWithHandshake(ip IP, con net.Conn, incoming bool) bool {
 	p.Connected = time.Now()
 
 	p.lastPeerRequest = time.Now()
-	p.lastPeerSend = time.Now()
+	p.lastPeerSend = time.Time{}
 	p.peerShareAsk = true
 	if !p.deliver(request) {
 		tmplogger.Error("failed to deliver handshake to peermanager")
-		return false
+		return false, fmt.Errorf("failed to deliver handshake to peermanager")
 	}
 
 	go p.sendLoop()
 	go p.readLoop()
 
-	return true
+	return true, nil
 }
 
 // Stop disconnects the peer from its active connection

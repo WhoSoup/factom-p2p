@@ -330,6 +330,7 @@ func (pm *peerManager) managePeers() {
 	defer pm.logger.Debug("Stop managePeers()")
 
 	for {
+		fmt.Println("%%%%", pm.peers.Slice())
 		if time.Since(pm.lastPersist) > pm.net.conf.PersistInterval {
 			pm.lastPersist = time.Now()
 			pm.persist()
@@ -365,6 +366,7 @@ func (pm *peerManager) managePeers() {
 		}
 
 		if pm.net.metricsHook != nil {
+			fmt.Println("Metrics", metrics)
 			go pm.net.metricsHook(metrics)
 		}
 
@@ -408,6 +410,10 @@ func (pm *peerManager) managePeersDialOutgoing() {
 			ips := pm.getOutgoingSelection(filtered, want)
 			limit := pm.net.conf.PeerIPLimitOutgoing
 			for _, ip := range ips {
+
+				if pm.endpoints.Banned(ip.Address) {
+					continue
+				}
 				if limit > 0 && uint(pm.peers.Count(ip.Address)) >= limit {
 					continue
 				}
@@ -465,17 +471,21 @@ func (pm *peerManager) HandleIncoming(con net.Conn) {
 	}
 
 	peer := NewPeer(pm.net, pm.peerDisconnect)
-	if peer.StartWithHandshake(ip, con, true) {
+	if ok, _ := peer.StartWithHandshake(ip, con, true); ok {
 		old := pm.peers.Replace(peer)
 		pm.endpoints.Register(peer.IP, "Incoming")
 		if old != nil {
 			old.Stop(false)
 		}
 		pm.dialer.Reset(peer.IP)
+	} else {
+		pm.logger.Debugf("Handshake failed for peer %s, stopping", peer.Hash)
+		peer.Stop(false)
 	}
 }
 
 func (pm *peerManager) Dial(ip IP) {
+
 	if ip.Port == "" {
 		ip.Port = pm.net.conf.ListenPort // TODO add a "default port"?
 		pm.logger.Debugf("Dialing to %s (with no previously known port)", ip)
@@ -490,13 +500,20 @@ func (pm *peerManager) Dial(ip IP) {
 	}
 
 	peer := NewPeer(pm.net, pm.peerDisconnect)
-	if peer.StartWithHandshake(ip, con, false) {
+	if ok, err := peer.StartWithHandshake(ip, con, false); ok {
+		pm.logger.Debug("Handshake success for peer %s", peer.Hash)
 		if old := pm.peers.Replace(peer); old != nil {
 			old.Stop(false)
 		}
 
 		pm.endpoints.Refresh(peer.IP)
 		pm.dialer.Reset(peer.IP)
+	} else if err == fmt.Errorf("connected to ourselves") {
+		pm.logger.Debugf("Banning ourselves for 1 year")
+		pm.endpoints.Ban(ip.Address, time.Now().AddDate(50, 0, 0)) // ban for 50 years
+		peer.Stop(false)
+	} else {
+		peer.Stop(false)
 	}
 }
 
