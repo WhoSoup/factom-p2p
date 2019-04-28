@@ -202,6 +202,9 @@ func (p *Peer) StartWithHandshake(ip IP, con net.Conn, incoming bool) bool {
 	p.conn = con
 	p.Connected = time.Now()
 
+	p.lastPeerRequest = time.Now()
+	p.lastPeerSend = time.Now()
+	p.peerShareAsk = true
 	if !p.deliver(request) {
 		tmplogger.Error("failed to deliver handshake to peermanager")
 		return false
@@ -327,6 +330,7 @@ func (p *Peer) GetMetrics() PeerMetrics {
 	p.metricsMtx.RLock()
 	defer p.metricsMtx.RUnlock()
 	return PeerMetrics{
+		Hash:            p.Hash,
 		Connected:       p.Connected,
 		LastReceive:     p.LastReceive,
 		LastSend:        p.LastSend,

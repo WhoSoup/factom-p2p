@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	log "github.com/sirupsen/logrus"
@@ -25,10 +26,11 @@ type peerManager struct {
 	stopData   chan bool
 	stopOnline chan bool
 
-	peers     *PeerStore
-	endpoints *Endpoints
-	dialer    *Dialer
-	special   map[string]bool
+	peers      *PeerStore
+	endpoints  *Endpoints
+	dialer     *Dialer
+	special    map[string]bool
+	specialMtx sync.RWMutex
 	//bans      map[string]time.Time
 
 	lastPeerDial    time.Time
@@ -105,6 +107,10 @@ func (pm *peerManager) disconnect(hash string) {
 }
 
 func (pm *peerManager) parseSpecial(raw string) {
+	pm.specialMtx.Lock()
+	defer pm.specialMtx.Unlock()
+	pm.special = make(map[string]bool)
+
 	if len(raw) == 0 {
 		return
 	}
@@ -193,6 +199,9 @@ func (pm *peerManager) manageData() {
 				}()
 			case TypeMessage:
 				// TODO ApplicationMessagesReceived++
+				pm.net.FromNetwork.Send(parcel)
+			case TypeMessagePart:
+				parcel.Header.Type = TypeMessage // TODO v9 hack
 				pm.net.FromNetwork.Send(parcel)
 			case TypePeerRequest:
 				if time.Since(peer.lastPeerSend) >= pm.net.conf.PeerRequestInterval {
@@ -293,12 +302,21 @@ func (pm *peerManager) sharePeers(peer *Peer) {
 
 func (pm *peerManager) filteredSharing(peer *Peer) []PeerShare {
 	var filtered []PeerShare
+	src := make(map[string]time.Time)
 	for _, ip := range pm.endpoints.IPs() {
 		if ip != peer.IP {
 			filtered = append(filtered, PeerShare{
 				Address:      ip.Address,
 				Port:         ip.Port,
-				QualityScore: 1,
+				QualityScore: peer.QualityScore,
+				NodeID:       peer.NodeID,
+				Hash:         peer.Hash,
+				Location:     peer.IP.Location,
+				Network:      pm.net.conf.Network,
+				Type:         0,
+				Connections:  1,
+				LastContact:  peer.LastReceive,
+				Source:       src,
 			})
 		}
 	}
@@ -366,6 +384,7 @@ func (pm *peerManager) managePeersDialOutgoing() {
 	if want := int(pm.net.conf.Outgoing - count); want > 0 {
 		var filtered []IP
 		var special []IP
+		pm.specialMtx.RLock()
 		for _, ip := range pm.endpoints.IPs() {
 			if pm.special[ip.Address] {
 				if !pm.peers.IsConnected(ip.Address) {
@@ -375,6 +394,7 @@ func (pm *peerManager) managePeersDialOutgoing() {
 				filtered = append(filtered, ip)
 			}
 		}
+		pm.specialMtx.RUnlock()
 
 		pm.logger.Debugf("special: %d, filtered: %d", len(special), len(filtered))
 		//fmt.Println(filtered)
@@ -398,6 +418,8 @@ func (pm *peerManager) managePeersDialOutgoing() {
 }
 
 func (pm *peerManager) allowIncoming(addr string) error {
+	pm.specialMtx.RLock()
+	defer pm.specialMtx.RUnlock()
 	if pm.special[addr] { // always allow special
 		return nil
 	}
@@ -631,6 +653,11 @@ func (pm *peerManager) loadEndpoints() *Endpoints {
 	if err != nil {
 		pm.logger.WithError(err).Errorf("loadEndpoints(): error decoding")
 		return nil
+	}
+
+	// decoding from a blank or invalid file
+	if eps.Ends == nil || eps.Bans == nil {
+		return NewEndpoints()
 	}
 
 	return &eps

@@ -124,6 +124,15 @@ func (n *Network) Disconnect(hash string) {
 	go n.peerManager.disconnect(hash)
 }
 
+func (n *Network) ParseSpecial(raw string) {
+	n.logger.Debugf("Received new list of special peers from application: %s", raw)
+	go n.peerManager.parseSpecial(raw)
+}
+
+func (n *Network) Total() int {
+	return n.peerManager.peers.Total()
+}
+
 // routeLoop Takes messages from the network's ToNetwork channel and routes it
 // to the peerManager via the appropriate function
 func (n *Network) routeLoop() {

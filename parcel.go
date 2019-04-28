@@ -29,8 +29,8 @@ type ParcelHeader struct {
 	Length      uint32            // 4 bytes - length of the payload (that follows this header) in bytes
 	TargetPeer  string            // ? bytes - "" or nil for broadcast, otherwise the destination peer's hash.
 	Crc32       uint32            // 4 bytes - data integrity hash (of the payload itself.)
-	_           uint16            // 2 bytes - in case of multipart parcels, indicates which part this corresponds to, otherwise should be 0
-	_           uint16            // 2 bytes - in case of multipart parcels, indicates the total number of parts that the receiver should expect
+	Part        uint16            // 2 bytes - in case of multipart parcels, indicates which part this corresponds to, otherwise should be 0
+	Parts       uint16            // 2 bytes - in case of multipart parcels, indicates the total number of parts that the receiver should expect
 	NodeID      uint64
 	PeerAddress string // address of the peer set by connection to know who sent message (for tracking source of other peers)
 	PeerPort    string // port of the peer , or we are listening on
@@ -84,6 +84,10 @@ func (p *Parcel) MessageType() string {
 
 func (p *Parcel) String() string {
 	return fmt.Sprintf("[%s] %dB v%d", CommandStrings[p.Header.Type], p.Header.Length, p.Header.Version)
+}
+
+func NewMessage(payload []byte) *Parcel {
+	return NewParcel(TypeMessage, payload)
 }
 
 func NewParcel(command ParcelCommandType, payload []byte) *Parcel {
