@@ -3,6 +3,7 @@ package p2p
 import (
 	"fmt"
 	"net"
+	"sync"
 	"time"
 )
 
@@ -13,6 +14,7 @@ type Dialer struct {
 	timeout     time.Duration
 	maxattempts uint
 	attempts    map[IP]attempt
+	attemptsMtx sync.RWMutex
 }
 
 type attempt struct {
@@ -33,6 +35,8 @@ func NewDialer(ip string, interval, timeout time.Duration, maxattempts uint) *Di
 
 // CanDial checks if the given ip can be dialed yet
 func (d *Dialer) CanDial(ip IP) bool {
+	d.attemptsMtx.RLock()
+	defer d.attemptsMtx.RUnlock()
 	a, ok := d.attempts[ip]
 	if !ok {
 		return true
@@ -60,6 +64,7 @@ func (d *Dialer) Dial(ip IP) (net.Conn, error) {
 		Timeout:   d.timeout,
 	}
 
+	d.attemptsMtx.Lock()
 	a, ok := d.attempts[ip]
 	if ok {
 		a.c++
@@ -68,6 +73,7 @@ func (d *Dialer) Dial(ip IP) (net.Conn, error) {
 		a = attempt{time.Now(), 1}
 	}
 	d.attempts[ip] = a
+	d.attemptsMtx.Unlock()
 
 	con, err := dialer.Dial("tcp", ip.String())
 	if err != nil {
@@ -78,6 +84,8 @@ func (d *Dialer) Dial(ip IP) (net.Conn, error) {
 
 // Reset an ip's attempt count and interval
 func (d *Dialer) Reset(ip IP) {
+	d.attemptsMtx.Lock()
+	defer d.attemptsMtx.Unlock()
 	a, ok := d.attempts[ip]
 	if ok {
 		a.c = 0

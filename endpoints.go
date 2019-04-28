@@ -27,7 +27,7 @@ func NewEndpoints() *Endpoints {
 	return epm
 }
 
-func (epm *Endpoints) Register(ip IP, incoming bool, source string) {
+func (epm *Endpoints) Register(ip IP, source string) {
 	epm.mtx.Lock()
 	defer epm.mtx.Unlock()
 	ep := epm.Ends[ip.String()]

@@ -4,6 +4,7 @@ import (
 	"encoding/gob"
 	"fmt"
 	"net"
+	"strconv"
 	"sync"
 	"time"
 
@@ -14,15 +15,16 @@ var peerLogger = packageLogger.WithField("subpack", "peer")
 
 // Peer is an active connection to an endpoint in the network
 type Peer struct {
-	net       *Network
-	conn      net.Conn
-	handshake Handshake
+	net  *Network
+	conn net.Conn
+	//handshake Handshake
 
 	// current state
 	IsIncoming bool
 
-	stopper sync.Once
-	stop    chan bool
+	stopper      sync.Once
+	stop         chan bool
+	stopDelivery chan bool
 
 	lastPeerRequest time.Time
 	peerShareAsk    bool
@@ -73,15 +75,16 @@ func NewPeer(net *Network, disconnect chan *Peer) *Peer {
 		"hash":    p.Hash,
 		"address": p.IP.Address,
 		"Port":    p.IP.Port,
-		"version": p.handshake.Version,
+		//"version": p.handshake.Version,
 	})
 	p.stop = make(chan bool, 1)
+	p.stopDelivery = make(chan bool, 1)
 
 	p.logger.Debugf("Creating blank peer")
 	return p
 }
 
-func (p *Peer) StartWithHandshake(ip IP, con net.Conn, incoming bool) bool {
+func (p *Peer) StartWithHandshakeV10(ip IP, con net.Conn, incoming bool) bool {
 	tmplogger := p.logger.WithField("addr", ip.Address)
 	timeout := time.Now().Add(p.net.conf.HandshakeTimeout)
 	handshake := Handshake{
@@ -117,7 +120,7 @@ func (p *Peer) StartWithHandshake(ip IP, con net.Conn, incoming bool) bool {
 	}
 
 	ip.Port = handshake.Port
-	p.handshake = handshake
+	//p.handshake = handshake
 	p.IP = ip
 	p.NodeID = handshake.NodeID
 	p.Hash = fmt.Sprintf("%s:%s %016x", ip.Address, ip.Port, p.NodeID)
@@ -126,6 +129,83 @@ func (p *Peer) StartWithHandshake(ip IP, con net.Conn, incoming bool) bool {
 	p.IsIncoming = incoming
 	p.conn = con
 	p.Connected = time.Now()
+
+	go p.sendLoop()
+	go p.readLoop()
+
+	return true
+}
+
+func (p *Peer) StartWithHandshake(ip IP, con net.Conn, incoming bool) bool {
+	tmplogger := p.logger.WithField("addr", ip.Address)
+	timeout := time.Now().Add(p.net.conf.HandshakeTimeout)
+	request := NewParcel(TypePeerRequest, []byte("Peer Request"))
+	request.Header.Version = p.net.conf.ProtocolVersion
+	request.Header.Network = p.net.conf.Network
+	request.Header.PeerPort = p.net.conf.ListenPort
+
+	p.decoder = gob.NewDecoder(con)
+	p.encoder = gob.NewEncoder(con)
+	con.SetWriteDeadline(timeout)
+	con.SetReadDeadline(timeout)
+	err := p.encoder.Encode(request)
+
+	if err != nil {
+		tmplogger.WithError(err).Debugf("Failed to send handshake to incoming connection")
+		con.Close()
+		return false
+	}
+
+	err = p.decoder.Decode(&request)
+	if err != nil {
+		tmplogger.WithError(err).Debugf("Failed to read handshake from incoming connection")
+		con.Close()
+		return false
+	}
+
+	failfunc := func(err error) bool {
+		tmplogger.WithError(err).Debug("Handshake failed")
+		con.Close()
+		return false
+	}
+
+	h := request.Header
+	if h.NodeID == p.net.conf.NodeID {
+		return failfunc(fmt.Errorf("connected to ourselves"))
+	}
+
+	if h.Version < p.net.conf.ProtocolVersionMinimum {
+		return failfunc(fmt.Errorf("version %d is below the minimum", h.Version))
+	}
+
+	if h.Network != p.net.conf.Network {
+		return failfunc(fmt.Errorf("wrong network id %x", h.Network))
+	}
+
+	port, err := strconv.Atoi(h.PeerPort)
+	if err != nil {
+		return failfunc(fmt.Errorf("unable to parse port %s: %v", h.PeerPort, err))
+	}
+
+	if port < 1 || port > 65535 {
+		return failfunc(fmt.Errorf("given port out of range: %d", port))
+	}
+
+	ip.Port = h.PeerPort
+	//p.handshake = handshake
+	p.IP = ip
+	p.NodeID = h.NodeID
+	p.Hash = fmt.Sprintf("%s:%s %016x", ip.Address, ip.Port, p.NodeID)
+	p.send = NewParcelChannel(p.net.conf.ChannelCapacity)
+	p.error = make(chan error, 10)
+	p.IsIncoming = incoming
+	p.conn = con
+	p.Connected = time.Now()
+
+	if !p.deliver(request) {
+		tmplogger.Error("failed to deliver handshake to peermanager")
+		return false
+	}
 
 	go p.sendLoop()
 	go p.readLoop()
@@ -142,10 +222,8 @@ func (p *Peer) Stop(andRemove bool) {
 		p.send = nil
 		p.error = nil
 
-		select {
-		case p.stop <- true:
-		default:
-		}
+		p.stop <- true
+		p.stopDelivery <- true
 
 		if p.conn != nil {
 			p.conn.Close()
@@ -164,6 +242,7 @@ func (p *Peer) String() string {
 }
 
 func (p *Peer) Send(parcel *Parcel) {
+	parcel.Header.PeerPort = p.net.conf.ListenPort
 	parcel.Header.Network = p.net.conf.Network
 	parcel.Header.Version = p.net.conf.ProtocolVersion
 	p.send.Send(parcel)
@@ -198,13 +277,19 @@ func (p *Peer) readLoop() {
 
 		message.Header.TargetPeer = p.Hash
 
-		p.logger.Debugf("Received incoming parcel: %v", message.Header.Type)
-		select {
-		case p.net.peerParcel <- PeerParcel{Peer: p, Parcel: &message}:
-		default:
-			p.logger.Warn("Peer manager unable to handle load, dropping")
+		if !p.deliver(&message) {
+			return
 		}
 	}
+}
+
+func (p *Peer) deliver(parcel *Parcel) bool {
+	select {
+	case p.net.peerParcel <- PeerParcel{Peer: p, Parcel: parcel}:
+	case <-p.stopDelivery:
+		return false
+	}
+	return true
 }
 
 // sendLoop listens to the Outgoing channel, pushing all data from there

@@ -124,9 +124,6 @@ func (pm *peerManager) parseSpecial(raw string) {
 func (pm *peerManager) Start() {
 	pm.logger.Info("Starting the Peer Manager")
 
-	// TODO discover from seed
-	// 		parse and dial special peers
-	//go pm.receiveData()
 	go pm.managePeers()
 	go pm.manageData()
 	go pm.manageOnline()
@@ -244,7 +241,7 @@ func (pm *peerManager) discoverSeeds() {
 			if ip, err := NewIP(address, port); err != nil {
 				pm.logger.WithError(err).Debugf("Invalid endpoint in seed list: %s", line)
 			} else {
-				pm.endpoints.Register(ip, false, "Seed")
+				pm.endpoints.Register(ip, "Seed")
 			}
 
 		} else {
@@ -276,7 +273,7 @@ func (pm *peerManager) processPeers(peer *Peer, parcel *Parcel) {
 		if err != nil {
 			pm.logger.WithError(err).Infof("Unable to register endpoint %s:%s from peer %s", p.Address, p.Port, peer)
 		} else {
-			pm.endpoints.Register(ip, false, peer.IP.Address)
+			pm.endpoints.Register(ip, peer.IP.Address)
 		}
 	}
 }
@@ -445,12 +442,10 @@ func (pm *peerManager) HandleIncoming(con net.Conn) {
 		return
 	}
 
-	// TODO limit by endpoint
 	peer := NewPeer(pm.net, pm.peerDisconnect)
 	if peer.StartWithHandshake(ip, con, true) {
 		old := pm.peers.Replace(peer)
-		fmt.Println(peer.IP)
-		pm.endpoints.Register(peer.IP, false, "Incoming")
+		pm.endpoints.Register(peer.IP, "Incoming")
 		if old != nil {
 			old.Stop(false)
 		}
@@ -492,9 +487,9 @@ func (pm *peerManager) Broadcast(parcel *Parcel, full bool) {
 	}
 	// fanout
 	selection := pm.selectRandomPeers(pm.net.conf.Fanout)
-	fmt.Println("selected", len(selection))
+	//fmt.Println("selected", len(selection), "random peers")
 	for _, p := range selection {
-		fmt.Println("sending to random peer", p.String())
+		//fmt.Println("sending to random peer", p.String())
 		p.Send(parcel)
 	}
 	// TODO always send to special
@@ -605,7 +600,7 @@ func (pm *peerManager) persist() {
 
 	n, err := writer.Write(persist)
 	if err != nil {
-		pm.logger.WithError(err).Error("persist(): Unable to write to file, wrote %d bytes", n)
+		pm.logger.WithError(err).Errorf("persist(): Unable to write to file, wrote %d bytes", n)
 		return
 	}
 
