@@ -20,6 +20,8 @@ type limitedConnect struct {
 	time    time.Time
 }
 
+// NewLimitedListener initializes a new listener for the specified address (address:port)
+// throttling incoming connections
 func NewLimitedListener(address string, limit time.Duration) (*LimitedListener, error) {
 	if limit < 0 {
 		return nil, fmt.Errorf("Invalid time limit (negative)")
@@ -105,10 +107,12 @@ func (ll *LimitedListener) Accept() (net.Conn, error) {
 	return con, nil
 }
 
+// Addr returns the address the listener is listening to
 func (ll *LimitedListener) Addr() net.Addr {
 	return ll.listener.Addr()
 }
 
+// Close closes the associated net.Listener
 func (ll *LimitedListener) Close() {
 	ll.listener.Close()
 }

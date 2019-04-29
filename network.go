@@ -10,6 +10,11 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
+// Network is the main access point for outside applications.
+//
+// ToNetwork is the channel over which to send parcels to the network layer
+//
+// FromNetwork is the channel that gets filled with parcels arriving from the network layer
 type Network struct {
 	ToNetwork   ParcelChannel
 	FromNetwork ParcelChannel
@@ -29,6 +34,7 @@ type Network struct {
 
 var packageLogger = log.WithField("package", "p2p")
 
+// DebugMessage is temporary
 func (n *Network) DebugMessage() (string, string, int) {
 	hv := ""
 	r := fmt.Sprintf("\nONLINE:\n")
@@ -62,6 +68,7 @@ func (n *Network) DebugMessage() (string, string, int) {
 	return r, hv, count
 }
 
+// DebugServer is temporary
 func DebugServer(n *Network) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/debug", func(rw http.ResponseWriter, req *http.Request) {
@@ -98,6 +105,9 @@ func DebugServer(n *Network) {
 	go http.ListenAndServe("localhost:8070", mux)
 }
 
+// NewNetwork initializes a new network with the given configuration.
+// The passed Configuration is copied and cannot be modified afterwards.
+// Does not start the network automatically.
 func NewNetwork(conf Configuration) *Network {
 	myconf := conf // copy
 	n := new(Network)
@@ -119,11 +129,16 @@ func NewNetwork(conf Configuration) *Network {
 	return n
 }
 
+// SetMetricsHook allows you to read peer metrics.
+// Gets called approximately once a second and transfers the metrics
+// of all CONNECTED peers in the format "identifying hash" -> p2p.PeerMetrics
 func (n *Network) SetMetricsHook(f func(pm map[string]PeerMetrics)) {
 	n.metricsHook = f
 }
 
-// Start initializes the network by starting the peer manager and listening to incoming connections
+// Start starts the network.
+// Listens to incoming connections on the specified port
+// and connects to other peers
 func (n *Network) Start() {
 	n.logger.Info("Starting the P2P Network")
 	n.peerManager.Start() // this will get peer manager ready to handle incoming connections
@@ -133,6 +148,8 @@ func (n *Network) Start() {
 	go n.routeLoop()
 }
 
+// Stop tears down all the active connections and stops the listener.
+// Use before shutting down.
 func (n *Network) Stop() {
 	n.logger.Info("Stopping the P2P Network")
 	n.peerManager.Stop()
@@ -142,31 +159,44 @@ func (n *Network) Stop() {
 	}
 }
 
+// Merit rewards a peer for doing something right
 func (n *Network) Merit(hash string) {
 	n.logger.Debugf("Received merit for %s from application", hash)
 	go n.peerManager.merit(hash)
 }
 
+// Demerit punishes a peer for doing something wrong. Too many demerits
+// and the peer will be banned
 func (n *Network) Demerit(hash string) {
 	n.logger.Debugf("Received demerit for %s from application", hash)
 	go n.peerManager.demerit(hash)
 }
 
+// Ban removes a peer as well as any other peer from that address
+// and prevents any connection being established for the amount of time
+// set in the configuration (default one week)
 func (n *Network) Ban(hash string) {
 	n.logger.Debugf("Received ban for %s from application", hash)
 	go n.peerManager.ban(hash, n.conf.ManualBan)
 }
 
+// Disconnect severs connection for a specific peer. They are free to
+// connect again afterward
 func (n *Network) Disconnect(hash string) {
 	n.logger.Debugf("Received disconnect for %s from application", hash)
 	go n.peerManager.disconnect(hash)
 }
 
+// ParseSpecial takes a set of ip addresses that should be treated as special.
+// Network will always attempt to have a connection to a special peer.
+// Format is a single line of ip addresses separated by semicolon, eg
+// "127.0.0.1;8.8.8.8;192.168.0.1"
 func (n *Network) ParseSpecial(raw string) {
 	n.logger.Debugf("Received new list of special peers from application: %s", raw)
 	go n.peerManager.parseSpecial(raw)
 }
 
+// Total returns the number of active connections
 func (n *Network) Total() int {
 	return n.peerManager.peers.Total()
 }
@@ -176,7 +206,7 @@ func (n *Network) Total() int {
 func (n *Network) routeLoop() {
 	for {
 		// TODO metrics?
-		// blocking read on ToNetwork, and c.stop
+		// blocking read on ToNetwork, and c.stopRoute
 		select {
 		case message := <-n.ToNetwork:
 			switch message.Header.TargetPeer {
@@ -218,8 +248,8 @@ func (n *Network) listenLoop() {
 		if err != nil {
 			if ne, ok := err.(*net.OpError); ok && !ne.Timeout() {
 				if !ne.Temporary() {
-					tmpLogger.WithError(err).Warn("controller.acceptLoop() error accepting, shutting down")
-					return
+					tmpLogger.WithError(err).Warn("controller.acceptLoop() error accepting")
+					//return
 				}
 			}
 			continue
