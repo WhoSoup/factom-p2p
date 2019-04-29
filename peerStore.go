@@ -2,7 +2,8 @@ package p2p
 
 import "sync"
 
-// [p.hash] = peer
+// PeerStore holds active Peers, managing them in a concurrency safe
+// manner and providing lookup via various functions
 type PeerStore struct {
 	mtx       sync.RWMutex
 	peers     map[string]*Peer // hash -> peer
@@ -12,6 +13,7 @@ type PeerStore struct {
 	Outgoing  int
 }
 
+// NewPeerStore initializes a new peer store
 func NewPeerStore() *PeerStore {
 	ps := new(PeerStore)
 	ps.peers = make(map[string]*Peer)
@@ -19,6 +21,8 @@ func NewPeerStore() *PeerStore {
 	return ps
 }
 
+// Replace adds the given peer to the list of managed peers.
+// If a peer with that hash already existed, it returns the old one
 func (ps *PeerStore) Replace(p *Peer) *Peer {
 	ps.mtx.Lock()
 	defer ps.mtx.Unlock()
