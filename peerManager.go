@@ -166,6 +166,8 @@ func (pm *peerManager) manageOnline() {
 			return
 		case p := <-pm.peerDisconnect:
 			if p.IsIncoming {
+				// lock this connection temporarily so we don't try to connect to it
+				// before they can reconnect
 				pm.endpoints.SetConnectionLock(p.IP)
 			}
 			pm.peers.Remove(p)
