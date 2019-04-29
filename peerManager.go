@@ -205,7 +205,7 @@ func (pm *peerManager) manageData() {
 				pm.net.FromNetwork.Send(parcel)
 			case TypePeerRequest:
 				if time.Since(peer.lastPeerSend) >= pm.net.conf.PeerRequestInterval {
-					peer.lastPeerSend = time.Now()
+					peer.lastPeerSend = time.Now().Add(-time.Second * 5) // leeway
 					go pm.sharePeers(peer)
 				} else {
 					pm.logger.Warnf("Peer %s requested peer share sooner than expected", peer)

@@ -6,7 +6,7 @@ type PeerMetrics struct {
 	Hash             string
 	PeerAddress      string
 	MomentConnected  time.Time
-	PeerQuality      int
+	PeerQuality      int32
 	LastReceive      time.Time
 	LastSend         time.Time
 	MessagesSent     uint64

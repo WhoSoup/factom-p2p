@@ -75,10 +75,21 @@ func DebugServer(n *Network) {
 		out += fmt.Sprintf("\tToNetwork: %d / %d\n", len(n.ToNetwork), cap(n.ToNetwork))
 		out += fmt.Sprintf("\tFromNetwork: %d / %d\n", len(n.FromNetwork), cap(n.FromNetwork))
 		out += fmt.Sprintf("\tpeerParcel: %d / %d\n", len(n.peerParcel), cap(n.peerParcel))
-		out += "\nPeers\n"
+		out += fmt.Sprintf("\nPeers (%d)\n", n.peerManager.peers.Total())
 		for _, p := range n.peerManager.peers.Slice() {
 			out += fmt.Sprintf("\t%s\n", p.IP)
 			out += fmt.Sprintf("\t\tsend: %d / %d\n", len(p.send), cap(p.send))
+			m := p.GetMetrics()
+			out += fmt.Sprintf("\t\tBytesReceived: %d\n", m.BytesReceived)
+			out += fmt.Sprintf("\t\tBytesSent: %d\n", m.BytesSent)
+			out += fmt.Sprintf("\t\tMessagesSent: %d\n", m.MessagesSent)
+			out += fmt.Sprintf("\t\tMessagesReceived: %d\n", m.MessagesReceived)
+			out += fmt.Sprintf("\t\tMomentConnected: %s\n", m.MomentConnected)
+			out += fmt.Sprintf("\t\tPeerQuality: %d\n", m.PeerQuality)
+			out += fmt.Sprintf("\t\tIncoming: %v\n", m.Incoming)
+			out += fmt.Sprintf("\t\tLastReceive: %s\n", m.LastReceive)
+			out += fmt.Sprintf("\t\tLastSend: %s\n", m.LastSend)
+
 		}
 
 		rw.Write([]byte(out))

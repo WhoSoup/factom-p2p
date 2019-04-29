@@ -329,6 +329,7 @@ func (p *Peer) GetMetrics() PeerMetrics {
 	defer p.metricsMtx.RUnlock()
 	return PeerMetrics{
 		Hash:             p.Hash,
+		PeerQuality:      p.QualityScore,
 		PeerAddress:      p.IP.Address,
 		MomentConnected:  p.Connected,
 		LastReceive:      p.LastReceive,
