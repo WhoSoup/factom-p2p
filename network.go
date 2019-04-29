@@ -114,9 +114,16 @@ func NewNetwork(conf Configuration) *Network {
 	n.logger = packageLogger.WithField("subpackage", "Network").WithField("node", conf.NodeName)
 
 	n.conf = &myconf
+	n.rng = rand.New(rand.NewSource(time.Now().UnixNano()))
+
+	if n.conf.NodeID == 0 {
+		for n.conf.NodeID == 0 {
+			n.conf.NodeID = n.rng.Uint64()
+		}
+		n.logger.Debugf("No node id specified, generated random node id %x")
+	}
 
 	n.peerManager = newPeerManager(n)
-	n.rng = rand.New(rand.NewSource(time.Now().UnixNano()))
 
 	if n.conf.BindIP != "" {
 		n.location, _ = IP2Location(n.conf.BindIP)

@@ -113,6 +113,7 @@ func (p *Parcel) SetMeta(conf *Configuration) {
 	p.Header.PeerPort = conf.ListenPort
 }
 
+// Valid checks header for inconsistencies
 func (p *Parcel) Valid() error {
 	if p == nil {
 		return fmt.Errorf("nil parcel")
