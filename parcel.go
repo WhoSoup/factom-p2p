@@ -3,6 +3,7 @@ package p2p
 import (
 	"fmt"
 	"hash/crc32"
+	"strconv"
 
 	log "github.com/sirupsen/logrus"
 )
@@ -36,6 +37,30 @@ type ParcelHeader struct {
 	PeerPort    string // port of the peer , or we are listening on
 	AppHash     string // Application specific message hash, for tracing
 	AppType     string // Application specific message type, for tracing
+}
+
+func (h *ParcelHeader) Valid(conf *Configuration) error {
+	if h.NodeID == conf.NodeID {
+		return (fmt.Errorf("connected to ourselves"))
+	}
+
+	if h.Version < conf.ProtocolVersionMinimum {
+		return (fmt.Errorf("version %d is below the minimum", h.Version))
+	}
+
+	if h.Network != conf.Network {
+		return (fmt.Errorf("wrong network id %x", h.Network))
+	}
+
+	port, err := strconv.Atoi(h.PeerPort)
+	if err != nil {
+		return (fmt.Errorf("unable to parse port %s: %v", h.PeerPort, err))
+	}
+
+	if port < 1 || port > 65535 {
+		return (fmt.Errorf("given port out of range: %d", port))
+	}
+	return nil
 }
 
 type ParcelCommandType uint16

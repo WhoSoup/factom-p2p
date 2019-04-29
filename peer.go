@@ -4,7 +4,6 @@ import (
 	"encoding/gob"
 	"fmt"
 	"net"
-	"strconv"
 	"sync"
 	"time"
 
@@ -84,58 +83,14 @@ func NewPeer(net *Network, disconnect chan *Peer) *Peer {
 	return p
 }
 
-func (p *Peer) StartWithHandshakeV10(ip IP, con net.Conn, incoming bool) bool {
-	tmplogger := p.logger.WithField("addr", ip.Address)
-	timeout := time.Now().Add(p.net.conf.HandshakeTimeout)
-	handshake := Handshake{
-		NodeID:  p.net.conf.NodeID,
-		Port:    p.net.conf.ListenPort,
-		Version: p.net.conf.ProtocolVersion,
-		Network: p.net.conf.Network}
-
-	p.decoder = gob.NewDecoder(con)
-	p.encoder = gob.NewEncoder(con)
-	con.SetWriteDeadline(timeout)
-	con.SetReadDeadline(timeout)
-	err := p.encoder.Encode(handshake)
-
-	if err != nil {
-		tmplogger.WithError(err).Debugf("Failed to send handshake to incoming connection")
-		con.Close()
-		return false
-	}
-
-	err = p.decoder.Decode(&handshake)
-	if err != nil {
-		tmplogger.WithError(err).Debugf("Failed to read handshake from incoming connection")
-		con.Close()
-		return false
-	}
-
-	err = handshake.Verify(p.net.conf.NodeID, p.net.conf.ProtocolVersionMinimum, p.net.conf.Network)
-	if err != nil {
-		tmplogger.WithError(err).Debug("Handshake failed")
-		con.Close()
-		return false
-	}
-
-	ip.Port = handshake.Port
-	//p.handshake = handshake
-	p.IP = ip
-	p.NodeID = handshake.NodeID
-	p.Hash = fmt.Sprintf("%s:%s %016x", ip.Address, ip.Port, p.NodeID)
-	p.send = NewParcelChannel(p.net.conf.ChannelCapacity)
-	p.error = make(chan error, 10)
-	p.IsIncoming = incoming
-	p.conn = con
-	p.Connected = time.Now()
-
-	go p.sendLoop()
-	go p.readLoop()
-
-	return true
-}
-
+// StartWithHandshake performs a basic handshake maneouver to establish the validity
+// of the connection. Immediately sends a Peer Request upon connection and waits for the
+// response, which can be any parcel. The information in the header is verified, especially
+// the port.
+//
+// The handshake ensures that ALL peers have a valid Port field to start with.
+// If there is no reply within the specified HandshakeTimeout config setting, the process
+// fails
 func (p *Peer) StartWithHandshake(ip IP, con net.Conn, incoming bool) (bool, error) {
 	tmplogger := p.logger.WithField("addr", ip.Address)
 	timeout := time.Now().Add(p.net.conf.HandshakeTimeout)
@@ -167,32 +122,19 @@ func (p *Peer) StartWithHandshake(ip IP, con net.Conn, incoming bool) (bool, err
 		return false, err
 	}
 
-	h := request.Header
-	if h.NodeID == p.net.conf.NodeID {
-		return failfunc(fmt.Errorf("connected to ourselves"))
+	// check basic structure
+	if err = request.Valid(); err != nil {
+		return failfunc(err)
 	}
 
-	if h.Version < p.net.conf.ProtocolVersionMinimum {
-		return failfunc(fmt.Errorf("version %d is below the minimum", h.Version))
+	// verify handshake
+	if err = request.Header.Valid(p.net.conf); err != nil {
+		return failfunc(err)
 	}
 
-	if h.Network != p.net.conf.Network {
-		return failfunc(fmt.Errorf("wrong network id %x", h.Network))
-	}
-
-	port, err := strconv.Atoi(h.PeerPort)
-	if err != nil {
-		return failfunc(fmt.Errorf("unable to parse port %s: %v", h.PeerPort, err))
-	}
-
-	if port < 1 || port > 65535 {
-		return failfunc(fmt.Errorf("given port out of range: %d", port))
-	}
-
-	ip.Port = h.PeerPort
-	//p.handshake = handshake
+	ip.Port = request.Header.PeerPort
 	p.IP = ip
-	p.NodeID = h.NodeID
+	p.NodeID = request.Header.NodeID
 	p.Hash = fmt.Sprintf("%s:%s %016x", ip.Address, ip.Port, p.NodeID)
 	p.send = NewParcelChannel(p.net.conf.ChannelCapacity)
 	p.error = make(chan error, 10)
@@ -203,7 +145,7 @@ func (p *Peer) StartWithHandshake(ip IP, con net.Conn, incoming bool) (bool, err
 	p.lastPeerRequest = time.Now()
 	p.lastPeerSend = time.Time{}
 	p.peerShareAsk = true
-	if !p.deliver(request) {
+	if !p.deliver(request) { // push the handshake to peer manager
 		tmplogger.Error("failed to deliver handshake to peermanager")
 		return false, fmt.Errorf("failed to deliver handshake to peermanager")
 	}
@@ -284,6 +226,7 @@ func (p *Peer) readLoop() {
 	}
 }
 
+// deliver is a blocking delivery of this peer's messages to the peer manager.
 func (p *Peer) deliver(parcel *Parcel) bool {
 	select {
 	case p.net.peerParcel <- PeerParcel{Peer: p, Parcel: parcel}:
