@@ -106,6 +106,13 @@ func (p *Parcel) SetPayload(payload []byte) {
 	p.Header.Length = uint32(len(p.Payload))
 }
 
+func (p *Parcel) SetMeta(conf *Configuration) {
+	p.Header.NodeID = conf.NodeID
+	p.Header.Version = conf.ProtocolVersion
+	p.Header.Network = conf.Network
+	p.Header.PeerPort = conf.ListenPort
+}
+
 func (p *Parcel) Valid() error {
 	if p == nil {
 		return fmt.Errorf("nil parcel")

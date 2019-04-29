@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math/rand"
 	"net"
+	"net/http"
 	"time"
 
 	log "github.com/sirupsen/logrus"
@@ -61,6 +62,31 @@ func (n *Network) DebugMessage() (string, string, int) {
 	return r, hv, count
 }
 
+func DebugServer(n *Network) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/debug", func(rw http.ResponseWriter, req *http.Request) {
+		a, _, _ := n.DebugMessage()
+		rw.Write([]byte(a))
+	})
+
+	mux.HandleFunc("/stats", func(rw http.ResponseWriter, req *http.Request) {
+		out := ""
+		out += fmt.Sprintf("Channels\n")
+		out += fmt.Sprintf("\tToNetwork: %d / %d\n", len(n.ToNetwork), cap(n.ToNetwork))
+		out += fmt.Sprintf("\tFromNetwork: %d / %d\n", len(n.FromNetwork), cap(n.FromNetwork))
+		out += fmt.Sprintf("\tpeerParcel: %d / %d\n", len(n.peerParcel), cap(n.peerParcel))
+		out += "\nPeers\n"
+		for _, p := range n.peerManager.peers.Slice() {
+			out += fmt.Sprintf("\t%s\n", p.IP)
+			out += fmt.Sprintf("\t\tsend: %d / %d\n", len(p.send), cap(p.send))
+		}
+
+		rw.Write([]byte(out))
+	})
+
+	go http.ListenAndServe("localhost:8070", mux)
+}
+
 func NewNetwork(conf Configuration) *Network {
 	myconf := conf // copy
 	n := new(Network)
@@ -91,6 +117,7 @@ func (n *Network) Start() {
 	n.logger.Info("Starting the P2P Network")
 	n.peerManager.Start() // this will get peer manager ready to handle incoming connections
 	n.stopRoute = make(chan bool, 1)
+	DebugServer(n)
 	go n.listenLoop()
 	go n.routeLoop()
 }

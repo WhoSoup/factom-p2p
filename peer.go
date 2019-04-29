@@ -140,9 +140,7 @@ func (p *Peer) StartWithHandshake(ip IP, con net.Conn, incoming bool) (bool, err
 	tmplogger := p.logger.WithField("addr", ip.Address)
 	timeout := time.Now().Add(p.net.conf.HandshakeTimeout)
 	request := NewParcel(TypePeerRequest, []byte("Peer Request"))
-	request.Header.Version = p.net.conf.ProtocolVersion
-	request.Header.Network = p.net.conf.Network
-	request.Header.PeerPort = p.net.conf.ListenPort
+	request.SetMeta(p.net.conf)
 
 	p.decoder = gob.NewDecoder(con)
 	p.encoder = gob.NewEncoder(con)
@@ -232,7 +230,9 @@ func (p *Peer) Stop(andRemove bool) {
 			p.conn.Close()
 		}
 
-		close(sc)
+		if sc != nil {
+			close(sc)
+		}
 
 		if andRemove {
 			p.net.peerManager.peerDisconnect <- p
@@ -245,9 +245,7 @@ func (p *Peer) String() string {
 }
 
 func (p *Peer) Send(parcel *Parcel) {
-	parcel.Header.PeerPort = p.net.conf.ListenPort
-	parcel.Header.Network = p.net.conf.Network
-	parcel.Header.Version = p.net.conf.ProtocolVersion
+	parcel.SetMeta(p.net.conf)
 	p.send.Send(parcel)
 }
 
@@ -330,14 +328,15 @@ func (p *Peer) GetMetrics() PeerMetrics {
 	p.metricsMtx.RLock()
 	defer p.metricsMtx.RUnlock()
 	return PeerMetrics{
-		Hash:            p.Hash,
-		Connected:       p.Connected,
-		LastReceive:     p.LastReceive,
-		LastSend:        p.LastSend,
-		BytesReceived:   p.BytesReceived,
-		BytesSent:       p.BytesSent,
-		ParcelsReceived: p.ParcelsReceived,
-		ParcelsSent:     p.ParcelsSent,
-		Incoming:        p.IsIncoming,
+		Hash:             p.Hash,
+		PeerAddress:      p.IP.Address,
+		MomentConnected:  p.Connected,
+		LastReceive:      p.LastReceive,
+		LastSend:         p.LastSend,
+		BytesReceived:    p.BytesReceived,
+		BytesSent:        p.BytesSent,
+		MessagesReceived: p.ParcelsReceived,
+		MessagesSent:     p.ParcelsSent,
+		Incoming:         p.IsIncoming,
 	}
 }

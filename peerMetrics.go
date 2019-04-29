@@ -3,14 +3,15 @@ package p2p
 import "time"
 
 type PeerMetrics struct {
-	Hash            string
-	Connected       time.Time
-	Quality         int
-	LastReceive     time.Time
-	LastSend        time.Time
-	ParcelsSent     uint64
-	BytesSent       uint64
-	ParcelsReceived uint64
-	BytesReceived   uint64
-	Incoming        bool
+	Hash             string
+	PeerAddress      string
+	MomentConnected  time.Time
+	PeerQuality      int
+	LastReceive      time.Time
+	LastSend         time.Time
+	MessagesSent     uint64
+	BytesSent        uint64
+	MessagesReceived uint64
+	BytesReceived    uint64
+	Incoming         bool
 }
