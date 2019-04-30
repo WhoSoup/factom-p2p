@@ -30,7 +30,7 @@ type Peer struct {
 	lastPeerSend    time.Time
 	send            ParcelChannel
 	error           chan error
-	disconnect      chan *Peer
+	status          chan peerConnection
 
 	encoder *gob.Encoder
 	decoder *gob.Decoder
@@ -64,10 +64,10 @@ type PeerError struct {
 	err  error
 }
 
-func NewPeer(net *Network, disconnect chan *Peer) *Peer {
+func NewPeer(net *Network, status chan peerConnection) *Peer {
 	p := &Peer{}
 	p.net = net
-	p.disconnect = disconnect
+	p.status = status
 
 	p.logger = peerLogger.WithFields(log.Fields{
 		"node":    net.conf.NodeName,
@@ -146,12 +146,13 @@ func (p *Peer) StartWithHandshake(ip IP, con net.Conn, incoming bool) (bool, err
 	p.lastPeerSend = time.Time{}
 	p.peerShareAsk = true
 	if !p.deliver(request) { // push the handshake to peer manager
-		tmplogger.Error("failed to deliver handshake to peermanager")
-		return false, fmt.Errorf("failed to deliver handshake to peermanager")
+		return failfunc(fmt.Errorf("failed to deliver handshake to peermanager"))
 	}
 
 	go p.sendLoop()
 	go p.readLoop()
+
+	p.status <- peerConnection{peer: p, online: true}
 
 	return true, nil
 }
@@ -177,7 +178,7 @@ func (p *Peer) Stop(andRemove bool) {
 		}
 
 		if andRemove {
-			p.net.peerManager.peerDisconnect <- p
+			p.status <- peerConnection{peer: p, online: false}
 		}
 	})
 }
@@ -207,7 +208,7 @@ func (p *Peer) readLoop() {
 		err := p.decoder.Decode(&message)
 		if err != nil {
 			p.logger.WithError(err).Debug("connection error (readLoop)")
-			p.Stop(false)
+			p.Stop(true)
 			return
 		}
 
@@ -254,7 +255,7 @@ func (p *Peer) sendLoop() {
 			err := p.encoder.Encode(parcel)
 			if err != nil { // no error is recoverable
 				p.logger.WithError(err).Debug("connection error (sendLoop)")
-				p.Stop(false)
+				p.Stop(true)
 				return
 			}
 

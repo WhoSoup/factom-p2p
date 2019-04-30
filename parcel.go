@@ -153,6 +153,10 @@ func (p *Parcel) Valid() error {
 		return fmt.Errorf("unknown parcel type %d", head.Type)
 	}
 
+	if len(p.Payload) == 0 {
+		return fmt.Errorf("zero-length payload")
+	}
+
 	if head.Length != uint32(len(p.Payload)) {
 		return fmt.Errorf("length in header does not match payload")
 	}

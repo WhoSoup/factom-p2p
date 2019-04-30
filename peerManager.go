@@ -20,7 +20,7 @@ var pmLogger = packageLogger.WithField("subpack", "peerManager")
 type peerManager struct {
 	net *Network
 
-	peerDisconnect chan *Peer
+	peerStatus chan peerConnection
 
 	stopPeers  chan bool
 	stopData   chan bool
@@ -56,7 +56,7 @@ func newPeerManager(network *Network) *peerManager {
 	pm.dialer = NewDialer(c.BindIP, c.RedialInterval, c.DialTimeout, c.RedialAttempts)
 	pm.lastPersist = time.Now()
 
-	pm.peerDisconnect = make(chan *Peer, 10) // TODO reconsider this value
+	pm.peerStatus = make(chan peerConnection, 10) // TODO reconsider this value
 
 	pm.stopPeers = make(chan bool, 1)
 	pm.stopData = make(chan bool, 1)
@@ -164,13 +164,20 @@ func (pm *peerManager) manageOnline() {
 		select {
 		case <-pm.stopOnline:
 			return
-		case p := <-pm.peerDisconnect:
-			if p.IsIncoming {
-				// lock this connection temporarily so we don't try to connect to it
-				// before they can reconnect
-				pm.endpoints.SetConnectionLock(p.IP)
+		case pc := <-pm.peerStatus:
+			if pc.online {
+				old := pm.peers.Replace(pc.peer)
+				if old != nil {
+					old.Stop(false)
+				}
+			} else {
+				pm.peers.Remove(pc.peer)
+				if pc.peer.IsIncoming {
+					// lock this connection temporarily so we don't try to connect to it
+					// before they can reconnect
+					pm.endpoints.Lock(pc.peer.IP, pm.net.conf.DisconnectLock)
+				}
 			}
-			pm.peers.Remove(p)
 		}
 	}
 }
@@ -392,7 +399,7 @@ func (pm *peerManager) managePeersDialOutgoing() {
 				if !pm.peers.IsConnected(ip.Address) {
 					special = append(special, ip)
 				}
-			} else if pm.dialer.CanDial(ip) && pm.endpoints.ConnectionLock(ip) > pm.net.conf.DisconnectLock {
+			} else if pm.dialer.CanDial(ip) {
 				filtered = append(filtered, ip)
 			}
 		}
@@ -415,6 +422,9 @@ func (pm *peerManager) managePeersDialOutgoing() {
 					continue
 				}
 				if limit > 0 && uint(pm.peers.Count(ip.Address)) >= limit {
+					continue
+				}
+				if pm.endpoints.IsLocked(ip) {
 					continue
 				}
 				go pm.Dial(ip)
@@ -470,14 +480,11 @@ func (pm *peerManager) HandleIncoming(con net.Conn) {
 		return
 	}
 
-	peer := NewPeer(pm.net, pm.peerDisconnect)
+	peer := NewPeer(pm.net, pm.peerStatus)
 	if ok, err := peer.StartWithHandshake(ip, con, true); ok {
 		pm.logger.Debug("Incoming handshake success for peer %s", peer.Hash)
-		old := pm.peers.Replace(peer)
 		pm.endpoints.Register(peer.IP, "Incoming")
-		if old != nil {
-			old.Stop(false)
-		}
+		pm.endpoints.Lock(peer.IP, time.Hour*8760*50) // 50 years
 		pm.dialer.Reset(peer.IP)
 	} else {
 		pm.logger.WithError(err).Debugf("Handshake failed for address %s, stopping", ip)
@@ -500,13 +507,12 @@ func (pm *peerManager) Dial(ip IP) {
 		return
 	}
 
-	peer := NewPeer(pm.net, pm.peerDisconnect)
+	peer := NewPeer(pm.net, pm.peerStatus)
+	if !pm.endpoints.IsLocked(ip) {
+		pm.endpoints.Lock(ip, pm.net.conf.HandshakeTimeout)
+	}
 	if ok, err := peer.StartWithHandshake(ip, con, false); ok {
 		pm.logger.Debugf("Handshake success for peer %s", peer.Hash)
-		if old := pm.peers.Replace(peer); old != nil {
-			old.Stop(false)
-		}
-
 		pm.endpoints.Refresh(peer.IP)
 		pm.dialer.Reset(peer.IP)
 	} else if err.Error() == "connected to ourselves" {
@@ -678,6 +684,8 @@ func (pm *peerManager) loadEndpoints() *Endpoints {
 	if eps.Ends == nil || eps.Bans == nil {
 		return NewEndpoints()
 	}
+
+	eps.cleanup(pm.net.conf.PeerAgeLimit)
 
 	return &eps
 }

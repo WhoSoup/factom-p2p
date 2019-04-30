@@ -79,7 +79,24 @@ func (epm *Endpoints) LastSeen(ip IP) time.Time {
 	return epm.Ends[ip.String()].Seen
 }
 
-func (epm *Endpoints) SetConnectionLock(ip IP) {
+func (epm *Endpoints) Lock(ip IP, dur time.Duration) {
+	epm.mtx.Lock()
+	defer epm.mtx.Unlock()
+	if ep, ok := epm.Ends[ip.String()]; ok {
+		ep.lock = time.Now().Add(dur)
+		epm.Ends[ip.String()] = ep
+	}
+}
+func (epm *Endpoints) Unlock(ip IP) {
+	epm.mtx.Lock()
+	defer epm.mtx.Unlock()
+	if ep, ok := epm.Ends[ip.String()]; ok {
+		ep.lock = time.Time{}
+		epm.Ends[ip.String()] = ep
+	}
+}
+
+/*func (epm *Endpoints) SetConnectionLock(ip IP) {
 	epm.mtx.Lock()
 	defer epm.mtx.Unlock()
 	if ep, ok := epm.Ends[ip.String()]; ok {
@@ -87,10 +104,11 @@ func (epm *Endpoints) SetConnectionLock(ip IP) {
 		epm.Ends[ip.String()] = ep
 	}
 }
-func (epm *Endpoints) ConnectionLock(ip IP) time.Duration {
+*/
+func (epm *Endpoints) IsLocked(ip IP) bool {
 	epm.mtx.RLock()
 	defer epm.mtx.RUnlock()
-	return time.Since(epm.Ends[ip.String()].lock)
+	return time.Now().Before(epm.Ends[ip.String()].lock)
 }
 
 func (epm *Endpoints) IPs() []IP {

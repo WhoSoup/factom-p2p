@@ -25,7 +25,6 @@ type Network struct {
 	stopRoute   chan bool
 	peerParcel  chan PeerParcel
 	listener    *LimitedListener
-	location    uint32
 	metricsHook func(pm map[string]PeerMetrics)
 
 	rng    *rand.Rand
@@ -99,6 +98,11 @@ func DebugServer(n *Network) {
 
 		}
 
+		out += fmt.Sprintf("\nEndpoints\n")
+		for _, ep := range n.peerManager.endpoints.IPs() {
+			out += fmt.Sprintf("\t%s", ep)
+		}
+
 		rw.Write([]byte(out))
 	})
 
@@ -124,10 +128,6 @@ func NewNetwork(conf Configuration) *Network {
 	}
 
 	n.peerManager = newPeerManager(n)
-
-	if n.conf.BindIP != "" {
-		n.location, _ = IP2Location(n.conf.BindIP)
-	}
 
 	n.peerParcel = make(chan PeerParcel, conf.ChannelCapacity)
 
@@ -256,7 +256,7 @@ func (n *Network) listenLoop() {
 			if ne, ok := err.(*net.OpError); ok && !ne.Timeout() {
 				if !ne.Temporary() {
 					tmpLogger.WithError(err).Warn("controller.acceptLoop() error accepting")
-					//return
+					return
 				}
 			}
 			continue
