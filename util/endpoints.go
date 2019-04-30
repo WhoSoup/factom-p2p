@@ -1,4 +1,4 @@
-package p2p
+package util
 
 import (
 	"encoding/json"
@@ -6,27 +6,32 @@ import (
 	"time"
 )
 
+// Endpoints is a collection of known ip addresses in the network.
+// Aka the partial peer view.
+// Endpoints are unique and there can be only one for a given IP
 type Endpoints struct {
-	Ends map[string]Endpoint  `json:"endpoints"`
+	Ends map[string]endpoint  `json:"endpoints"`
 	Bans map[string]time.Time `json:"bans"`
 	mtx  sync.RWMutex
 	ips  []IP
 }
 
-type Endpoint struct {
+type endpoint struct {
 	IP     IP                   `json:"ip"`
 	Seen   time.Time            `json:"seen"`
 	Source map[string]time.Time `json:"source"`
 	lock   time.Time
 }
 
+// NewEndPoints creates an empty endpoint holder
 func NewEndpoints() *Endpoints {
 	epm := new(Endpoints)
-	epm.Ends = make(map[string]Endpoint)
+	epm.Ends = make(map[string]endpoint)
 	epm.Bans = make(map[string]time.Time)
 	return epm
 }
 
+// Register an IP in the system along with the source of where it's from
 func (epm *Endpoints) Register(ip IP, source string) {
 	epm.mtx.Lock()
 	defer epm.mtx.Unlock()
@@ -41,6 +46,7 @@ func (epm *Endpoints) Register(ip IP, source string) {
 	epm.ips = nil
 }
 
+// Refresh updates the last time the endpoint had activity
 func (epm *Endpoints) Refresh(ip IP) {
 	epm.mtx.Lock()
 	defer epm.mtx.Unlock()
@@ -50,6 +56,7 @@ func (epm *Endpoints) Refresh(ip IP) {
 	}
 }
 
+// Deregister removes an endpoint from the store
 func (epm *Endpoints) Deregister(ip IP) {
 	epm.mtx.Lock()
 	defer epm.mtx.Unlock()
@@ -57,6 +64,7 @@ func (epm *Endpoints) Deregister(ip IP) {
 	epm.ips = nil
 }
 
+// Ban all endpoints with a given ip address until a certain time
 func (epm *Endpoints) Ban(addr string, t time.Time) {
 	epm.mtx.Lock()
 	defer epm.mtx.Unlock()
@@ -69,16 +77,19 @@ func (epm *Endpoints) Ban(addr string, t time.Time) {
 	epm.ips = nil
 }
 
+// Banned checks if an ip address is banned
 func (epm *Endpoints) Banned(addr string) bool {
 	return time.Now().Before(epm.Bans[addr])
 }
 
+// LastSeen returns the time of the last activity
 func (epm *Endpoints) LastSeen(ip IP) time.Time {
 	epm.mtx.RLock()
 	defer epm.mtx.RUnlock()
 	return epm.Ends[ip.String()].Seen
 }
 
+// Lock an endpoint for a specific duration
 func (epm *Endpoints) Lock(ip IP, dur time.Duration) {
 	epm.mtx.Lock()
 	defer epm.mtx.Unlock()
@@ -87,6 +98,8 @@ func (epm *Endpoints) Lock(ip IP, dur time.Duration) {
 		epm.Ends[ip.String()] = ep
 	}
 }
+
+// Unlock an endpoint again
 func (epm *Endpoints) Unlock(ip IP) {
 	epm.mtx.Lock()
 	defer epm.mtx.Unlock()
@@ -96,21 +109,15 @@ func (epm *Endpoints) Unlock(ip IP) {
 	}
 }
 
-/*func (epm *Endpoints) SetConnectionLock(ip IP) {
-	epm.mtx.Lock()
-	defer epm.mtx.Unlock()
-	if ep, ok := epm.Ends[ip.String()]; ok {
-		ep.lock = time.Now()
-		epm.Ends[ip.String()] = ep
-	}
-}
-*/
+// IsLocked checks if an endpoint is locked
 func (epm *Endpoints) IsLocked(ip IP) bool {
 	epm.mtx.RLock()
 	defer epm.mtx.RUnlock()
 	return time.Now().Before(epm.Ends[ip.String()].lock)
 }
 
+// IPs returns a concurrency safe slice of the current endpoints.
+//
 func (epm *Endpoints) IPs() []IP {
 	epm.mtx.RLock()
 	defer epm.mtx.RUnlock()
@@ -125,7 +132,7 @@ func (epm *Endpoints) IPs() []IP {
 	return epm.ips
 }
 
-func (epm *Endpoints) cleanup(cutoff time.Duration) uint {
+func (epm *Endpoints) Cleanup(cutoff time.Duration) uint {
 	removed := uint(0)
 	for addr, ep := range epm.Ends {
 		if time.Since(ep.Seen) > cutoff {
@@ -145,6 +152,6 @@ func (epm *Endpoints) cleanup(cutoff time.Duration) uint {
 func (epm *Endpoints) Persist(cutoff time.Duration) ([]byte, error) {
 	epm.mtx.RLock()
 	defer epm.mtx.RUnlock()
-	epm.cleanup(cutoff)
+	epm.Cleanup(cutoff)
 	return json.Marshal(epm)
 }

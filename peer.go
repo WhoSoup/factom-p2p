@@ -8,6 +8,7 @@ import (
 	"time"
 
 	log "github.com/sirupsen/logrus"
+	"github.com/whosoup/factom-p2p/util"
 )
 
 var peerLogger = packageLogger.WithField("subpack", "peer")
@@ -30,7 +31,7 @@ type Peer struct {
 	lastPeerSend    time.Time
 	send            ParcelChannel
 	error           chan error
-	status          chan peerConnection
+	status          chan peerStatus
 
 	encoder *gob.Encoder
 	decoder *gob.Decoder
@@ -40,7 +41,7 @@ type Peer struct {
 
 	Seed bool
 
-	IP     IP
+	IP     util.IP
 	NodeID uint64 // a nonce to distinguish multiple nodes behind one IP address
 	Hash   string // This is more of a connection ID than hash right now.
 
@@ -64,7 +65,7 @@ type PeerError struct {
 	err  error
 }
 
-func NewPeer(net *Network, status chan peerConnection) *Peer {
+func NewPeer(net *Network, status chan peerStatus) *Peer {
 	p := &Peer{}
 	p.net = net
 	p.status = status
@@ -91,7 +92,7 @@ func NewPeer(net *Network, status chan peerConnection) *Peer {
 // The handshake ensures that ALL peers have a valid Port field to start with.
 // If there is no reply within the specified HandshakeTimeout config setting, the process
 // fails
-func (p *Peer) StartWithHandshake(ip IP, con net.Conn, incoming bool) (bool, error) {
+func (p *Peer) StartWithHandshake(ip util.IP, con net.Conn, incoming bool) (bool, error) {
 	tmplogger := p.logger.WithField("addr", ip.Address)
 	timeout := time.Now().Add(p.net.conf.HandshakeTimeout)
 	request := NewParcel(TypePeerRequest, []byte("Peer Request"))
@@ -152,7 +153,7 @@ func (p *Peer) StartWithHandshake(ip IP, con net.Conn, incoming bool) (bool, err
 	go p.sendLoop()
 	go p.readLoop()
 
-	p.status <- peerConnection{peer: p, online: true}
+	p.status <- peerStatus{peer: p, online: true}
 
 	return true, nil
 }
@@ -178,7 +179,7 @@ func (p *Peer) Stop(andRemove bool) {
 		}
 
 		if andRemove {
-			p.status <- peerConnection{peer: p, online: false}
+			p.status <- peerStatus{peer: p, online: false}
 		}
 	})
 }

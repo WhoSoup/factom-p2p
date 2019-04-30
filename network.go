@@ -8,6 +8,7 @@ import (
 	"time"
 
 	log "github.com/sirupsen/logrus"
+	"github.com/whosoup/factom-p2p/util"
 )
 
 // Network is the main access point for outside applications.
@@ -24,7 +25,7 @@ type Network struct {
 
 	stopRoute   chan bool
 	peerParcel  chan PeerParcel
-	listener    *LimitedListener
+	listener    *util.LimitedListener
 	metricsHook func(pm map[string]PeerMetrics)
 
 	rng    *rand.Rand
@@ -240,7 +241,7 @@ func (n *Network) listenLoop() {
 
 	addr := fmt.Sprintf("%s:%s", n.conf.BindIP, n.conf.ListenPort)
 
-	l, err := NewLimitedListener(addr, n.conf.ListenLimit)
+	l, err := util.NewLimitedListener(addr, n.conf.ListenLimit)
 	if err != nil {
 		tmpLogger.WithError(err).Error("controller.Start() unable to start limited listener")
 		return

@@ -12,6 +12,7 @@ import (
 	"time"
 
 	log "github.com/sirupsen/logrus"
+	"github.com/whosoup/factom-p2p/util"
 )
 
 var pmLogger = packageLogger.WithField("subpack", "peerManager")
@@ -20,15 +21,15 @@ var pmLogger = packageLogger.WithField("subpack", "peerManager")
 type peerManager struct {
 	net *Network
 
-	peerStatus chan peerConnection
+	peerStatus chan peerStatus
 
 	stopPeers  chan bool
 	stopData   chan bool
 	stopOnline chan bool
 
 	peers      *PeerStore
-	endpoints  *Endpoints
-	dialer     *Dialer
+	endpoints  *util.Endpoints
+	dialer     *util.Dialer
 	special    map[string]bool
 	specialMtx sync.RWMutex
 	//bans      map[string]time.Time
@@ -53,10 +54,10 @@ func newPeerManager(network *Network) *peerManager {
 		"network": c.Network})
 	pm.logger.WithField("peermanager_init", c).Debugf("Initializing Peer Manager")
 
-	pm.dialer = NewDialer(c.BindIP, c.RedialInterval, c.DialTimeout, c.RedialAttempts)
+	pm.dialer = util.NewDialer(c.BindIP, c.RedialInterval, c.DialTimeout, c.RedialAttempts)
 	pm.lastPersist = time.Now()
 
-	pm.peerStatus = make(chan peerConnection, 10) // TODO reconsider this value
+	pm.peerStatus = make(chan peerStatus, 10) // TODO reconsider this value
 
 	pm.stopPeers = make(chan bool, 1)
 	pm.stopData = make(chan bool, 1)
@@ -149,10 +150,7 @@ func (pm *peerManager) Stop() {
 
 func (pm *peerManager) bootStrapPeers() {
 	pm.peers = NewPeerStore()
-	pm.endpoints = pm.loadEndpoints()
-	if pm.endpoints == nil {
-		pm.endpoints = NewEndpoints()
-	}
+	pm.endpoints = pm.loadEndpoints() // creates blank if none exist
 	pm.lastSeedRefresh = time.Now()
 	pm.discoverSeeds()
 }
@@ -256,7 +254,7 @@ func (pm *peerManager) discoverSeeds() {
 				continue
 			}
 
-			if ip, err := NewIP(address, port); err != nil {
+			if ip, err := util.NewIP(address, port); err != nil {
 				pm.logger.WithError(err).Debugf("Invalid endpoint in seed list: %s", line)
 			} else {
 				pm.endpoints.Register(ip, "Seed")
@@ -287,7 +285,7 @@ func (pm *peerManager) processPeers(peer *Peer, parcel *Parcel) {
 	}
 
 	for _, p := range list {
-		ip, err := NewIP(p.Address, p.Port)
+		ip, err := util.NewIP(p.Address, p.Port)
 		if err != nil {
 			pm.logger.WithError(err).Infof("Unable to register endpoint %s:%s from peer %s", p.Address, p.Port, peer)
 		} else {
@@ -391,8 +389,8 @@ func (pm *peerManager) managePeersDialOutgoing() {
 
 	count := uint(pm.peers.Total())
 	if want := int(pm.net.conf.Outgoing - count); want > 0 {
-		var filtered []IP
-		var special []IP
+		var filtered []util.IP
+		var special []util.IP
 		pm.specialMtx.RLock()
 		for _, ip := range pm.endpoints.IPs() {
 			if pm.special[ip.Address] {
@@ -467,7 +465,7 @@ func (pm *peerManager) HandleIncoming(con net.Conn) {
 		return
 	}
 
-	ip, err := NewIP(addr, "")
+	ip, err := util.NewIP(addr, "")
 	if err != nil { // should never happen for incoming
 		pm.logger.WithError(err).Debugf("Unable to decode address %s", addr)
 		con.Close()
@@ -492,7 +490,7 @@ func (pm *peerManager) HandleIncoming(con net.Conn) {
 	}
 }
 
-func (pm *peerManager) Dial(ip IP) {
+func (pm *peerManager) Dial(ip util.IP) {
 
 	if ip.Port == "" {
 		ip.Port = pm.net.conf.ListenPort // TODO add a "default port"?
@@ -548,7 +546,7 @@ func (pm *peerManager) Broadcast(parcel *Parcel, full bool) {
 // Takes the input and spreads peers out over n equally sized buckets based on their
 // ipv4 prefix, then iterates over those buckets and removes a random peer from each
 // one until it has enough
-func (pm *peerManager) getOutgoingSelection(filtered []IP, wanted int) []IP {
+func (pm *peerManager) getOutgoingSelection(filtered []util.IP, wanted int) []util.IP {
 	if wanted < 1 {
 		return nil
 	}
@@ -560,11 +558,11 @@ func (pm *peerManager) getOutgoingSelection(filtered []IP, wanted int) []IP {
 
 	if wanted == 1 { // edge case
 		rand := pm.net.rng.Intn(len(filtered))
-		return []IP{filtered[rand]}
+		return []util.IP{filtered[rand]}
 	}
 
 	// generate a list of peers distant to each other
-	buckets := make([][]IP, wanted)
+	buckets := make([][]util.IP, wanted)
 	bucketSize := uint32(4294967295/uint32(wanted)) + 1 // 33554432 for wanted=128
 
 	// distribute peers over n buckets
@@ -574,7 +572,7 @@ func (pm *peerManager) getOutgoingSelection(filtered []IP, wanted int) []IP {
 	}
 
 	// pick random peers from each bucket
-	var picked []IP
+	var picked []util.IP
 	for len(picked) < wanted {
 		offset := pm.net.rng.Intn(len(buckets)) // start at a random point in the bucket array
 		for i := 0; i < len(buckets); i++ {
@@ -601,7 +599,7 @@ func (pm *peerManager) selectRandomPeers(count uint) []*Peer {
 		return peers
 	}
 
-	shuffle(len(peers), func(i, j int) {
+	util.Shuffle(len(peers), func(i, j int) {
 		peers[i], peers[j] = peers[j], peers[i]
 	})
 
@@ -660,7 +658,7 @@ func (pm *peerManager) persist() {
 	pm.logger.Debugf("Persisted peers json file")
 }
 
-func (pm *peerManager) loadEndpoints() *Endpoints {
+func (pm *peerManager) loadEndpoints() *util.Endpoints {
 	path := pm.net.conf.PeerFile
 	if path == "" {
 		return nil
@@ -671,7 +669,7 @@ func (pm *peerManager) loadEndpoints() *Endpoints {
 		return nil
 	}
 
-	var eps Endpoints
+	var eps util.Endpoints
 	dec := json.NewDecoder(bufio.NewReader(file))
 	err = dec.Decode(&eps)
 
@@ -682,10 +680,10 @@ func (pm *peerManager) loadEndpoints() *Endpoints {
 
 	// decoding from a blank or invalid file
 	if eps.Ends == nil || eps.Bans == nil {
-		return NewEndpoints()
+		return util.NewEndpoints()
 	}
 
-	eps.cleanup(pm.net.conf.PeerAgeLimit)
+	eps.Cleanup(pm.net.conf.PeerAgeLimit)
 
 	return &eps
 }

@@ -1,6 +1,6 @@
 package p2p
 
-type peerConnection struct {
+type peerStatus struct {
 	peer   *Peer
 	online bool
 }

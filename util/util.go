@@ -1,4 +1,4 @@
-package p2p
+package util
 
 import (
 	"encoding/binary"
@@ -6,7 +6,7 @@ import (
 	"net"
 )
 
-func shuffle(n int, swap func(i, j int)) {
+func Shuffle(n int, swap func(i, j int)) {
 	if n < 0 {
 		panic("invalid argument to Shuffle")
 	}

@@ -1,9 +1,11 @@
 package p2p
 
+import "github.com/whosoup/factom-p2p/util"
+
 // PeerDistance is a sorting metric for sorting peers by location relative to a specific peer
 type PeerDistance struct {
 	Pivot  uint32
-	Sorted []IP
+	Sorted []util.IP
 }
 
 func (pd *PeerDistance) Len() int {
