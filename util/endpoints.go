@@ -31,6 +31,10 @@ func NewEndpoints() *Endpoints {
 	return epm
 }
 
+func (epm *Endpoints) Total() int {
+	return len(epm.Ends)
+}
+
 // Register an IP in the system along with the source of where it's from
 func (epm *Endpoints) Register(ip IP, source string) {
 	epm.mtx.Lock()

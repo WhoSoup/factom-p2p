@@ -67,6 +67,8 @@ func newPeerManager(network *Network) *peerManager {
 	pm.special = make(map[string]bool)
 	pm.parseSpecial(pm.net.conf.Special)
 
+	pm.net.prom.KnownPeers.Set(float64(pm.endpoints.Total()))
+
 	return pm
 }
 
@@ -164,11 +166,17 @@ func (pm *peerManager) manageOnline() {
 			return
 		case pc := <-pm.peerStatus:
 			if pc.online {
-				old := pm.peers.Replace(pc.peer)
+				old := pm.peers.Get(pc.peer.Hash)
 				if old != nil {
-					old.Stop(false)
+					old.Stop(true)
+					pm.peers.Remove(old)
+				}
+				err := pm.peers.Add(pc.peer)
+				if err != nil {
+					pm.logger.Errorf("Unable to add peer %s to peer store because an old peer still exists", pc.peer)
 				}
 			} else {
+
 				pm.peers.Remove(pc.peer)
 				if pc.peer.IsIncoming {
 					// lock this connection temporarily so we don't try to connect to it
@@ -176,6 +184,11 @@ func (pm *peerManager) manageOnline() {
 					pm.endpoints.Lock(pc.peer.IP, pm.net.conf.DisconnectLock)
 				}
 			}
+
+			pm.net.prom.Connections.Set(float64(pm.peers.Total()))
+			pm.net.prom.Unique.Set(float64(pm.peers.Unique()))
+			pm.net.prom.Incoming.Set(float64(pm.peers.Incoming))
+			pm.net.prom.Outgoing.Set(float64(pm.peers.Outgoing))
 		}
 	}
 }
@@ -194,9 +207,11 @@ func (pm *peerManager) manageData() {
 			if err := parcel.Valid(); err != nil {
 				pm.logger.WithError(err).Warnf("received invalid parcel, disconnecting peer %s", peer)
 				peer.Stop(true)
+				pm.net.prom.Invalid.Inc()
 				continue
 			}
 			pm.logger.Debugf("Received parcel %s from %s", parcel, peer)
+			pm.net.prom.ParcelsReceived.Inc()
 
 			switch parcel.Header.Type {
 			case TypePing:
@@ -205,10 +220,11 @@ func (pm *peerManager) manageData() {
 					peer.Send(parcel)
 				}()
 			case TypeMessage:
-				// TODO ApplicationMessagesReceived++
-				pm.net.FromNetwork.Send(parcel)
+				//pm.net.FromNetwork.Send(parcel)
+				fallthrough
 			case TypeMessagePart:
-				parcel.Header.Type = TypeMessage // TODO v9 hack
+				pm.net.prom.AppReceived.Inc()
+				parcel.Header.Type = TypeMessage
 				pm.net.FromNetwork.Send(parcel)
 			case TypePeerRequest:
 				if time.Since(peer.lastPeerSend) >= pm.net.conf.PeerRequestInterval {
@@ -292,6 +308,8 @@ func (pm *peerManager) processPeers(peer *Peer, parcel *Parcel) {
 			pm.endpoints.Register(ip, peer.IP.Address)
 		}
 	}
+
+	pm.net.prom.KnownPeers.Set(float64(pm.endpoints.Total()))
 }
 
 // sharePeers creates a list of peers to share and sends it to peer
@@ -458,6 +476,9 @@ func (pm *peerManager) allowIncoming(addr string) error {
 }
 
 func (pm *peerManager) HandleIncoming(con net.Conn) {
+	pm.net.prom.Connecting.Inc()
+	defer pm.net.prom.Connecting.Dec()
+
 	addr, _, err := net.SplitHostPort(con.RemoteAddr().String())
 	if err != nil {
 		pm.logger.WithError(err).Debugf("Unable to parse address %s", con.RemoteAddr().String())
@@ -491,6 +512,8 @@ func (pm *peerManager) HandleIncoming(con net.Conn) {
 }
 
 func (pm *peerManager) Dial(ip util.IP) {
+	pm.net.prom.Connecting.Inc()
+	defer pm.net.prom.Connecting.Dec()
 
 	if ip.Port == "" {
 		ip.Port = pm.net.conf.ListenPort // TODO add a "default port"?

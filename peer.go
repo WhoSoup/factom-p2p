@@ -201,6 +201,8 @@ func (p *Peer) quality(diff int32) int32 {
 }
 
 func (p *Peer) readLoop() {
+	p.net.prom.ReceiveRoutines.Inc()
+	defer p.net.prom.ReceiveRoutines.Dec()
 	defer p.conn.Close() // close connection on fatal error
 	for {
 		var message Parcel
@@ -241,6 +243,9 @@ func (p *Peer) deliver(parcel *Parcel) bool {
 // sendLoop listens to the Outgoing channel, pushing all data from there
 // to the tcp connection
 func (p *Peer) sendLoop() {
+	p.net.prom.SendRoutines.Inc()
+	defer p.net.prom.SendRoutines.Dec()
+
 	defer p.conn.Close() // close connection on fatal error
 	for {
 		select {

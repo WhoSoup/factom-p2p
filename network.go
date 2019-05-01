@@ -23,6 +23,8 @@ type Network struct {
 	conf        *Configuration
 	peerManager *peerManager
 
+	prom *Prometheus
+
 	stopRoute   chan bool
 	peerParcel  chan PeerParcel
 	listener    *util.LimitedListener
@@ -129,6 +131,7 @@ func NewNetwork(conf Configuration) *Network {
 	}
 
 	n.peerManager = newPeerManager(n)
+	n.prom = new(Prometheus)
 
 	n.peerParcel = make(chan PeerParcel, conf.ChannelCapacity)
 
@@ -148,6 +151,7 @@ func (n *Network) SetMetricsHook(f func(pm map[string]PeerMetrics)) {
 // Listens to incoming connections on the specified port
 // and connects to other peers
 func (n *Network) Start() {
+	n.prom.Setup()
 	n.logger.Info("Starting the P2P Network")
 	n.peerManager.Start() // this will get peer manager ready to handle incoming connections
 	n.stopRoute = make(chan bool, 1)

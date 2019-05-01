@@ -1,6 +1,9 @@
 package p2p
 
-import "sync"
+import (
+	"fmt"
+	"sync"
+)
 
 // PeerStore holds active Peers, managing them in a concurrency safe
 // manner and providing lookup via various functions
@@ -21,6 +24,7 @@ func NewPeerStore() *PeerStore {
 	return ps
 }
 
+/*
 // Replace adds the given peer to the list of managed peers.
 // If a peer with that hash already existed, it returns the old one
 func (ps *PeerStore) Replace(p *Peer) *Peer {
@@ -46,6 +50,25 @@ func (ps *PeerStore) Replace(p *Peer) *Peer {
 		}
 	}
 	return old
+}*/
+
+func (ps *PeerStore) Add(p *Peer) error {
+	ps.mtx.Lock()
+	defer ps.mtx.Unlock()
+	_, ok := ps.peers[p.Hash]
+	if ok {
+		return fmt.Errorf("peer already exists")
+	}
+	ps.curSlice = nil
+	ps.peers[p.Hash] = p
+	ps.connected[p.IP.Address]++
+
+	if p.IsIncoming {
+		ps.Incoming++
+	} else {
+		ps.Outgoing++
+	}
+	return nil
 }
 
 func (ps *PeerStore) Remove(p *Peer) {
@@ -66,7 +89,13 @@ func (ps *PeerStore) Remove(p *Peer) {
 func (ps *PeerStore) Total() int {
 	ps.mtx.RLock()
 	defer ps.mtx.RUnlock()
-	return ps.Incoming + ps.Outgoing
+	return len(ps.peers)
+}
+
+func (ps *PeerStore) Unique() int {
+	ps.mtx.RLock()
+	defer ps.mtx.RUnlock()
+	return len(ps.connected)
 }
 
 func (ps *PeerStore) Get(hash string) *Peer {
