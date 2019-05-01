@@ -263,7 +263,6 @@ func (n *Network) listenLoop() {
 			continue
 		}
 
-		// currently a non-concurrent implementation
-		n.peerManager.HandleIncoming(conn)
+		go n.peerManager.HandleIncoming(conn)
 	}
 }

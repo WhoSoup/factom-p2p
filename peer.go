@@ -95,8 +95,8 @@ func NewPeer(net *Network, status chan peerStatus) *Peer {
 func (p *Peer) StartWithHandshake(ip util.IP, con net.Conn, incoming bool) (bool, error) {
 	tmplogger := p.logger.WithField("addr", ip.Address)
 	timeout := time.Now().Add(p.net.conf.HandshakeTimeout)
-	request := NewParcel(TypePeerRequest, []byte("Peer Request"))
-	request.SetMeta(p.net.conf)
+	request := newParcel(TypePeerRequest, []byte("Peer Request"))
+	request.setMeta(p.net.conf)
 
 	p.decoder = gob.NewDecoder(con)
 	p.encoder = gob.NewEncoder(con)
@@ -189,7 +189,7 @@ func (p *Peer) String() string {
 }
 
 func (p *Peer) Send(parcel *Parcel) {
-	parcel.SetMeta(p.net.conf)
+	parcel.setMeta(p.net.conf)
 	p.send.Send(parcel)
 }
 

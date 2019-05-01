@@ -107,15 +107,20 @@ func (p *Parcel) MessageType() string {
 	return fmt.Sprintf("[%s]", CommandStrings[p.Header.Type])
 }
 
+func (p *Parcel) SetAppData(appType, appHash string) {
+	p.Header.AppHash = appHash
+	p.Header.AppType = appType
+}
+
 func (p *Parcel) String() string {
 	return fmt.Sprintf("[%s] %dB v%d", CommandStrings[p.Header.Type], p.Header.Length, p.Header.Version)
 }
 
 func NewMessage(payload []byte) *Parcel {
-	return NewParcel(TypeMessage, payload)
+	return newParcel(TypeMessage, payload)
 }
 
-func NewParcel(command ParcelCommandType, payload []byte) *Parcel {
+func newParcel(command ParcelCommandType, payload []byte) *Parcel {
 	parcel := new(Parcel)
 	parcel.Header = ParcelHeader{ // the header information will get filled more when sending
 		Type:    command,
@@ -131,7 +136,7 @@ func (p *Parcel) SetPayload(payload []byte) {
 	p.Header.Length = uint32(len(p.Payload))
 }
 
-func (p *Parcel) SetMeta(conf *Configuration) {
+func (p *Parcel) setMeta(conf *Configuration) {
 	p.Header.NodeID = conf.NodeID
 	p.Header.Version = conf.ProtocolVersion
 	p.Header.Network = conf.Network

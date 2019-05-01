@@ -201,7 +201,7 @@ func (pm *peerManager) manageData() {
 			switch parcel.Header.Type {
 			case TypePing:
 				go func() {
-					parcel := NewParcel(TypePong, []byte("Pong"))
+					parcel := newParcel(TypePong, []byte("Pong"))
 					peer.Send(parcel)
 				}()
 			case TypeMessage:
@@ -303,7 +303,7 @@ func (pm *peerManager) sharePeers(peer *Peer) {
 		pm.logger.WithError(ok).Error("Failed to marshal peer list to json")
 		return
 	}
-	parcel := NewParcel(TypePeerResponse, json)
+	parcel := newParcel(TypePeerResponse, json)
 	peer.Send(parcel)
 }
 
@@ -361,12 +361,12 @@ func (pm *peerManager) managePeers() {
 				p.lastPeerRequest = time.Now()
 				p.peerShareAsk = true
 				pm.logger.Debugf("Requesting peers from %s", p.Hash)
-				req := NewParcel(TypePeerRequest, []byte("Peer Request"))
+				req := newParcel(TypePeerRequest, []byte("Peer Request"))
 				p.Send(req)
 			}
 
 			if time.Since(p.LastSend) > pm.net.conf.PingInterval {
-				ping := NewParcel(TypePing, []byte("Ping"))
+				ping := newParcel(TypePing, []byte("Ping"))
 				p.Send(ping)
 			}
 		}
