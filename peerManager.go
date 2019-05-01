@@ -67,7 +67,9 @@ func newPeerManager(network *Network) *peerManager {
 	pm.special = make(map[string]bool)
 	pm.parseSpecial(pm.net.conf.Special)
 
-	pm.net.prom.KnownPeers.Set(float64(pm.endpoints.Total()))
+	if pm.net.prom != nil {
+		pm.net.prom.KnownPeers.Set(float64(pm.endpoints.Total()))
+	}
 
 	return pm
 }
@@ -184,11 +186,12 @@ func (pm *peerManager) manageOnline() {
 					pm.endpoints.Lock(pc.peer.IP, pm.net.conf.DisconnectLock)
 				}
 			}
-
-			pm.net.prom.Connections.Set(float64(pm.peers.Total()))
-			pm.net.prom.Unique.Set(float64(pm.peers.Unique()))
-			pm.net.prom.Incoming.Set(float64(pm.peers.Incoming))
-			pm.net.prom.Outgoing.Set(float64(pm.peers.Outgoing))
+			if pm.net.prom != nil {
+				pm.net.prom.Connections.Set(float64(pm.peers.Total()))
+				pm.net.prom.Unique.Set(float64(pm.peers.Unique()))
+				pm.net.prom.Incoming.Set(float64(pm.peers.Incoming))
+				pm.net.prom.Outgoing.Set(float64(pm.peers.Outgoing))
+			}
 		}
 	}
 }
@@ -207,11 +210,12 @@ func (pm *peerManager) manageData() {
 			if err := parcel.Valid(); err != nil {
 				pm.logger.WithError(err).Warnf("received invalid parcel, disconnecting peer %s", peer)
 				peer.Stop(true)
-				pm.net.prom.Invalid.Inc()
+				if pm.net.prom != nil {
+					pm.net.prom.Invalid.Inc()
+				}
 				continue
 			}
 			pm.logger.Debugf("Received parcel %s from %s", parcel, peer)
-			pm.net.prom.ParcelsReceived.Inc()
 
 			switch parcel.Header.Type {
 			case TypePing:
@@ -223,7 +227,6 @@ func (pm *peerManager) manageData() {
 				//pm.net.FromNetwork.Send(parcel)
 				fallthrough
 			case TypeMessagePart:
-				pm.net.prom.AppReceived.Inc()
 				parcel.Header.Type = TypeMessage
 				pm.net.FromNetwork.Send(parcel)
 			case TypePeerRequest:
@@ -309,7 +312,9 @@ func (pm *peerManager) processPeers(peer *Peer, parcel *Parcel) {
 		}
 	}
 
-	pm.net.prom.KnownPeers.Set(float64(pm.endpoints.Total()))
+	if pm.net.prom != nil {
+		pm.net.prom.KnownPeers.Set(float64(pm.endpoints.Total()))
+	}
 }
 
 // sharePeers creates a list of peers to share and sends it to peer
@@ -476,8 +481,10 @@ func (pm *peerManager) allowIncoming(addr string) error {
 }
 
 func (pm *peerManager) HandleIncoming(con net.Conn) {
-	pm.net.prom.Connecting.Inc()
-	defer pm.net.prom.Connecting.Dec()
+	if pm.net.prom != nil {
+		pm.net.prom.Connecting.Inc()
+		defer pm.net.prom.Connecting.Dec()
+	}
 
 	addr, _, err := net.SplitHostPort(con.RemoteAddr().String())
 	if err != nil {
@@ -512,8 +519,10 @@ func (pm *peerManager) HandleIncoming(con net.Conn) {
 }
 
 func (pm *peerManager) Dial(ip util.IP) {
-	pm.net.prom.Connecting.Inc()
-	defer pm.net.prom.Connecting.Dec()
+	if pm.net.prom != nil {
+		pm.net.prom.Connecting.Inc()
+		defer pm.net.prom.Connecting.Dec()
+	}
 
 	if ip.Port == "" {
 		ip.Port = pm.net.conf.ListenPort // TODO add a "default port"?

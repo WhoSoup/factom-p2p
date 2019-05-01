@@ -6,7 +6,10 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 )
 
+var once sync.Once
+
 type Prometheus struct {
+	Networks    prometheus.Gauge
 	Connections prometheus.Gauge // done
 	Unique      prometheus.Gauge
 	Connecting  prometheus.Gauge // done
@@ -24,12 +27,11 @@ type Prometheus struct {
 	AppSent         prometheus.Counter
 	AppReceived     prometheus.Counter
 
-	once sync.Once
+	ParcelSize prometheus.Histogram
 }
 
 func (p *Prometheus) Setup() {
-	p.once.Do(func() {
-
+	once.Do(func() {
 		ng := func(name, help string) prometheus.Gauge {
 			g := prometheus.NewGauge(prometheus.GaugeOpts{
 				Name: name,
@@ -38,6 +40,7 @@ func (p *Prometheus) Setup() {
 			prometheus.MustRegister(g)
 			return g
 		}
+
 		p.Connections = ng("factomd_p2p_peers_online", "Number of established connections")
 		p.Unique = ng("factomd_p2p_peers_unique", "Number of unique ip addresses connected")
 		p.Connecting = ng("factomd_p2p_peers_connecting", "Number of connections currently dialing or awaiting handshake")
@@ -51,6 +54,11 @@ func (p *Prometheus) Setup() {
 		p.Invalid = ng("factom_p2p_parcels_invalid", "Total number of invalid parcels received")
 		p.AppSent = ng("factom_p2p_messages_sent", "Total number of application messages sent")
 		p.AppReceived = ng("factom_p2p_messages_received", "Total number of application messages received")
-
+		p.ParcelSize = prometheus.NewHistogram(prometheus.HistogramOpts{
+			Name:    "factomd_p2p_parcels_size",
+			Help:    "Number of parcels encountered for specific sizes (in KiBi)",
+			Buckets: prometheus.ExponentialBuckets(1, 2, 16),
+		})
+		prometheus.MustRegister(p.ParcelSize)
 	})
 }

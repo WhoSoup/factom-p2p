@@ -201,14 +201,16 @@ func (p *Peer) quality(diff int32) int32 {
 }
 
 func (p *Peer) readLoop() {
-	p.net.prom.ReceiveRoutines.Inc()
-	defer p.net.prom.ReceiveRoutines.Dec()
+	if p.net.prom != nil {
+		p.net.prom.ReceiveRoutines.Inc()
+		defer p.net.prom.ReceiveRoutines.Dec()
+	}
 	defer p.conn.Close() // close connection on fatal error
 	for {
-		var message Parcel
+		var parcel Parcel
 
 		p.conn.SetReadDeadline(time.Now().Add(p.net.conf.ReadDeadline))
-		err := p.decoder.Decode(&message)
+		err := p.decoder.Decode(&parcel)
 		if err != nil {
 			p.logger.WithError(err).Debug("connection error (readLoop)")
 			p.Stop(true)
@@ -219,12 +221,18 @@ func (p *Peer) readLoop() {
 		p.LastReceive = time.Now()
 		p.QualityScore++
 		p.ParcelsReceived++
-		p.BytesReceived += uint64(len(message.Payload))
+		p.BytesReceived += uint64(len(parcel.Payload))
 		p.metricsMtx.Unlock()
 
-		message.Header.TargetPeer = p.Hash
-
-		if !p.deliver(&message) {
+		parcel.Header.TargetPeer = p.Hash
+		if p.net.prom != nil {
+			p.net.prom.ParcelsReceived.Inc()
+			p.net.prom.ParcelSize.Observe(float64(parcel.Header.Length+ParcelHeaderSize) / 1024)
+			if parcel.Header.Type == TypeMessage || parcel.Header.Type == TypeMessagePart {
+				p.net.prom.AppReceived.Inc()
+			}
+		}
+		if !p.deliver(&parcel) {
 			return
 		}
 	}
@@ -243,8 +251,10 @@ func (p *Peer) deliver(parcel *Parcel) bool {
 // sendLoop listens to the Outgoing channel, pushing all data from there
 // to the tcp connection
 func (p *Peer) sendLoop() {
-	p.net.prom.SendRoutines.Inc()
-	defer p.net.prom.SendRoutines.Dec()
+	if p.net.prom != nil {
+		p.net.prom.SendRoutines.Inc()
+		defer p.net.prom.SendRoutines.Dec()
+	}
 
 	defer p.conn.Close() // close connection on fatal error
 	for {
@@ -270,6 +280,14 @@ func (p *Peer) sendLoop() {
 			p.BytesSent += uint64(len(parcel.Payload))
 			p.LastSend = time.Now()
 			p.metricsMtx.Unlock()
+
+			if p.net.prom != nil {
+				p.net.prom.ParcelsSent.Inc()
+				p.net.prom.ParcelSize.Observe(float64(parcel.Header.Length+ParcelHeaderSize) / 1024)
+				if parcel.Header.Type == TypeMessage || parcel.Header.Type == TypeMessagePart {
+					p.net.prom.AppSent.Inc()
+				}
+			}
 		}
 	}
 }

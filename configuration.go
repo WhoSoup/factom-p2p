@@ -123,6 +123,8 @@ type Configuration struct {
 
 	LogPath  string // Path for logs
 	LogLevel string // Logging level
+
+	EnablePrometheus bool
 }
 
 // DefaultP2PConfiguration returns a network configuration with base values
@@ -171,6 +173,8 @@ func DefaultP2PConfiguration() (c Configuration) {
 	c.ProtocolVersionMinimum = 9
 
 	c.ChannelCapacity = 5000
+
+	c.EnablePrometheus = true
 
 	return
 }

@@ -118,9 +118,14 @@ func DebugServer(n *Network) {
 func NewNetwork(conf Configuration) *Network {
 	myconf := conf // copy
 	n := new(Network)
-	n.logger = packageLogger.WithField("subpackage", "Network").WithField("node", conf.NodeName)
 
+	n.logger = packageLogger.WithField("subpackage", "Network").WithField("node", conf.NodeName)
 	n.conf = &myconf
+	if n.conf.EnablePrometheus {
+		n.prom = new(Prometheus)
+		n.prom.Setup()
+	}
+
 	n.rng = rand.New(rand.NewSource(time.Now().UnixNano()))
 
 	if n.conf.NodeID == 0 {
@@ -131,10 +136,7 @@ func NewNetwork(conf Configuration) *Network {
 	}
 
 	n.peerManager = newPeerManager(n)
-	n.prom = new(Prometheus)
-
 	n.peerParcel = make(chan PeerParcel, conf.ChannelCapacity)
-
 	n.ToNetwork = NewParcelChannel(conf.ChannelCapacity)
 	n.FromNetwork = NewParcelChannel(conf.ChannelCapacity)
 	return n
@@ -151,7 +153,6 @@ func (n *Network) SetMetricsHook(f func(pm map[string]PeerMetrics)) {
 // Listens to incoming connections on the specified port
 // and connects to other peers
 func (n *Network) Start() {
-	n.prom.Setup()
 	n.logger.Info("Starting the P2P Network")
 	n.peerManager.Start() // this will get peer manager ready to handle incoming connections
 	n.stopRoute = make(chan bool, 1)
