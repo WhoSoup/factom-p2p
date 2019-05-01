@@ -68,9 +68,9 @@ func (epm *Endpoints) Deregister(ip IP) {
 func (epm *Endpoints) Ban(addr string, t time.Time) {
 	epm.mtx.Lock()
 	defer epm.mtx.Unlock()
-	for ip := range epm.Ends {
-		if ip == addr {
-			delete(epm.Ends, ip)
+	for i, ep := range epm.Ends {
+		if ep.IP.Address == addr {
+			delete(epm.Ends, i)
 		}
 	}
 	epm.Bans[addr] = t
