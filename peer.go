@@ -60,11 +60,6 @@ type Peer struct {
 	logger *log.Entry
 }
 
-type PeerError struct {
-	Peer *Peer
-	err  error
-}
-
 func NewPeer(net *Network, status chan peerStatus) *Peer {
 	p := &Peer{}
 	p.net = net

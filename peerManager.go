@@ -508,7 +508,7 @@ func (pm *peerManager) HandleIncoming(con net.Conn) {
 
 	peer := NewPeer(pm.net, pm.peerStatus)
 	if ok, err := peer.StartWithHandshake(ip, con, true); ok {
-		pm.logger.Debug("Incoming handshake success for peer %s", peer.Hash)
+		pm.logger.Debugf("Incoming handshake success for peer %s", peer.Hash)
 		pm.endpoints.Register(peer.IP, "Incoming")
 		pm.endpoints.Lock(peer.IP, time.Hour*8760*50) // 50 years
 		pm.dialer.Reset(peer.IP)

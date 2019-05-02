@@ -4,7 +4,34 @@ import (
 	"fmt"
 	"strconv"
 	"time"
+
+	"github.com/whosoup/factom-p2p/util"
 )
+
+type PeerMetrics struct {
+	Hash             string
+	PeerAddress      string
+	MomentConnected  time.Time
+	PeerQuality      int32
+	LastReceive      time.Time
+	LastSend         time.Time
+	MessagesSent     uint64
+	BytesSent        uint64
+	MessagesReceived uint64
+	BytesReceived    uint64
+	Incoming         bool
+}
+
+// PeerParcel is a temporary hold structure to correlate a parcel with the peer that received it
+type PeerParcel struct {
+	Peer   *Peer
+	Parcel *Parcel
+}
+
+type peerStatus struct {
+	peer   *Peer
+	online bool
+}
 
 // PeerShare is the data being shared with other peers
 type PeerShare struct {
@@ -32,4 +59,34 @@ func (ps PeerShare) Verify() bool {
 		return ps.Port != "0" && ps.Address != ""
 	}
 	return false
+}
+
+// PeerDistance is a sorting metric for sorting peers by location relative to a specific peer
+type PeerDistance struct {
+	Pivot  uint32
+	Sorted []util.IP
+}
+
+func (pd *PeerDistance) Len() int {
+	return len(pd.Sorted)
+}
+
+func (pd *PeerDistance) Swap(i, j int) {
+	pd.Sorted[i], pd.Sorted[j] = pd.Sorted[j], pd.Sorted[i]
+}
+
+func (pd *PeerDistance) Less(i, j int) bool {
+	return pd.Distance(i) < pd.Distance(j)
+}
+
+func (pd *PeerDistance) Distance(i int) uint32 {
+	return uintDistance(pd.Pivot, pd.Sorted[i].Location)
+}
+
+// uintDistance returns the absolute difference between i and j
+func uintDistance(i, j uint32) uint32 {
+	if i > j {
+		return i - j
+	}
+	return j - i
 }

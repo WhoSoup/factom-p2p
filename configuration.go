@@ -124,7 +124,7 @@ type Configuration struct {
 	LogPath  string // Path for logs
 	LogLevel string // Logging level
 
-	EnablePrometheus bool
+	EnablePrometheus bool // Enable prometheus logging. Disable if you run multiple instances
 }
 
 // DefaultP2PConfiguration returns a network configuration with base values
