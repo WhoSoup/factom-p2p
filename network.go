@@ -26,7 +26,6 @@ type Network struct {
 	prom *Prometheus
 
 	stopRoute   chan bool
-	peerParcel  chan peerParcel
 	listener    *util.LimitedListener
 	metricsHook func(pm map[string]PeerMetrics)
 
@@ -83,7 +82,7 @@ func DebugServer(n *Network) {
 		out += fmt.Sprintf("Channels\n")
 		out += fmt.Sprintf("\tToNetwork: %d / %d\n", len(n.ToNetwork), cap(n.ToNetwork))
 		out += fmt.Sprintf("\tFromNetwork: %d / %d\n", len(n.FromNetwork), cap(n.FromNetwork))
-		out += fmt.Sprintf("\tpeerParcel: %d / %d\n", len(n.peerParcel), cap(n.peerParcel))
+		out += fmt.Sprintf("\tpeerParcel: %d / %d\n", len(n.peerManager.peerParcel), cap(n.peerManager.peerParcel))
 		out += fmt.Sprintf("\nPeers (%d)\n", n.peerManager.peers.Total())
 		for _, p := range n.peerManager.peers.Slice() {
 			out += fmt.Sprintf("\t%s\n", p.IP)
@@ -136,7 +135,6 @@ func NewNetwork(conf Configuration) *Network {
 	}
 
 	n.peerManager = newPeerManager(n)
-	n.peerParcel = make(chan peerParcel, conf.ChannelCapacity)
 	n.ToNetwork = NewParcelChannel(conf.ChannelCapacity)
 	n.FromNetwork = NewParcelChannel(conf.ChannelCapacity)
 	return n
@@ -157,8 +155,8 @@ func (n *Network) Start() {
 	n.peerManager.Start() // this will get peer manager ready to handle incoming connections
 	n.stopRoute = make(chan bool, 1)
 	DebugServer(n)
-	go n.listenLoop()
-	go n.routeLoop()
+	go n.listen()
+	go n.route()
 }
 
 // Stop tears down all the active connections and stops the listener.
@@ -214,9 +212,9 @@ func (n *Network) Total() int {
 	return n.peerManager.peers.Total()
 }
 
-// routeLoop Takes messages from the network's ToNetwork channel and routes it
+// route Takes messages from the network's ToNetwork channel and routes it
 // to the peerManager via the appropriate function
-func (n *Network) routeLoop() {
+func (n *Network) route() {
 	for {
 		// TODO metrics?
 		// blocking read on ToNetwork, and c.stopRoute
@@ -239,10 +237,10 @@ func (n *Network) routeLoop() {
 	}
 }
 
-// listenLoop listens for incoming TCP connections and passes them off to peer manager
-func (n *Network) listenLoop() {
+// listen listens for incoming TCP connections and passes them off to peer manager
+func (n *Network) listen() {
 	tmpLogger := n.logger.WithFields(log.Fields{"address": n.conf.BindIP, "port": n.conf.ListenPort})
-	tmpLogger.Debug("controller.listenLoop() starting up")
+	tmpLogger.Debug("controller.listen() starting up")
 
 	addr := fmt.Sprintf("%s:%s", n.conf.BindIP, n.conf.ListenPort)
 

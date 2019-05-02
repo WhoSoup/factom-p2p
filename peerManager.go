@@ -22,6 +22,7 @@ type peerManager struct {
 	net *Network
 
 	peerStatus chan peerStatus
+	peerParcel chan peerParcel
 
 	stopPeers  chan bool
 	stopData   chan bool
@@ -58,6 +59,7 @@ func newPeerManager(network *Network) *peerManager {
 	pm.lastPersist = time.Now()
 
 	pm.peerStatus = make(chan peerStatus, 10) // TODO reconsider this value
+	pm.peerParcel = make(chan peerParcel, pm.net.conf.ChannelCapacity)
 
 	pm.stopPeers = make(chan bool, 1)
 	pm.stopData = make(chan bool, 1)
@@ -203,18 +205,10 @@ func (pm *peerManager) manageData() {
 		select {
 		case <-pm.stopData:
 			return
-		case data := <-pm.net.peerParcel:
+		case data := <-pm.peerParcel:
 			parcel := data.parcel
 			peer := data.peer
 
-			if err := parcel.Valid(); err != nil {
-				pm.logger.WithError(err).Warnf("received invalid parcel, disconnecting peer %s", peer)
-				peer.Stop(true)
-				if pm.net.prom != nil {
-					pm.net.prom.Invalid.Inc()
-				}
-				continue
-			}
 			pm.logger.Debugf("Received parcel %s from %s", parcel, peer)
 
 			switch parcel.Header.Type {
@@ -506,7 +500,7 @@ func (pm *peerManager) HandleIncoming(con net.Conn) {
 		return
 	}
 
-	peer := NewPeer(pm.net, pm.peerStatus)
+	peer := NewPeer(pm.net, pm.peerStatus, pm.peerParcel)
 	if ok, err := peer.StartWithHandshake(ip, con, true); ok {
 		pm.logger.Debugf("Incoming handshake success for peer %s", peer.Hash)
 		pm.endpoints.Register(peer.IP, "Incoming")
@@ -537,7 +531,7 @@ func (pm *peerManager) Dial(ip util.IP) {
 		return
 	}
 
-	peer := NewPeer(pm.net, pm.peerStatus)
+	peer := NewPeer(pm.net, pm.peerStatus, pm.peerParcel)
 	if !pm.endpoints.IsLocked(ip) {
 		pm.endpoints.Lock(ip, pm.net.conf.HandshakeTimeout)
 	}

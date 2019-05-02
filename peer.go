@@ -32,6 +32,7 @@ type Peer struct {
 	send            ParcelChannel
 	error           chan error
 	status          chan peerStatus
+	data            chan peerParcel
 
 	encoder *gob.Encoder
 	decoder *gob.Decoder
@@ -60,10 +61,11 @@ type Peer struct {
 	logger *log.Entry
 }
 
-func NewPeer(net *Network, status chan peerStatus) *Peer {
+func NewPeer(net *Network, status chan peerStatus, data chan peerParcel) *Peer {
 	p := &Peer{}
 	p.net = net
 	p.status = status
+	p.data = data
 
 	p.logger = peerLogger.WithFields(log.Fields{
 		"node":    net.conf.NodeName,
@@ -205,10 +207,18 @@ func (p *Peer) readLoop() {
 		var parcel Parcel
 
 		p.conn.SetReadDeadline(time.Now().Add(p.net.conf.ReadDeadline))
-		err := p.decoder.Decode(&parcel)
-		if err != nil {
+		if err := p.decoder.Decode(&parcel); err != nil {
 			p.logger.WithError(err).Debug("connection error (readLoop)")
 			p.Stop(true)
+			return
+		}
+
+		if err := parcel.Valid(); err != nil {
+			p.logger.WithError(err).Warnf("received invalid parcel, disconnecting peer")
+			p.Stop(true)
+			if p.net.prom != nil {
+				p.net.prom.Invalid.Inc()
+			}
 			return
 		}
 
@@ -236,7 +246,7 @@ func (p *Peer) readLoop() {
 // deliver is a blocking delivery of this peer's messages to the peer manager.
 func (p *Peer) deliver(parcel *Parcel) bool {
 	select {
-	case p.net.peerParcel <- peerParcel{peer: p, parcel: parcel}:
+	case p.data <- peerParcel{peer: p, parcel: parcel}:
 	case <-p.stopDelivery:
 		return false
 	}
