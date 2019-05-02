@@ -82,7 +82,7 @@ func DebugServer(n *Network) {
 		out += fmt.Sprintf("Channels\n")
 		out += fmt.Sprintf("\tToNetwork: %d / %d\n", len(n.ToNetwork), cap(n.ToNetwork))
 		out += fmt.Sprintf("\tFromNetwork: %d / %d\n", len(n.FromNetwork), cap(n.FromNetwork))
-		out += fmt.Sprintf("\tpeerParcel: %d / %d\n", len(n.peerManager.peerParcel), cap(n.peerManager.peerParcel))
+		out += fmt.Sprintf("\tpeerData: %d / %d\n", len(n.peerManager.peerData), cap(n.peerManager.peerData))
 		out += fmt.Sprintf("\nPeers (%d)\n", n.peerManager.peers.Total())
 		for _, p := range n.peerManager.peers.Slice() {
 			out += fmt.Sprintf("\t%s\n", p.IP)

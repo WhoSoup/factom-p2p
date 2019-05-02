@@ -60,6 +60,14 @@ func (h *ParcelHeader) Valid(conf *Configuration) error {
 	return nil
 }
 
+func (p *Parcel) IsApplicationMessage() bool {
+	switch p.Header.Type {
+	case TypeMessage, TypeMessagePart:
+		return true
+	default:
+		return false
+	}
+}
 func (p *Parcel) SetAppData(appType, appHash string) {
 	p.Header.AppHash = appHash
 	p.Header.AppType = appType

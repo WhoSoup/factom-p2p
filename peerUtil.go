@@ -22,12 +22,6 @@ type PeerMetrics struct {
 	Incoming         bool
 }
 
-// PeerParcel is a temporary hold structure to correlate a parcel with the peer that received it
-type peerParcel struct {
-	peer   *Peer
-	parcel *Parcel
-}
-
 // peerStatus is an indicator for peer manager whether the associated peer is going online or offline
 type peerStatus struct {
 	peer   *Peer

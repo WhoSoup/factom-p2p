@@ -32,7 +32,7 @@ type Peer struct {
 	send            ParcelChannel
 	error           chan error
 	status          chan peerStatus
-	data            chan peerParcel
+	data            chan *Parcel
 
 	encoder *gob.Encoder
 	decoder *gob.Decoder
@@ -61,7 +61,7 @@ type Peer struct {
 	logger *log.Entry
 }
 
-func NewPeer(net *Network, status chan peerStatus, data chan peerParcel) *Peer {
+func NewPeer(net *Network, status chan peerStatus, data chan *Parcel) *Peer {
 	p := &Peer{}
 	p.net = net
 	p.status = status
@@ -246,7 +246,7 @@ func (p *Peer) readLoop() {
 // deliver is a blocking delivery of this peer's messages to the peer manager.
 func (p *Peer) deliver(parcel *Parcel) bool {
 	select {
-	case p.data <- peerParcel{peer: p, parcel: parcel}:
+	case p.data <- parcel:
 	case <-p.stopDelivery:
 		return false
 	}
