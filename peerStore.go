@@ -24,34 +24,6 @@ func NewPeerStore() *PeerStore {
 	return ps
 }
 
-/*
-// Replace adds the given peer to the list of managed peers.
-// If a peer with that hash already existed, it returns the old one
-func (ps *PeerStore) Replace(p *Peer) *Peer {
-	ps.mtx.Lock()
-	defer ps.mtx.Unlock()
-	old := ps.peers[p.Hash]
-	ps.curSlice = nil
-	ps.peers[p.Hash] = p
-	ps.connected[p.IP.Address]++
-
-	if p.IsIncoming {
-		ps.Incoming++
-	} else {
-		ps.Outgoing++
-	}
-
-	if old != nil {
-		ps.connected[p.IP.Address]--
-		if old.IsIncoming {
-			ps.Incoming--
-		} else {
-			ps.Outgoing--
-		}
-	}
-	return old
-}*/
-
 func (ps *PeerStore) Add(p *Peer) error {
 	ps.mtx.Lock()
 	defer ps.mtx.Unlock()

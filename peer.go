@@ -236,7 +236,7 @@ func (p *Peer) readLoop() {
 // deliver is a blocking delivery of this peer's messages to the peer manager.
 func (p *Peer) deliver(parcel *Parcel) bool {
 	select {
-	case p.net.peerParcel <- PeerParcel{Peer: p, Parcel: parcel}:
+	case p.net.peerParcel <- peerParcel{peer: p, parcel: parcel}:
 	case <-p.stopDelivery:
 		return false
 	}

@@ -204,8 +204,8 @@ func (pm *peerManager) manageData() {
 		case <-pm.stopData:
 			return
 		case data := <-pm.net.peerParcel:
-			parcel := data.Parcel
-			peer := data.Peer
+			parcel := data.parcel
+			peer := data.peer
 
 			if err := parcel.Valid(); err != nil {
 				pm.logger.WithError(err).Warnf("received invalid parcel, disconnecting peer %s", peer)

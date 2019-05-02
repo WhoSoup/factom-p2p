@@ -26,7 +26,7 @@ type Network struct {
 	prom *Prometheus
 
 	stopRoute   chan bool
-	peerParcel  chan PeerParcel
+	peerParcel  chan peerParcel
 	listener    *util.LimitedListener
 	metricsHook func(pm map[string]PeerMetrics)
 
@@ -136,7 +136,7 @@ func NewNetwork(conf Configuration) *Network {
 	}
 
 	n.peerManager = newPeerManager(n)
-	n.peerParcel = make(chan PeerParcel, conf.ChannelCapacity)
+	n.peerParcel = make(chan peerParcel, conf.ChannelCapacity)
 	n.ToNetwork = NewParcelChannel(conf.ChannelCapacity)
 	n.FromNetwork = NewParcelChannel(conf.ChannelCapacity)
 	return n
