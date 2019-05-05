@@ -169,7 +169,7 @@ func DefaultP2PConfiguration() (c Configuration) {
 	c.HandshakeTimeout = time.Second * 10 // can be quite low
 	c.DialTimeout = time.Second * 10      // can be quite low
 
-	c.ProtocolVersion = 9
+	c.ProtocolVersion = 10
 	c.ProtocolVersionMinimum = 9
 
 	c.ChannelCapacity = 5000

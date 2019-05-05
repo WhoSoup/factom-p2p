@@ -212,7 +212,7 @@ func (c *controller) manageData() {
 		case <-c.stopData:
 			return
 		case parcel := <-c.peerData:
-			peer := c.peers.Get(parcel.Header.TargetPeer)
+			peer := c.peers.Get(parcel.Address)
 
 			if peer == nil && !parcel.IsApplicationMessage() { // peer disconnected between sending message and now
 				continue
@@ -220,7 +220,7 @@ func (c *controller) manageData() {
 
 			c.logger.Debugf("Received parcel %s from %s", parcel, peer)
 
-			switch parcel.Header.Type {
+			switch parcel.Type {
 			case TypePing:
 				go func() {
 					parcel := newParcel(TypePong, []byte("Pong"))
@@ -230,7 +230,7 @@ func (c *controller) manageData() {
 				//c.net.FromNetwork.Send(parcel)
 				fallthrough
 			case TypeMessagePart:
-				parcel.Header.Type = TypeMessage
+				parcel.Type = TypeMessage
 				c.net.FromNetwork.Send(parcel)
 			case TypePeerRequest:
 				if time.Since(peer.lastPeerSend) >= c.net.conf.PeerRequestInterval {

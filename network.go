@@ -213,7 +213,7 @@ func (n *Network) route() {
 		// blocking read on ToNetwork, and c.stopRoute
 		select {
 		case message := <-n.ToNetwork:
-			switch message.Header.TargetPeer {
+			switch message.Address {
 			case FullBroadcastFlag:
 				n.controller.Broadcast(message, true)
 			case BroadcastFlag:
@@ -221,7 +221,7 @@ func (n *Network) route() {
 			case RandomPeerFlag:
 				n.controller.ToPeer("", message)
 			default:
-				n.controller.ToPeer(message.Header.TargetPeer, message)
+				n.controller.ToPeer(message.Address, message)
 			}
 		// stop this loop if anything shows up
 		case <-n.stopRoute:

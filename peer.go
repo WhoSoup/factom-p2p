@@ -17,7 +17,7 @@ var peerLogger = packageLogger.WithField("subpack", "peer")
 type Peer struct {
 	net  *Network
 	conn net.Conn
-	//handshake Handshake
+	prot Protocol
 
 	// current state
 	IsIncoming bool
@@ -81,6 +81,18 @@ func NewPeer(net *Network, status chan peerStatus, data chan *Parcel) *Peer {
 	return p
 }
 
+func (p *Peer) identifyProtocol(hs *Handshake) bool {
+	switch hs.Header.Version {
+	case 9:
+		p.prot = new(ProtocolV9)
+	case 10:
+		p.prot = new(ProtocolV9)
+	default:
+		return false
+	}
+	return true
+}
+
 // StartWithHandshake performs a basic handshake maneouver to establish the validity
 // of the connection. Immediately sends a Peer Request upon connection and waits for the
 // response, which can be any parcel. The information in the header is verified, especially
@@ -92,14 +104,14 @@ func NewPeer(net *Network, status chan peerStatus, data chan *Parcel) *Peer {
 func (p *Peer) StartWithHandshake(ip util.IP, con net.Conn, incoming bool) (bool, error) {
 	tmplogger := p.logger.WithField("addr", ip.Address)
 	timeout := time.Now().Add(p.net.conf.HandshakeTimeout)
-	request := newParcel(TypePeerRequest, []byte("Peer Request"))
-	request.setMeta(p.net.conf)
+
+	handshake := newHandshake(p.net.conf)
 
 	p.decoder = gob.NewDecoder(con)
 	p.encoder = gob.NewEncoder(con)
 	con.SetWriteDeadline(timeout)
 	con.SetReadDeadline(timeout)
-	err := p.encoder.Encode(request)
+	err := p.encoder.Encode(handshake)
 
 	if err != nil {
 		tmplogger.WithError(err).Debugf("Failed to send handshake to incoming connection")
@@ -107,7 +119,7 @@ func (p *Peer) StartWithHandshake(ip util.IP, con net.Conn, incoming bool) (bool
 		return false, err
 	}
 
-	err = p.decoder.Decode(&request)
+	err = p.decoder.Decode(&handshake)
 	if err != nil {
 		tmplogger.WithError(err).Debugf("Failed to read handshake from incoming connection")
 		con.Close()
@@ -121,18 +133,18 @@ func (p *Peer) StartWithHandshake(ip util.IP, con net.Conn, incoming bool) (bool
 	}
 
 	// check basic structure
-	if err = request.Valid(); err != nil {
+	if err = handshake.Valid(p.net.conf); err != nil {
 		return failfunc(err)
 	}
 
-	// verify handshake
-	if err = request.Header.Valid(p.net.conf); err != nil {
-		return failfunc(err)
+	if !p.identifyProtocol(handshake) {
+		failfunc(fmt.Errorf("Unable to identify protocol \"%d\"", handshake.Header.Version))
 	}
+	p.prot.Init(p.net, con, p.decoder, p.encoder)
 
-	ip.Port = request.Header.PeerPort
+	ip.Port = handshake.Header.PeerPort
 	p.IP = ip
-	p.NodeID = request.Header.NodeID
+	p.NodeID = handshake.Header.NodeID
 	p.Hash = fmt.Sprintf("%s:%s %016x", ip.Address, ip.Port, p.NodeID)
 	p.send = NewParcelChannel(p.net.conf.ChannelCapacity)
 	p.error = make(chan error, 10)
@@ -143,8 +155,12 @@ func (p *Peer) StartWithHandshake(ip util.IP, con net.Conn, incoming bool) (bool
 	p.lastPeerRequest = time.Now()
 	p.lastPeerSend = time.Time{}
 	p.peerShareAsk = true
-	if !p.deliver(request) { // push the handshake to peer manager
-		return failfunc(fmt.Errorf("failed to deliver handshake to peermanager"))
+
+	hsParcel := handshake.Convert()
+	if hsParcel != nil {
+		if !p.deliver(hsParcel) { // push the handshake to peer manager
+			return failfunc(fmt.Errorf("failed to deliver handshake to peermanager"))
+		}
 	}
 
 	go p.sendLoop()
@@ -186,7 +202,6 @@ func (p *Peer) String() string {
 }
 
 func (p *Peer) Send(parcel *Parcel) {
-	parcel.setMeta(p.net.conf)
 	p.send.Send(parcel)
 }
 
@@ -204,17 +219,16 @@ func (p *Peer) readLoop() {
 	}
 	defer p.conn.Close() // close connection on fatal error
 	for {
-		var parcel Parcel
-
 		p.conn.SetReadDeadline(time.Now().Add(p.net.conf.ReadDeadline))
-		if err := p.decoder.Decode(&parcel); err != nil {
+		msg, err := p.prot.Receive()
+		if err != nil {
 			p.logger.WithError(err).Debug("connection error (readLoop)")
 			p.Stop(true)
 			return
 		}
 
-		if err := parcel.Valid(); err != nil {
-			p.logger.WithError(err).Warnf("received invalid parcel, disconnecting peer")
+		if err := msg.Valid(); err != nil {
+			p.logger.WithError(err).Warnf("received invalid msg, disconnecting peer")
 			p.Stop(true)
 			if p.net.prom != nil {
 				p.net.prom.Invalid.Inc()
@@ -226,18 +240,18 @@ func (p *Peer) readLoop() {
 		p.LastReceive = time.Now()
 		p.QualityScore++
 		p.ParcelsReceived++
-		p.BytesReceived += uint64(len(parcel.Payload))
+		p.BytesReceived += uint64(len(msg.Payload))
 		p.metricsMtx.Unlock()
 
-		parcel.Header.TargetPeer = p.Hash
+		msg.Address = p.Hash
 		if p.net.prom != nil {
 			p.net.prom.ParcelsReceived.Inc()
-			p.net.prom.ParcelSize.Observe(float64(parcel.Header.Length+ParcelHeaderSize) / 1024)
-			if parcel.Header.Type == TypeMessage || parcel.Header.Type == TypeMessagePart {
+			p.net.prom.ParcelSize.Observe(float64(len(msg.Payload)) / 1024)
+			if msg.IsApplicationMessage() {
 				p.net.prom.AppReceived.Inc()
 			}
 		}
-		if !p.deliver(&parcel) {
+		if !p.deliver(msg) {
 			return
 		}
 	}
@@ -273,7 +287,7 @@ func (p *Peer) sendLoop() {
 			}
 
 			p.conn.SetWriteDeadline(time.Now().Add(p.net.conf.WriteDeadline))
-			err := p.encoder.Encode(parcel)
+			err := p.prot.Send(parcel)
 			if err != nil { // no error is recoverable
 				p.logger.WithError(err).Debug("connection error (sendLoop)")
 				p.Stop(true)
@@ -288,8 +302,8 @@ func (p *Peer) sendLoop() {
 
 			if p.net.prom != nil {
 				p.net.prom.ParcelsSent.Inc()
-				p.net.prom.ParcelSize.Observe(float64(parcel.Header.Length+ParcelHeaderSize) / 1024)
-				if parcel.Header.Type == TypeMessage || parcel.Header.Type == TypeMessagePart {
+				p.net.prom.ParcelSize.Observe(float64(len(parcel.Payload)+32) / 1024) // TODO FIX
+				if parcel.IsApplicationMessage() {
 					p.net.prom.AppSent.Inc()
 				}
 			}
