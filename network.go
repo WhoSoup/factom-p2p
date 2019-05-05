@@ -3,12 +3,10 @@ package p2p
 import (
 	"fmt"
 	"math/rand"
-	"net"
 	"net/http"
 	"time"
 
 	log "github.com/sirupsen/logrus"
-	"github.com/whosoup/factom-p2p/util"
 )
 
 // Network is the main access point for outside applications.
@@ -20,13 +18,12 @@ type Network struct {
 	ToNetwork   ParcelChannel
 	FromNetwork ParcelChannel
 
-	conf        *Configuration
-	peerManager *peerManager
+	conf       *Configuration
+	controller *controller
 
 	prom *Prometheus
 
 	stopRoute   chan bool
-	listener    *util.LimitedListener
 	metricsHook func(pm map[string]PeerMetrics)
 
 	rng    *rand.Rand
@@ -39,7 +36,7 @@ var packageLogger = log.WithField("package", "p2p")
 func (n *Network) DebugMessage() (string, string, int) {
 	hv := ""
 	r := fmt.Sprintf("\nONLINE:\n")
-	s := n.peerManager.peers.Slice()
+	s := n.controller.peers.Slice()
 	count := len(s)
 	for _, p := range s {
 
@@ -62,7 +59,7 @@ func (n *Network) DebugMessage() (string, string, int) {
 		}
 	}
 	known := ""
-	for _, ip := range n.peerManager.endpoints.IPs() {
+	for _, ip := range n.controller.endpoints.IPs() {
 		known += ip.Address + " "
 	}
 	r += "\nKNOWN:\n" + known
@@ -82,9 +79,9 @@ func DebugServer(n *Network) {
 		out += fmt.Sprintf("Channels\n")
 		out += fmt.Sprintf("\tToNetwork: %d / %d\n", len(n.ToNetwork), cap(n.ToNetwork))
 		out += fmt.Sprintf("\tFromNetwork: %d / %d\n", len(n.FromNetwork), cap(n.FromNetwork))
-		out += fmt.Sprintf("\tpeerData: %d / %d\n", len(n.peerManager.peerData), cap(n.peerManager.peerData))
-		out += fmt.Sprintf("\nPeers (%d)\n", n.peerManager.peers.Total())
-		for _, p := range n.peerManager.peers.Slice() {
+		out += fmt.Sprintf("\tpeerData: %d / %d\n", len(n.controller.peerData), cap(n.controller.peerData))
+		out += fmt.Sprintf("\nPeers (%d)\n", n.controller.peers.Total())
+		for _, p := range n.controller.peers.Slice() {
 			out += fmt.Sprintf("\t%s\n", p.IP)
 			out += fmt.Sprintf("\t\tsend: %d / %d\n", len(p.send), cap(p.send))
 			m := p.GetMetrics()
@@ -101,7 +98,7 @@ func DebugServer(n *Network) {
 		}
 
 		out += fmt.Sprintf("\nEndpoints\n")
-		for _, ep := range n.peerManager.endpoints.IPs() {
+		for _, ep := range n.controller.endpoints.IPs() {
 			out += fmt.Sprintf("\t%s", ep)
 		}
 
@@ -131,10 +128,10 @@ func NewNetwork(conf Configuration) *Network {
 		for n.conf.NodeID == 0 {
 			n.conf.NodeID = n.rng.Uint64()
 		}
-		n.logger.Debugf("No node id specified, generated random node id %x")
+		n.logger.Debugf("No node id specified, generated random node id %x", n.conf.NodeID)
 	}
 
-	n.peerManager = newPeerManager(n)
+	n.controller = newController(n)
 	n.ToNetwork = NewParcelChannel(conf.ChannelCapacity)
 	n.FromNetwork = NewParcelChannel(conf.ChannelCapacity)
 	return n
@@ -152,10 +149,9 @@ func (n *Network) SetMetricsHook(f func(pm map[string]PeerMetrics)) {
 // and connects to other peers
 func (n *Network) Start() {
 	n.logger.Info("Starting the P2P Network")
-	n.peerManager.Start() // this will get peer manager ready to handle incoming connections
+	n.controller.Start() // this will get peer manager ready to handle incoming connections
 	n.stopRoute = make(chan bool, 1)
 	DebugServer(n)
-	go n.listen()
 	go n.route()
 }
 
@@ -163,24 +159,21 @@ func (n *Network) Start() {
 // Use before shutting down.
 func (n *Network) Stop() {
 	n.logger.Info("Stopping the P2P Network")
-	n.peerManager.Stop()
+	n.controller.Stop()
 	n.stopRoute <- true
-	if n.listener != nil {
-		n.listener.Close()
-	}
 }
 
 // Merit rewards a peer for doing something right
 func (n *Network) Merit(hash string) {
 	n.logger.Debugf("Received merit for %s from application", hash)
-	go n.peerManager.merit(hash)
+	go n.controller.merit(hash)
 }
 
 // Demerit punishes a peer for doing something wrong. Too many demerits
 // and the peer will be banned
 func (n *Network) Demerit(hash string) {
 	n.logger.Debugf("Received demerit for %s from application", hash)
-	go n.peerManager.demerit(hash)
+	go n.controller.demerit(hash)
 }
 
 // Ban removes a peer as well as any other peer from that address
@@ -188,14 +181,14 @@ func (n *Network) Demerit(hash string) {
 // set in the configuration (default one week)
 func (n *Network) Ban(hash string) {
 	n.logger.Debugf("Received ban for %s from application", hash)
-	go n.peerManager.ban(hash, n.conf.ManualBan)
+	go n.controller.ban(hash, n.conf.ManualBan)
 }
 
 // Disconnect severs connection for a specific peer. They are free to
 // connect again afterward
 func (n *Network) Disconnect(hash string) {
 	n.logger.Debugf("Received disconnect for %s from application", hash)
-	go n.peerManager.disconnect(hash)
+	go n.controller.disconnect(hash)
 }
 
 // ParseSpecial takes a set of ip addresses that should be treated as special.
@@ -204,16 +197,16 @@ func (n *Network) Disconnect(hash string) {
 // "127.0.0.1;8.8.8.8;192.168.0.1"
 func (n *Network) ParseSpecial(raw string) {
 	n.logger.Debugf("Received new list of special peers from application: %s", raw)
-	go n.peerManager.parseSpecial(raw)
+	go n.controller.parseSpecial(raw)
 }
 
 // Total returns the number of active connections
 func (n *Network) Total() int {
-	return n.peerManager.peers.Total()
+	return n.controller.peers.Total()
 }
 
 // route Takes messages from the network's ToNetwork channel and routes it
-// to the peerManager via the appropriate function
+// to the controller via the appropriate function
 func (n *Network) route() {
 	for {
 		// TODO metrics?
@@ -222,50 +215,17 @@ func (n *Network) route() {
 		case message := <-n.ToNetwork:
 			switch message.Header.TargetPeer {
 			case FullBroadcastFlag:
-				n.peerManager.Broadcast(message, true)
+				n.controller.Broadcast(message, true)
 			case BroadcastFlag:
-				n.peerManager.Broadcast(message, false)
+				n.controller.Broadcast(message, false)
 			case RandomPeerFlag:
-				n.peerManager.ToPeer("", message)
+				n.controller.ToPeer("", message)
 			default:
-				n.peerManager.ToPeer(message.Header.TargetPeer, message)
+				n.controller.ToPeer(message.Header.TargetPeer, message)
 			}
 		// stop this loop if anything shows up
 		case <-n.stopRoute:
 			return
 		}
-	}
-}
-
-// listen listens for incoming TCP connections and passes them off to peer manager
-func (n *Network) listen() {
-	tmpLogger := n.logger.WithFields(log.Fields{"address": n.conf.BindIP, "port": n.conf.ListenPort})
-	tmpLogger.Debug("controller.listen() starting up")
-
-	addr := fmt.Sprintf("%s:%s", n.conf.BindIP, n.conf.ListenPort)
-
-	l, err := util.NewLimitedListener(addr, n.conf.ListenLimit)
-	if err != nil {
-		tmpLogger.WithError(err).Error("controller.Start() unable to start limited listener")
-		return
-	}
-
-	n.listener = l
-
-	// start permanent loop
-	// terminates on program exit or when listener is closed
-	for {
-		conn, err := n.listener.Accept()
-		if err != nil {
-			if ne, ok := err.(*net.OpError); ok && !ne.Timeout() {
-				if !ne.Temporary() {
-					tmpLogger.WithError(err).Warn("controller.acceptLoop() error accepting")
-					return
-				}
-			}
-			continue
-		}
-
-		go n.peerManager.HandleIncoming(conn)
 	}
 }
