@@ -28,6 +28,11 @@ type peerStatus struct {
 	online bool
 }
 
+type peerParcel struct {
+	peer   *Peer
+	parcel *Parcel
+}
+
 // PeerShare is the data being shared with other peers
 type PeerShare struct {
 	QualityScore int32     // 0 is neutral quality, negative is a bad peer.

@@ -13,10 +13,12 @@ type ProtocolV9 struct {
 	conn    net.Conn
 	decoder *gob.Decoder
 	encoder *gob.Encoder
+	peer    *Peer
 }
 
-func (v9 *ProtocolV9) Init(net *Network, conn net.Conn, decoder *gob.Decoder, encoder *gob.Encoder) {
-	v9.net = net
+func (v9 *ProtocolV9) Init(peer *Peer, conn net.Conn, decoder *gob.Decoder, encoder *gob.Encoder) {
+	v9.peer = peer
+	v9.net = peer.net
 	v9.conn = conn
 	v9.decoder = decoder
 	v9.encoder = encoder
@@ -24,15 +26,20 @@ func (v9 *ProtocolV9) Init(net *Network, conn net.Conn, decoder *gob.Decoder, en
 
 func (v9 *ProtocolV9) Send(p *Parcel) error {
 	msg := new(V9Msg)
-	msg.Header.NodeID = v9.net.conf.NodeID
-	msg.Header.Version = v9.net.conf.ProtocolVersion
 	msg.Header.Network = v9.net.conf.Network
+	msg.Header.Version = v9.net.conf.ProtocolVersion
+	msg.Header.Type = p.Type
+	msg.Header.TargetPeer = p.Address
+
+	msg.Header.NodeID = v9.net.conf.NodeID
+	msg.Header.PeerAddress = ""
 	msg.Header.PeerPort = v9.net.conf.ListenPort
+	msg.Header.AppHash = p.AppHash
+	msg.Header.AppType = p.AppType
+
 	msg.Payload = p.Payload
 	msg.Header.Crc32 = p.Crc32
 	msg.Header.Length = uint32(len(p.Payload))
-	msg.Header.AppHash = p.AppHash
-	msg.Header.AppType = p.AppType
 
 	return v9.encoder.Encode(msg)
 }
@@ -56,6 +63,9 @@ func (v9 *ProtocolV9) Receive() (*Parcel, error) {
 	p.Payload = msg.Payload
 	p.Type = msg.Header.Type
 	return p, nil
+}
+func (v9 *ProtocolV9) Version() string {
+	return "9"
 }
 
 type V9Msg struct {
@@ -86,7 +96,7 @@ func (msg *V9Msg) Valid() error {
 	}
 
 	head := msg.Header
-	if head.Version != 9 {
+	if head.Version < 9 {
 		return fmt.Errorf("invalid version")
 	}
 

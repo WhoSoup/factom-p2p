@@ -22,7 +22,7 @@ type controller struct {
 	net *Network
 
 	peerStatus chan peerStatus
-	peerData   chan *Parcel
+	peerData   chan peerParcel
 
 	stopPeers  chan bool
 	stopData   chan bool
@@ -60,7 +60,7 @@ func newController(network *Network) *controller {
 	c.lastPersist = time.Now()
 
 	c.peerStatus = make(chan peerStatus, 10) // TODO reconsider this value
-	c.peerData = make(chan *Parcel, c.net.conf.ChannelCapacity)
+	c.peerData = make(chan peerParcel, c.net.conf.ChannelCapacity)
 
 	c.stopPeers = make(chan bool, 1)
 	c.stopData = make(chan bool, 1)
@@ -211,10 +211,12 @@ func (c *controller) manageData() {
 		select {
 		case <-c.stopData:
 			return
-		case parcel := <-c.peerData:
-			peer := c.peers.Get(parcel.Address)
+		case pp := <-c.peerData:
+			parcel := pp.parcel
+			peer := pp.peer
 
 			if peer == nil && !parcel.IsApplicationMessage() { // peer disconnected between sending message and now
+				c.logger.Debugf("Received parcel %s from peer not in system", parcel)
 				continue
 			}
 

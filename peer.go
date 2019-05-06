@@ -32,10 +32,7 @@ type Peer struct {
 	send            ParcelChannel
 	error           chan error
 	status          chan peerStatus
-	data            chan *Parcel
-
-	encoder *gob.Encoder
-	decoder *gob.Decoder
+	data            chan peerParcel
 
 	connectionAttempt      time.Time
 	connectionAttemptCount uint
@@ -61,7 +58,7 @@ type Peer struct {
 	logger *log.Entry
 }
 
-func NewPeer(net *Network, status chan peerStatus, data chan *Parcel) *Peer {
+func NewPeer(net *Network, status chan peerStatus, data chan peerParcel) *Peer {
 	p := &Peer{}
 	p.net = net
 	p.status = status
@@ -81,12 +78,16 @@ func NewPeer(net *Network, status chan peerStatus, data chan *Parcel) *Peer {
 	return p
 }
 
-func (p *Peer) identifyProtocol(hs *Handshake) bool {
+func (p *Peer) identifyProtocol(hs *Handshake, conn net.Conn, decoder *gob.Decoder, encoder *gob.Encoder) bool {
 	switch hs.Header.Version {
 	case 9:
-		p.prot = new(ProtocolV9)
+		v9 := new(ProtocolV9)
+		v9.Init(p, conn, decoder, encoder)
+		p.prot = v9
 	case 10:
-		p.prot = new(ProtocolV9)
+		v10 := new(ProtocolV10)
+		v10.Init(p, conn, decoder, encoder)
+		p.prot = v10
 	default:
 		return false
 	}
@@ -107,24 +108,11 @@ func (p *Peer) StartWithHandshake(ip util.IP, con net.Conn, incoming bool) (bool
 
 	handshake := newHandshake(p.net.conf)
 
-	p.decoder = gob.NewDecoder(con)
-	p.encoder = gob.NewEncoder(con)
+	decoder := gob.NewDecoder(con)
+	encoder := gob.NewEncoder(con)
 	con.SetWriteDeadline(timeout)
 	con.SetReadDeadline(timeout)
-	err := p.encoder.Encode(handshake)
-
-	if err != nil {
-		tmplogger.WithError(err).Debugf("Failed to send handshake to incoming connection")
-		con.Close()
-		return false, err
-	}
-
-	err = p.decoder.Decode(&handshake)
-	if err != nil {
-		tmplogger.WithError(err).Debugf("Failed to read handshake from incoming connection")
-		con.Close()
-		return false, err
-	}
+	err := encoder.Encode(handshake)
 
 	failfunc := func(err error) (bool, error) {
 		tmplogger.WithError(err).Debug("Handshake failed")
@@ -132,15 +120,25 @@ func (p *Peer) StartWithHandshake(ip util.IP, con net.Conn, incoming bool) (bool
 		return false, err
 	}
 
+	if err != nil {
+		return failfunc(fmt.Errorf("Failed to send handshake to incoming connection"))
+	}
+
+	err = decoder.Decode(&handshake)
+	if err != nil {
+		return failfunc(fmt.Errorf("Failed to read handshake from incoming connection"))
+	}
+
 	// check basic structure
 	if err = handshake.Valid(p.net.conf); err != nil {
 		return failfunc(err)
 	}
 
-	if !p.identifyProtocol(handshake) {
+	if !p.identifyProtocol(handshake, con, decoder, encoder) {
 		failfunc(fmt.Errorf("Unable to identify protocol \"%d\"", handshake.Header.Version))
 	}
-	p.prot.Init(p.net, con, p.decoder, p.encoder)
+
+	p.logger.Debugf("Protocol version %s", p.prot.Version())
 
 	ip.Port = handshake.Header.PeerPort
 	p.IP = ip
@@ -157,16 +155,14 @@ func (p *Peer) StartWithHandshake(ip util.IP, con net.Conn, incoming bool) (bool
 	p.peerShareAsk = true
 
 	hsParcel := handshake.Convert()
-	if hsParcel != nil {
-		if !p.deliver(hsParcel) { // push the handshake to peer manager
-			return failfunc(fmt.Errorf("failed to deliver handshake to peermanager"))
-		}
+	if hsParcel != nil && !p.deliver(hsParcel) { // push the handshake to controller
+		return failfunc(fmt.Errorf("failed to deliver handshake to controller"))
 	}
+
+	p.status <- peerStatus{peer: p, online: true}
 
 	go p.sendLoop()
 	go p.readLoop()
-
-	p.status <- peerStatus{peer: p, online: true}
 
 	return true, nil
 }
@@ -260,7 +256,7 @@ func (p *Peer) readLoop() {
 // deliver is a blocking delivery of this peer's messages to the peer manager.
 func (p *Peer) deliver(parcel *Parcel) bool {
 	select {
-	case p.data <- parcel:
+	case p.data <- peerParcel{peer: p, parcel: parcel}:
 	case <-p.stopDelivery:
 		return false
 	}
