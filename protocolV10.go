@@ -19,8 +19,6 @@ type ProtocolV10 struct {
 type V10Msg struct {
 	Type    ParcelType
 	Crc32   uint32
-	AppHash string
-	AppType string
 	Payload []byte
 }
 
@@ -36,8 +34,6 @@ func (v10 *ProtocolV10) Send(p *Parcel) error {
 	var msg V10Msg
 	msg.Type = p.Type
 	msg.Crc32 = crc32.Checksum(p.Payload, crcTable)
-	msg.AppHash = p.AppHash
-	msg.AppType = p.AppType
 	msg.Payload = p.Payload
 	return v10.encoder.Encode(msg)
 }
@@ -62,11 +58,7 @@ func (v10 *ProtocolV10) Receive() (*Parcel, error) {
 		return nil, fmt.Errorf("invalid checksum")
 	}
 
-	p := new(Parcel)
-	p.Type = msg.Type
-	p.AppHash = msg.AppHash
-	p.AppType = msg.AppType
-	p.Payload = msg.Payload
+	p := newParcel(msg.Type, msg.Payload)
 	p.Address = v10.conn.RemoteAddr().String()
 	return p, nil
 }
