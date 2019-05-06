@@ -220,7 +220,7 @@ func (c *controller) manageData() {
 				continue
 			}
 
-			c.logger.Debugf("Received parcel %s from %s", parcel, peer)
+			//c.logger.Debugf("Received parcel %s from %s", parcel, peer)
 
 			switch parcel.Type {
 			case TypePing:
@@ -698,12 +698,12 @@ func (c *controller) persist() {
 func (c *controller) loadEndpoints() *util.Endpoints {
 	path := c.net.conf.PeerFile
 	if path == "" {
-		return nil
+		return util.NewEndpoints()
 	}
 	file, err := os.Open(path)
 	if err != nil {
 		c.logger.WithError(err).Errorf("loadEndpoints(): file open error for %s", path)
-		return nil
+		return util.NewEndpoints()
 	}
 
 	var eps util.Endpoints
@@ -712,7 +712,7 @@ func (c *controller) loadEndpoints() *util.Endpoints {
 
 	if err != nil {
 		c.logger.WithError(err).Errorf("loadEndpoints(): error decoding")
-		return nil
+		return util.NewEndpoints()
 	}
 
 	// decoding from a blank or invalid file

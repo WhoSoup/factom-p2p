@@ -2,6 +2,8 @@ package p2p
 
 import (
 	"encoding/gob"
+	"fmt"
+	"hash/crc32"
 	"net"
 )
 
@@ -14,6 +16,13 @@ type ProtocolV10 struct {
 	encoder *gob.Encoder
 	peer    *Peer
 }
+type V10Msg struct {
+	Type    ParcelType
+	Crc32   uint32
+	AppHash string
+	AppType string
+	Payload []byte
+}
 
 func (v10 *ProtocolV10) Init(peer *Peer, conn net.Conn, decoder *gob.Decoder, encoder *gob.Encoder) {
 	v10.peer = peer
@@ -24,8 +33,13 @@ func (v10 *ProtocolV10) Init(peer *Peer, conn net.Conn, decoder *gob.Decoder, en
 }
 
 func (v10 *ProtocolV10) Send(p *Parcel) error {
-	msg := V10Msg(*p)
-	return v10.encoder.Encode(&msg)
+	var msg V10Msg
+	msg.Type = p.Type
+	msg.Crc32 = crc32.Checksum(p.Payload, crcTable)
+	msg.AppHash = p.AppHash
+	msg.AppType = p.AppType
+	msg.Payload = p.Payload
+	return v10.encoder.Encode(msg)
 }
 
 func (v10 *ProtocolV10) Version() string {
@@ -39,8 +53,24 @@ func (v10 *ProtocolV10) Receive() (*Parcel, error) {
 		return nil, err
 	}
 
-	p := Parcel(msg)
-	return &p, nil
+	if len(msg.Payload) == 0 {
+		return nil, fmt.Errorf("nul payload")
+	}
+
+	csum := crc32.Checksum(msg.Payload, crcTable)
+	if csum != msg.Crc32 {
+		return nil, fmt.Errorf("invalid checksum")
+	}
+
+	p := new(Parcel)
+	p.Type = msg.Type
+	p.AppHash = msg.AppHash
+	p.AppType = msg.AppType
+	p.Payload = msg.Payload
+	p.Address = v10.conn.RemoteAddr().String()
+	return p, nil
 }
 
-type V10Msg Parcel
+func (v10 *ProtocolV10) Bootstrap(hs *Handshake) *Parcel {
+	return nil
+}

@@ -65,11 +65,7 @@ func NewPeer(net *Network, status chan peerStatus, data chan peerParcel) *Peer {
 	p.data = data
 
 	p.logger = peerLogger.WithFields(log.Fields{
-		"node":    net.conf.NodeName,
-		"hash":    p.Hash,
-		"address": p.IP.Address,
-		"Port":    p.IP.Port,
-		//"version": p.handshake.Version,
+		"node": net.conf.NodeName,
 	})
 	p.stop = make(chan bool, 1)
 	p.stopDelivery = make(chan bool, 1)
@@ -78,20 +74,39 @@ func NewPeer(net *Network, status chan peerStatus, data chan peerParcel) *Peer {
 	return p
 }
 
-func (p *Peer) identifyProtocol(hs *Handshake, conn net.Conn, decoder *gob.Decoder, encoder *gob.Encoder) bool {
-	switch hs.Header.Version {
+func (p *Peer) bootstrapProtocol(hs *Handshake, conn net.Conn, decoder *gob.Decoder, encoder *gob.Encoder) error {
+	v := hs.Header.Version
+	if v > p.net.conf.ProtocolVersion {
+		v = p.net.conf.ProtocolVersion
+	}
+	switch v {
 	case 9:
 		v9 := new(ProtocolV9)
 		v9.Init(p, conn, decoder, encoder)
 		p.prot = v9
+
+		// bootstrap
+		p.lastPeerRequest = time.Now()
+		p.lastPeerSend = time.Time{}
+		p.peerShareAsk = true
+
+		hsParcel := new(Parcel)
+		hsParcel.Address = hs.Header.TargetPeer
+		hsParcel.AppHash = hs.Header.AppHash
+		hsParcel.AppType = hs.Header.AppType
+		hsParcel.Payload = hs.Payload
+		hsParcel.Type = hs.Header.Type
+		if !p.deliver(hsParcel) { // push the handshake to controller
+			return fmt.Errorf("unable to deliver peer request to controller")
+		}
 	case 10:
 		v10 := new(ProtocolV10)
 		v10.Init(p, conn, decoder, encoder)
 		p.prot = v10
 	default:
-		return false
+		return fmt.Errorf("unknown protocol version %d", v)
 	}
-	return true
+	return nil
 }
 
 // StartWithHandshake performs a basic handshake maneouver to establish the validity
@@ -134,11 +149,9 @@ func (p *Peer) StartWithHandshake(ip util.IP, con net.Conn, incoming bool) (bool
 		return failfunc(err)
 	}
 
-	if !p.identifyProtocol(handshake, con, decoder, encoder) {
-		failfunc(fmt.Errorf("Unable to identify protocol \"%d\"", handshake.Header.Version))
+	if err = p.bootstrapProtocol(handshake, con, decoder, encoder); err != nil {
+		return failfunc(err)
 	}
-
-	p.logger.Debugf("Protocol version %s", p.prot.Version())
 
 	ip.Port = handshake.Header.PeerPort
 	p.IP = ip
@@ -149,15 +162,12 @@ func (p *Peer) StartWithHandshake(ip util.IP, con net.Conn, incoming bool) (bool
 	p.IsIncoming = incoming
 	p.conn = con
 	p.Connected = time.Now()
-
-	p.lastPeerRequest = time.Now()
-	p.lastPeerSend = time.Time{}
-	p.peerShareAsk = true
-
-	hsParcel := handshake.Convert()
-	if hsParcel != nil && !p.deliver(hsParcel) { // push the handshake to controller
-		return failfunc(fmt.Errorf("failed to deliver handshake to controller"))
-	}
+	p.logger = p.logger.WithFields(log.Fields{
+		"hash":    p.Hash,
+		"address": p.IP.Address,
+		"Port":    p.IP.Port,
+		"Version": p.prot.Version(),
+	})
 
 	p.status <- peerStatus{peer: p, online: true}
 

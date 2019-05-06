@@ -37,13 +37,13 @@ func newHandshake(conf *Configuration) *Handshake {
 	hs.Header = V9Header{
 		Network:  conf.Network,
 		Version:  conf.ProtocolVersion,
-		Type:     TypePeerRequest,
+		Type:     TypeHandshake,
 		NodeID:   conf.NodeID,
 		PeerPort: conf.ListenPort,
 		AppHash:  "NetworkMessage",
 		AppType:  "Network",
 	}
-	hs.SetPayload([]byte("Peer Request"))
+	hs.SetPayload([]byte("Handshake"))
 	return hs
 }
 
@@ -51,16 +51,4 @@ func (hs *Handshake) SetPayload(payload []byte) {
 	hs.Payload = payload
 	hs.Header.Crc32 = crc32.Checksum(hs.Payload, crcTable)
 	hs.Header.Length = uint32(len(hs.Payload))
-}
-
-func (hs *Handshake) Convert() *Parcel {
-	// TODO non-peer request handshakes in v10
-	p := new(Parcel)
-	p.Address = hs.Header.TargetPeer
-	p.AppHash = hs.Header.AppHash
-	p.AppType = hs.Header.AppType
-	p.Crc32 = hs.Header.Crc32
-	p.Payload = hs.Payload
-	p.Type = hs.Header.Type
-	return p
 }

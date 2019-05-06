@@ -3,6 +3,7 @@ package p2p
 import (
 	"encoding/gob"
 	"fmt"
+	"hash/crc32"
 	"net"
 )
 
@@ -25,9 +26,9 @@ func (v9 *ProtocolV9) Init(peer *Peer, conn net.Conn, decoder *gob.Decoder, enco
 }
 
 func (v9 *ProtocolV9) Send(p *Parcel) error {
-	msg := new(V9Msg)
+	var msg V9Msg
 	msg.Header.Network = v9.net.conf.Network
-	msg.Header.Version = v9.net.conf.ProtocolVersion
+	msg.Header.Version = 9 // hardcoded
 	msg.Header.Type = p.Type
 	msg.Header.TargetPeer = p.Address
 
@@ -38,10 +39,10 @@ func (v9 *ProtocolV9) Send(p *Parcel) error {
 	msg.Header.AppType = p.AppType
 
 	msg.Payload = p.Payload
-	msg.Header.Crc32 = p.Crc32
+	msg.Header.Crc32 = crc32.Checksum(p.Payload, crcTable)
 	msg.Header.Length = uint32(len(p.Payload))
 
-	return v9.encoder.Encode(msg)
+	return v9.encoder.Encode(&msg)
 }
 
 func (v9 *ProtocolV9) Receive() (*Parcel, error) {
@@ -59,7 +60,6 @@ func (v9 *ProtocolV9) Receive() (*Parcel, error) {
 	p.Address = msg.Header.TargetPeer
 	p.AppHash = msg.Header.AppHash
 	p.AppType = msg.Header.AppType
-	p.Crc32 = msg.Header.Crc32
 	p.Payload = msg.Payload
 	p.Type = msg.Header.Type
 	return p, nil
@@ -90,23 +90,31 @@ type V9Header struct {
 }
 
 // Valid checks header for inconsistencies
-func (msg *V9Msg) Valid() error {
-	if msg == nil {
-		return fmt.Errorf("nil parcel")
-	}
-
-	head := msg.Header
-	if head.Version < 9 {
-		return fmt.Errorf("invalid version")
+func (msg V9Msg) Valid() error {
+	if msg.Header.Version != 9 {
+		return fmt.Errorf("invalid version %v", msg.Header)
 	}
 
 	if len(msg.Payload) == 0 {
 		return fmt.Errorf("zero-length payload")
 	}
 
-	if head.Length != uint32(len(msg.Payload)) {
+	if msg.Header.Length != uint32(len(msg.Payload)) {
 		return fmt.Errorf("length in header does not match payload")
 	}
 
+	if len(msg.Payload) == 0 {
+		return fmt.Errorf("nul payload")
+	}
+
+	csum := crc32.Checksum(msg.Payload, crcTable)
+	if csum != msg.Header.Crc32 {
+		return fmt.Errorf("invalid checksum")
+	}
+
 	return nil
+}
+func (v9 *ProtocolV9) Bootstrap(hs *Handshake) *Parcel {
+	p := newParcel(TypePeerRequest, []byte("Peer Request"))
+	return p
 }

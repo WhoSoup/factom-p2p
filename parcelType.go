@@ -12,6 +12,7 @@ const ( // iota is reset to 0
 	TypeAlert                          // network wide alerts (used in bitcoin to indicate criticalities)
 	TypeMessage                        // Application level message
 	TypeMessagePart                    // Application level message that was split into multiple parts
+	TypeHandshake
 )
 
 var typeStrings = map[ParcelType]string{

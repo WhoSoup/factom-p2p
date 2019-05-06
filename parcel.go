@@ -14,7 +14,6 @@ var (
 type Parcel struct {
 	Type    ParcelType // 2 bytes - network level commands (eg: ping/pong)
 	Address string     // ? bytes - "" or nil for broadcast, otherwise the destination peer's hash.
-	Crc32   uint32     // 4 bytes - data integrity hash (of the payload itself.)
 	AppHash string     // Application specific message hash, for tracing
 	AppType string     // Application specific message type, for tracing
 	Payload []byte
@@ -46,13 +45,8 @@ func newParcel(command ParcelType, payload []byte) *Parcel {
 	parcel.Type = command
 	parcel.AppHash = "NetworkMessage"
 	parcel.AppType = "Network"
-	parcel.SetPayload(payload)
+	parcel.Payload = payload
 	return parcel
-}
-
-func (p *Parcel) SetPayload(payload []byte) {
-	p.Payload = payload
-	p.Crc32 = crc32.Checksum(p.Payload, crcTable)
 }
 
 // Valid checks header for inconsistencies
@@ -67,11 +61,6 @@ func (p *Parcel) Valid() error {
 
 	if len(p.Payload) == 0 {
 		return fmt.Errorf("zero-length payload")
-	}
-
-	csum := crc32.Checksum(p.Payload, crcTable)
-	if csum != p.Crc32 {
-		return fmt.Errorf("invalid checksum")
 	}
 
 	return nil
