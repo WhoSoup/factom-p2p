@@ -92,8 +92,6 @@ func (p *Peer) bootstrapProtocol(hs *Handshake, conn net.Conn, decoder *gob.Deco
 
 		hsParcel := new(Parcel)
 		hsParcel.Address = hs.Header.TargetPeer
-		hsParcel.AppHash = hs.Header.AppHash
-		hsParcel.AppType = hs.Header.AppType
 		hsParcel.Payload = hs.Payload
 		hsParcel.Type = hs.Header.Type
 		if !p.deliver(hsParcel) { // push the handshake to controller

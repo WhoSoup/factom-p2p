@@ -14,8 +14,6 @@ var (
 type Parcel struct {
 	Type    ParcelType // 2 bytes - network level commands (eg: ping/pong)
 	Address string     // ? bytes - "" or nil for broadcast, otherwise the destination peer's hash.
-	AppHash string     // Application specific message hash, for tracing
-	AppType string     // Application specific message type, for tracing
 	Payload []byte
 }
 
@@ -26,10 +24,6 @@ func (p *Parcel) IsApplicationMessage() bool {
 	default:
 		return false
 	}
-}
-func (p *Parcel) SetAppData(appType, appHash string) {
-	p.AppHash = appHash
-	p.AppType = appType
 }
 
 func (p *Parcel) String() string {
@@ -43,8 +37,6 @@ func NewMessage(payload []byte) *Parcel {
 func newParcel(command ParcelType, payload []byte) *Parcel {
 	parcel := new(Parcel)
 	parcel.Type = command
-	parcel.AppHash = "NetworkMessage"
-	parcel.AppType = "Network"
 	parcel.Payload = payload
 	return parcel
 }

@@ -35,8 +35,8 @@ func (v9 *ProtocolV9) Send(p *Parcel) error {
 	msg.Header.NodeID = v9.net.conf.NodeID
 	msg.Header.PeerAddress = ""
 	msg.Header.PeerPort = v9.net.conf.ListenPort
-	msg.Header.AppHash = p.AppHash
-	msg.Header.AppType = p.AppType
+	msg.Header.AppHash = "NetworkMessage"
+	msg.Header.AppType = "Network"
 
 	msg.Payload = p.Payload
 	msg.Header.Crc32 = crc32.Checksum(p.Payload, crcTable)
@@ -58,8 +58,6 @@ func (v9 *ProtocolV9) Receive() (*Parcel, error) {
 
 	p := new(Parcel)
 	p.Address = msg.Header.TargetPeer
-	p.AppHash = msg.Header.AppHash
-	p.AppType = msg.Header.AppType
 	p.Payload = msg.Payload
 	p.Type = msg.Header.Type
 	return p, nil

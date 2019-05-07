@@ -221,7 +221,6 @@ func (c *controller) manageData() {
 			}
 
 			//c.logger.Debugf("Received parcel %s from %s", parcel, peer)
-
 			switch parcel.Type {
 			case TypePing:
 				go func() {
