@@ -112,7 +112,3 @@ func (msg V9Msg) Valid() error {
 
 	return nil
 }
-func (v9 *ProtocolV9) Bootstrap(hs *Handshake) *Parcel {
-	p := newParcel(TypePeerRequest, []byte("Peer Request"))
-	return p
-}

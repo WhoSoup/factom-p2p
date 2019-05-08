@@ -62,7 +62,3 @@ func (v10 *ProtocolV10) Receive() (*Parcel, error) {
 	p.Address = v10.conn.RemoteAddr().String()
 	return p, nil
 }
-
-func (v10 *ProtocolV10) Bootstrap(hs *Handshake) *Parcel {
-	return nil
-}
