@@ -291,10 +291,15 @@ func (c *controller) discoverSeeds() {
 
 // processPeers processes a peer share response
 func (c *controller) processPeers(peer *Peer, parcel *Parcel) {
+	fmt.Println("MOO")
 	list, err := peer.prot.ParsePeerShare(parcel.Payload)
+	fmt.Println(string(parcel.Payload))
+
 	if err != nil {
 		c.logger.WithError(err).Warnf("Failed to unmarshal peer share from peer %s", peer)
 	}
+
+	c.logger.Debugf("Received peer share from %s: %v", peer, list)
 
 	// cycles through list twice but we don't want to add any if one of them is bad
 	for _, p := range list {

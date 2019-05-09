@@ -143,9 +143,9 @@ func (v9 *ProtocolV9) MakePeerShare(ps []util.IP) ([]byte, error) {
 		conv = append(conv, V9Share{
 			Address:      ip.Address,
 			Port:         ip.Port,
-			QualityScore: 0,
-			NodeID:       0,
-			Hash:         "",
+			QualityScore: 20,
+			NodeID:       1,
+			Hash:         ip.Address,
 			Location:     ip.Location,
 			Network:      v9.net.conf.Network,
 			Type:         0,
