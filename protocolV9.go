@@ -9,6 +9,9 @@ import (
 
 var _ Protocol = (*ProtocolV9)(nil)
 
+// ProtocolV9 is the legacy format of the old p2p package which sends Parcels
+// over the wire using gob. The V9Msg struct is equivalent to the old package's
+// "Parcel" and "ParcelHeader" structure
 type ProtocolV9 struct {
 	net     *Network
 	conn    net.Conn
@@ -17,7 +20,7 @@ type ProtocolV9 struct {
 	peer    *Peer
 }
 
-func (v9 *ProtocolV9) Init(peer *Peer, conn net.Conn, decoder *gob.Decoder, encoder *gob.Encoder) {
+func (v9 *ProtocolV9) init(peer *Peer, conn net.Conn, decoder *gob.Decoder, encoder *gob.Encoder) {
 	v9.peer = peer
 	v9.net = peer.net
 	v9.conn = conn

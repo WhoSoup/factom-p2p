@@ -8,6 +8,7 @@ import (
 
 var once sync.Once
 
+// Prometheus holds all of the prometheus recording instruments
 type Prometheus struct {
 	Networks    prometheus.Gauge
 	Connections prometheus.Gauge // done
@@ -30,6 +31,7 @@ type Prometheus struct {
 	ParcelSize prometheus.Histogram
 }
 
+// Setup registers all of the instruments with prometheus once
 func (p *Prometheus) Setup() {
 	once.Do(func() {
 		ng := func(name, help string) prometheus.Gauge {

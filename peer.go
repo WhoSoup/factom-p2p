@@ -82,7 +82,7 @@ func (p *Peer) bootstrapProtocol(hs *Handshake, conn net.Conn, decoder *gob.Deco
 	switch v {
 	case 9:
 		v9 := new(ProtocolV9)
-		v9.Init(p, conn, decoder, encoder)
+		v9.init(p, conn, decoder, encoder)
 		p.prot = v9
 
 		// bootstrap
@@ -99,7 +99,7 @@ func (p *Peer) bootstrapProtocol(hs *Handshake, conn net.Conn, decoder *gob.Deco
 		}
 	case 10:
 		v10 := new(ProtocolV10)
-		v10.Init(p, conn, decoder, encoder)
+		v10.init(p, conn, decoder, encoder)
 		p.prot = v10
 	default:
 		return fmt.Errorf("unknown protocol version %d", v)

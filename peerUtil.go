@@ -8,6 +8,7 @@ import (
 	"github.com/whosoup/factom-p2p/util"
 )
 
+// PeerMetrics is the data shared to the metrics hook
 type PeerMetrics struct {
 	Hash             string
 	PeerAddress      string

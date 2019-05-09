@@ -17,7 +17,7 @@ import (
 
 var pmLogger = packageLogger.WithField("subpack", "controller")
 
-// controller is responsible for managing all the Peers, both online and offline
+// controller is responsible for managing Peers and Endpoints
 type controller struct {
 	net *Network
 
@@ -34,7 +34,6 @@ type controller struct {
 	listener   *util.LimitedListener
 	special    map[string]bool
 	specialMtx sync.RWMutex
-	//bans      map[string]time.Time
 
 	lastPeerDial    time.Time
 	lastSeedRefresh time.Time

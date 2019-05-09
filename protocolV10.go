@@ -22,7 +22,7 @@ type V10Msg struct {
 	Payload []byte
 }
 
-func (v10 *ProtocolV10) Init(peer *Peer, conn net.Conn, decoder *gob.Decoder, encoder *gob.Encoder) {
+func (v10 *ProtocolV10) init(peer *Peer, conn net.Conn, decoder *gob.Decoder, encoder *gob.Encoder) {
 	v10.peer = peer
 	v10.net = peer.net
 	v10.conn = conn
