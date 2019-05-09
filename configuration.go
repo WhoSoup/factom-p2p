@@ -60,13 +60,6 @@ type Configuration struct {
 	// Higher values increase fault tolerance but also increase network congestion
 	Fanout uint
 
-	// TrustedOnly indicates whether or not to connect only to trusted peers
-	TrustedOnly bool
-	// RefuseIncoming indicates whether or not to disallow all incoming connections
-	// for example if you are behind a NAT
-	RefuseIncoming bool
-	// Refuse unknown peers from connecting but allow special peers
-	RefuseUnknown bool
 	// SeedURL is the URL of the remote seed file
 	SeedURL string // URL to a source of peer info
 
@@ -152,9 +145,6 @@ func DefaultP2PConfiguration() (c Configuration) {
 	c.Fanout = 16
 	c.PeerShareAmount = 4 * c.Outgoing // legacy math
 	c.MinimumQualityScore = 20
-
-	c.TrustedOnly = false
-	c.RefuseIncoming = false
 
 	c.BindIP = "" // bind to all
 	c.ListenPort = "8108"

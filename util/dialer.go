@@ -15,6 +15,7 @@ type Dialer struct {
 	maxattempts uint
 	attempts    map[IP]attempt
 	attemptsMtx sync.RWMutex
+	reset       time.Duration
 }
 
 type attempt struct {
@@ -30,6 +31,7 @@ func NewDialer(ip string, interval, timeout, reset time.Duration, maxattempts ui
 	d.timeout = timeout
 	d.maxattempts = maxattempts
 	d.attempts = make(map[IP]attempt)
+	d.reset = reset
 	return d
 }
 
@@ -47,7 +49,7 @@ func (d *Dialer) CanDial(ip IP) bool {
 	}
 
 	if a.c >= d.maxattempts {
-		return false
+		return time.Since(a.t) >= d.reset
 	}
 
 	return true
@@ -96,5 +98,5 @@ func (d *Dialer) Reset(ip IP) {
 func (d *Dialer) Failed(ip IP) bool {
 	d.attemptsMtx.RLock()
 	defer d.attemptsMtx.RUnlock()
-	return d.attempts[ip].c >= d.maxattempts
+	return d.attempts[ip].c >= d.maxattempts && time.Since(d.attempts[ip].t) < d.reset
 }

@@ -207,7 +207,6 @@ func (n *Network) Total() int {
 // to the controller via the appropriate function
 func (n *Network) route() {
 	for {
-		// TODO metrics?
 		// blocking read on ToNetwork, and c.stopRoute
 		select {
 		case message := <-n.ToNetwork:

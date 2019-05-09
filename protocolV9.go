@@ -2,9 +2,13 @@ package p2p
 
 import (
 	"encoding/gob"
+	"encoding/json"
 	"fmt"
 	"hash/crc32"
 	"net"
+	"time"
+
+	"github.com/whosoup/factom-p2p/util"
 )
 
 var _ Protocol = (*ProtocolV9)(nil)
@@ -114,4 +118,60 @@ func (msg V9Msg) Valid() error {
 	}
 
 	return nil
+}
+
+// V9Share is the legacy code's "Peer" struct. Resets QualityScore and Source list when
+// decoding, filters out wrong Networks
+type V9Share struct {
+	QualityScore int32     // 0 is neutral quality, negative is a bad peer.
+	Address      string    // Must be in form of x.x.x.x
+	Port         string    // Must be in form of xxxx
+	NodeID       uint64    // a nonce to distinguish multiple nodes behind one IP address
+	Hash         string    // This is more of a connection ID than hash right now.
+	Location     uint32    // IP address as an int.
+	Network      NetworkID // The network this peer reference lives on.
+	Type         uint8
+	Connections  int                  // Number of successful connections.
+	LastContact  time.Time            // Keep track of how long ago we talked to the peer.
+	Source       map[string]time.Time // source where we heard from the peer.
+}
+
+func (v9 *ProtocolV9) MakePeerShare(ps []util.IP) ([]byte, error) {
+	var conv []V9Share
+	src := make(map[string]time.Time)
+	for _, ip := range ps {
+		conv = append(conv, V9Share{
+			Address:      ip.Address,
+			Port:         ip.Port,
+			QualityScore: 0,
+			NodeID:       0,
+			Hash:         "",
+			Location:     ip.Location,
+			Network:      v9.net.conf.Network,
+			Type:         0,
+			Connections:  1,
+			LastContact:  time.Time{},
+			Source:       src,
+		})
+	}
+
+	return json.Marshal(conv)
+}
+
+func (v9 *ProtocolV9) ParsePeerShare(payload []byte) ([]PeerShare, error) {
+	var list []V9Share
+
+	err := json.Unmarshal(payload, &list)
+	if err != nil {
+		return nil, err
+	}
+
+	var conv []PeerShare
+	for _, s := range list {
+		conv = append(conv, PeerShare{
+			Address: s.Address,
+			Port:    s.Port,
+		})
+	}
+	return conv, nil
 }

@@ -2,9 +2,12 @@ package p2p
 
 import (
 	"encoding/gob"
+	"encoding/json"
 	"fmt"
 	"hash/crc32"
 	"net"
+
+	"github.com/whosoup/factom-p2p/util"
 )
 
 var _ Protocol = (*ProtocolV10)(nil)
@@ -61,4 +64,19 @@ func (v10 *ProtocolV10) Receive() (*Parcel, error) {
 	p := newParcel(msg.Type, msg.Payload)
 	p.Address = v10.conn.RemoteAddr().String()
 	return p, nil
+}
+
+type V10Share PeerShare
+
+func (v10 *ProtocolV10) MakePeerShare(ps []util.IP) ([]byte, error) {
+	var share []V10Share
+	for _, ip := range ps {
+		share = append(share, V10Share{Address: ip.Address, Port: ip.Port})
+	}
+	return json.Marshal(share)
+}
+func (v10 *ProtocolV10) ParsePeerShare(payload []byte) ([]PeerShare, error) {
+	var share []PeerShare
+	err := json.Unmarshal(payload, &share)
+	return share, err
 }

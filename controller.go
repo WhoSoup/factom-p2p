@@ -55,7 +55,7 @@ func newController(network *Network) *controller {
 		"network": conf.Network})
 	c.logger.WithField("peermanager_init", c).Debugf("Initializing Peer Manager")
 
-	c.dialer = util.NewDialer(conf.BindIP, conf.RedialInterval, conf.DialTimeout, conf.RedialAttempts)
+	c.dialer = util.NewDialer(conf.BindIP, conf.RedialInterval, conf.RedialReset, conf.DialTimeout, conf.RedialAttempts)
 	c.lastPersist = time.Now()
 
 	c.peerStatus = make(chan peerStatus, 10) // TODO reconsider this value
@@ -291,8 +291,7 @@ func (c *controller) discoverSeeds() {
 
 // processPeers processes a peer share response
 func (c *controller) processPeers(peer *Peer, parcel *Parcel) {
-	list := make([]PeerShare, 0)
-	err := json.Unmarshal(parcel.Payload, &list)
+	list, err := peer.prot.ParsePeerShare(parcel.Payload)
 	if err != nil {
 		c.logger.WithError(err).Warnf("Failed to unmarshal peer share from peer %s", peer)
 	}
@@ -321,38 +320,21 @@ func (c *controller) processPeers(peer *Peer, parcel *Parcel) {
 
 // sharePeers creates a list of peers to share and sends it to peer
 func (c *controller) sharePeers(peer *Peer) {
-	list := c.filteredSharing(peer)
-	c.logger.Debugf("Sharing peers with %s: %v", peer, list)
-	json, ok := json.Marshal(list)
-	if ok != nil {
-		c.logger.WithError(ok).Error("Failed to marshal peer list to json")
-		return
-	}
-	parcel := newParcel(TypePeerResponse, json)
-	peer.Send(parcel)
-}
-
-func (c *controller) filteredSharing(peer *Peer) []PeerShare {
-	var filtered []PeerShare
-	src := make(map[string]time.Time)
+	var list []util.IP
 	for _, ip := range c.endpoints.IPs() {
 		if ip != peer.IP && !c.dialer.Failed(ip) {
-			filtered = append(filtered, PeerShare{
-				Address:      ip.Address,
-				Port:         ip.Port,
-				QualityScore: peer.QualityScore,
-				NodeID:       uint64(peer.NodeID),
-				Hash:         peer.Hash,
-				Location:     peer.IP.Location,
-				Network:      c.net.conf.Network,
-				Type:         0,
-				Connections:  1,
-				LastContact:  peer.LastReceive,
-				Source:       src,
-			})
+			list = append(list, ip)
 		}
 	}
-	return filtered
+
+	payload, err := peer.prot.MakePeerShare(list)
+	if err != nil {
+		c.logger.WithError(err).Error("Failed to marshal peer list to json")
+		return
+	}
+	c.logger.Debugf("Sharing %d peers with %s", len(list), peer)
+	parcel := newParcel(TypePeerResponse, payload)
+	peer.Send(parcel)
 }
 
 // managePeers is responsible for everything that involves proactive management
@@ -467,12 +449,8 @@ func (c *controller) allowIncoming(addr string) error {
 		return fmt.Errorf("Address %s is banned", addr)
 	}
 
-	if c.net.conf.RefuseIncoming {
-		return fmt.Errorf("Refusing all incoming connections")
-	}
-
 	if uint(c.peers.Total()) >= c.net.conf.Incoming {
-		return fmt.Errorf("Refusing incoming connection from %s because we are maxed out", addr)
+		return fmt.Errorf("Refusing incoming connection from %s because we are maxed out (%d of %d)", addr, c.peers.Total(), c.net.conf.Incoming)
 	}
 
 	if c.net.conf.PeerIPLimitIncoming > 0 && uint(c.peers.Count(addr)) >= c.net.conf.PeerIPLimitIncoming {

@@ -154,7 +154,7 @@ func (p *Peer) StartWithHandshake(ip util.IP, con net.Conn, incoming bool) (bool
 	ip.Port = handshake.Header.PeerPort
 	p.IP = ip
 	p.NodeID = uint32(handshake.Header.NodeID)
-	p.Hash = fmt.Sprintf("%s:%s %016x", ip.Address, ip.Port, p.NodeID)
+	p.Hash = fmt.Sprintf("%s:%s %08x", ip.Address, ip.Port, p.NodeID)
 	p.send = NewParcelChannel(p.net.conf.ChannelCapacity)
 	p.error = make(chan error, 10)
 	p.IsIncoming = incoming
