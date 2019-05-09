@@ -40,7 +40,7 @@ type Peer struct {
 	Seed bool
 
 	IP     util.IP
-	NodeID uint64 // a nonce to distinguish multiple nodes behind one IP address
+	NodeID uint32 // a nonce to distinguish multiple nodes behind one IP address
 	Hash   string // This is more of a connection ID than hash right now.
 
 	// Metrics
@@ -153,7 +153,7 @@ func (p *Peer) StartWithHandshake(ip util.IP, con net.Conn, incoming bool) (bool
 
 	ip.Port = handshake.Header.PeerPort
 	p.IP = ip
-	p.NodeID = handshake.Header.NodeID
+	p.NodeID = uint32(handshake.Header.NodeID)
 	p.Hash = fmt.Sprintf("%s:%s %016x", ip.Address, ip.Port, p.NodeID)
 	p.send = NewParcelChannel(p.net.conf.ChannelCapacity)
 	p.error = make(chan error, 10)

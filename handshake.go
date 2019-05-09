@@ -9,7 +9,7 @@ import (
 type Handshake V9Msg
 
 func (h *Handshake) Valid(conf *Configuration) error {
-	if h.Header.NodeID == conf.NodeID {
+	if h.Header.NodeID == uint64(conf.NodeID) {
 		return (fmt.Errorf("connected to ourselves"))
 	}
 
@@ -38,7 +38,7 @@ func newHandshake(conf *Configuration) *Handshake {
 		Network:  conf.Network,
 		Version:  conf.ProtocolVersion,
 		Type:     TypeHandshake,
-		NodeID:   conf.NodeID,
+		NodeID:   uint64(conf.NodeID),
 		PeerPort: conf.ListenPort,
 		AppHash:  "NetworkMessage",
 		AppType:  "Network",

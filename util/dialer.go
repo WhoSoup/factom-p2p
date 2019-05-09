@@ -23,7 +23,7 @@ type attempt struct {
 }
 
 // NewDialer creates a new Dialer
-func NewDialer(ip string, interval, timeout time.Duration, maxattempts uint) *Dialer {
+func NewDialer(ip string, interval, timeout, reset time.Duration, maxattempts uint) *Dialer {
 	d := new(Dialer)
 	d.bindip = ip
 	d.interval = interval
@@ -91,4 +91,10 @@ func (d *Dialer) Reset(ip IP) {
 		a.c = 0
 		d.attempts[ip] = a
 	}
+}
+
+func (d *Dialer) Failed(ip IP) bool {
+	d.attemptsMtx.RLock()
+	defer d.attemptsMtx.RUnlock()
+	return d.attempts[ip].c >= d.maxattempts
 }

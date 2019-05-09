@@ -13,5 +13,6 @@ package p2p
 type Protocol interface {
 	Send(p *Parcel) error
 	Receive() (*Parcel, error)
+	//SharePeers(ps []PeerShare) error
 	Version() string
 }

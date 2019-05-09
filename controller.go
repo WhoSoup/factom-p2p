@@ -116,7 +116,6 @@ func (c *controller) disconnect(hash string) {
 func (c *controller) parseSpecial(raw string) {
 	c.specialMtx.Lock()
 	defer c.specialMtx.Unlock()
-	c.special = make(map[string]bool)
 
 	if len(raw) == 0 {
 		return
@@ -337,12 +336,12 @@ func (c *controller) filteredSharing(peer *Peer) []PeerShare {
 	var filtered []PeerShare
 	src := make(map[string]time.Time)
 	for _, ip := range c.endpoints.IPs() {
-		if ip != peer.IP {
+		if ip != peer.IP && !c.dialer.Failed(ip) {
 			filtered = append(filtered, PeerShare{
 				Address:      ip.Address,
 				Port:         ip.Port,
 				QualityScore: peer.QualityScore,
-				NodeID:       peer.NodeID,
+				NodeID:       uint64(peer.NodeID),
 				Hash:         peer.Hash,
 				Location:     peer.IP.Location,
 				Network:      c.net.conf.Network,

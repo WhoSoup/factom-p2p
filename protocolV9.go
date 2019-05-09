@@ -35,7 +35,7 @@ func (v9 *ProtocolV9) Send(p *Parcel) error {
 	msg.Header.Type = p.Type
 	msg.Header.TargetPeer = p.Address
 
-	msg.Header.NodeID = v9.net.conf.NodeID
+	msg.Header.NodeID = uint64(v9.net.conf.NodeID)
 	msg.Header.PeerAddress = ""
 	msg.Header.PeerPort = v9.net.conf.ListenPort
 	msg.Header.AppHash = "NetworkMessage"

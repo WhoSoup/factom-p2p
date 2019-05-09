@@ -124,11 +124,9 @@ func NewNetwork(conf Configuration) *Network {
 
 	n.rng = rand.New(rand.NewSource(time.Now().UnixNano()))
 
+	// turn nodename into nodeid
 	if n.conf.NodeID == 0 {
-		for n.conf.NodeID == 0 {
-			n.conf.NodeID = n.rng.Uint64()
-		}
-		n.logger.Debugf("No node id specified, generated random node id %x", n.conf.NodeID)
+		n.conf.NodeID = generateNodeID(n.conf.NodeName)
 	}
 
 	n.controller = newController(n)
