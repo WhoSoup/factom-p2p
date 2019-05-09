@@ -1,6 +1,8 @@
 package p2p
 
 import (
+	"crypto/sha256"
+	"encoding/binary"
 	"time"
 )
 
@@ -16,7 +18,7 @@ type Configuration struct {
 	Network NetworkID
 
 	// NodeID is this node's id
-	NodeID uint64
+	NodeID uint32
 	// NodeName is the internal name of the node
 	NodeName string
 
@@ -177,4 +179,9 @@ func DefaultP2PConfiguration() (c Configuration) {
 	c.EnablePrometheus = true
 
 	return
+}
+
+func generateNodeID(name string) uint32 {
+	hashSuffix := sha256.Sum256([]byte(name))
+	return binary.BigEndian.Uint32(hashSuffix[:4])
 }
