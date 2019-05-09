@@ -1,0 +1,8 @@
+syntax = "proto3";
+package p11;
+
+message V11Msg {
+    uint32 type = 1;
+    uint32 crc32 = 2;
+    bytes payload = 3;
+}

@@ -1,6 +1,7 @@
 package p2p
 
 import (
+	"bufio"
 	"encoding/gob"
 	"fmt"
 	"net"
@@ -74,7 +75,7 @@ func NewPeer(net *Network, status chan peerStatus, data chan peerParcel) *Peer {
 	return p
 }
 
-func (p *Peer) bootstrapProtocol(hs *Handshake, conn net.Conn, decoder *gob.Decoder, encoder *gob.Encoder) error {
+func (p *Peer) bootstrapProtocol(hs *Handshake, conn net.Conn, rbuffer *bufio.Reader, decoder *gob.Decoder, encoder *gob.Encoder) error {
 	v := hs.Header.Version
 	if v > p.net.conf.ProtocolVersion {
 		v = p.net.conf.ProtocolVersion
@@ -101,6 +102,11 @@ func (p *Peer) bootstrapProtocol(hs *Handshake, conn net.Conn, decoder *gob.Deco
 		v10 := new(ProtocolV10)
 		v10.Init(p, conn, decoder, encoder)
 		p.prot = v10
+	case 11:
+		v11 := new(ProtocolV11)
+		v11.Init(p, conn, rbuffer)
+		p.prot = v11
+		//fmt.Println(rbuffer.Size())
 	default:
 		return fmt.Errorf("unknown protocol version %d", v)
 	}
@@ -120,8 +126,8 @@ func (p *Peer) StartWithHandshake(ip util.IP, con net.Conn, incoming bool) (bool
 	timeout := time.Now().Add(p.net.conf.HandshakeTimeout)
 
 	handshake := newHandshake(p.net.conf)
-
-	decoder := gob.NewDecoder(con)
+	rbuffer := bufio.NewReader(con)
+	decoder := gob.NewDecoder(rbuffer)
 	encoder := gob.NewEncoder(con)
 	con.SetWriteDeadline(timeout)
 	con.SetReadDeadline(timeout)
@@ -147,7 +153,7 @@ func (p *Peer) StartWithHandshake(ip util.IP, con net.Conn, incoming bool) (bool
 		return failfunc(err)
 	}
 
-	if err = p.bootstrapProtocol(handshake, con, decoder, encoder); err != nil {
+	if err = p.bootstrapProtocol(handshake, con, rbuffer, decoder, encoder); err != nil {
 		return failfunc(err)
 	}
 
