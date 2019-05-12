@@ -20,9 +20,9 @@ type endpoint struct {
 	IP           IP                   `json:"ip"`
 	Seen         time.Time            `json:"seen"`
 	Source       map[string]time.Time `json:"source"`
+	Connected    time.Time            `json:"connected"`
+	Disconnected time.Time            `json:"Disconnected"`
 	connections  uint
-	connected    time.Time
-	disconnected time.Time
 	lock         time.Time
 }
 
@@ -46,8 +46,11 @@ func (epm *Endpoints) Register(ip IP, source string) {
 	if ep.Source == nil {
 		ep.Source = make(map[string]time.Time)
 	}
-	ep.Seen = time.Now()
-	ep.Source[source] = time.Now()
+	// refresh only if we haven't seen them from this source before
+	if ep.Source[source].IsZero() {
+		ep.Seen = time.Now()
+		ep.Source[source] = time.Now()
+	}
 	ep.IP = ip
 	epm.Ends[ip.String()] = ep
 	epm.ips = nil
@@ -58,10 +61,10 @@ func (epm *Endpoints) AddConnection(ip IP) {
 	defer epm.mtx.Unlock()
 	ep := epm.Ends[ip.String()]
 	ep.connections++
-	if ep.connected.IsZero() {
-		ep.connected = time.Now()
+	if ep.Connected.IsZero() {
+		ep.Connected = time.Now()
 	}
-	ep.disconnected = time.Time{}
+	ep.Disconnected = time.Time{}
 	epm.Ends[ip.String()] = ep
 }
 
@@ -72,7 +75,7 @@ func (epm *Endpoints) RemoveConnection(ip IP) {
 	if ep.connections > 0 {
 		ep.connections--
 		if ep.connections == 0 {
-			ep.disconnected = time.Now()
+			ep.Disconnected = time.Now()
 		}
 		epm.Ends[ip.String()] = ep
 	}
@@ -82,14 +85,14 @@ func (epm *Endpoints) Connections(ip IP) (uint, time.Duration) {
 	epm.mtx.RLock()
 	defer epm.mtx.RUnlock()
 	ep := epm.Ends[ip.String()]
-	t := ep.disconnected
+	t := ep.Disconnected
 	if t.IsZero() {
 		t = time.Now()
 	}
-	if ep.connected.IsZero() {
+	if ep.Connected.IsZero() {
 		return ep.connections, 0
 	}
-	return ep.connections, t.Sub(ep.connected)
+	return ep.connections, t.Sub(ep.Connected)
 }
 
 // Deregister removes an endpoint from the store
@@ -192,12 +195,20 @@ func (epm *Endpoints) Persist(level uint, min time.Duration, cutoff time.Duratio
 
 	e := NewEndpoints()
 	e.Bans = epm.Bans
+	cut := time.Now().Add(-cutoff)
 	for ip, end := range epm.Ends {
+		if end.Disconnected.Before(cut) {
+			continue
+		}
 		if level >= 1 && end.timeConnected() < min {
 			continue
 		}
 		if level >= 2 && end.Source["Dial"].IsZero() {
 			continue
+		}
+		if end.connections > 0 {
+			end.connections = 0
+			end.Disconnected = time.Now()
 		}
 		e.Ends[ip] = end
 	}
@@ -206,11 +217,11 @@ func (epm *Endpoints) Persist(level uint, min time.Duration, cutoff time.Duratio
 }
 
 func (e *endpoint) timeConnected() time.Duration {
-	if e.connected.IsZero() {
+	if e.Connected.IsZero() {
 		return 0
 	}
-	if e.disconnected.IsZero() {
-		return time.Now().Sub(e.connected)
+	if e.Disconnected.IsZero() {
+		return time.Now().Sub(e.Connected)
 	}
-	return e.disconnected.Sub(e.connected)
+	return e.Disconnected.Sub(e.Connected)
 }

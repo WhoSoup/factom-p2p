@@ -23,9 +23,6 @@ type Configuration struct {
 	NodeName string
 
 	// === Peer Management Settings ===
-	// GossipConfiguration holds the configuration for the peer management system
-	// PeerSaveInterval dictates how often peers should be saved to disk
-	PeerSaveInterval time.Duration
 	// PeerRequestInterval dictates how often neighbors should be asked for an
 	// updated peer list
 	PeerRequestInterval time.Duration
@@ -42,15 +39,17 @@ type Configuration struct {
 	// ip is considered special
 	Special string
 
-	// PeerFile is the filepath to the file to save peers
-	PeerFile string
+	// PersistFile is the filepath to the file to save peers
+	PersistFile string
 	// how often to save these
 	PersistInterval time.Duration
 	PersistLevel    uint // 0 persist all peers
 	// 1 persist peers we have had a connection with
 	// 2 persist only peers we have been able to dial to
-
 	PersistMinimum time.Duration // the minimum amount of time a connection has to last to last
+	// PersistAgeLimit dictates how long a peer can be offline before being considered dead
+	PersistAgeLimit time.Duration
+
 	// to count as being connected
 	// PeerShareAmount is the number of peers we share
 	PeerShareAmount     uint
@@ -85,8 +84,6 @@ type Configuration struct {
 	// silent (no writes) before sending a Ping
 	PingInterval time.Duration
 
-	// PeerAgeLimit dictates how long a peer can be offline before being considered dead
-	PeerAgeLimit time.Duration
 	// RedialInterval dictates how long to wait between connection attempts
 	RedialInterval time.Duration
 	// RedialReset dictates after how long we should try to reconnect again
@@ -135,7 +132,6 @@ func DefaultP2PConfiguration() (c Configuration) {
 	c.NodeID = 0
 	c.NodeName = "FNode0"
 
-	c.PeerSaveInterval = time.Second * 30
 	c.PeerRequestInterval = time.Minute * 3
 	c.PeerReseedInterval = time.Hour * 4
 	c.PeerIPLimitIncoming = 0
@@ -143,7 +139,7 @@ func DefaultP2PConfiguration() (c Configuration) {
 	c.ManualBan = time.Hour * 24 * 7 // a week
 	c.AutoBan = time.Hour * 24 * 7   // a week
 
-	c.PeerFile = ""
+	c.PersistFile = ""
 	c.PersistInterval = time.Minute * 15
 
 	c.Outgoing = 32
@@ -158,7 +154,7 @@ func DefaultP2PConfiguration() (c Configuration) {
 	c.ListenPort = "8108"
 	c.ListenLimit = time.Second
 	c.PingInterval = time.Second * 15
-	c.PeerAgeLimit = time.Hour * 48 // 2 days
+	c.PersistAgeLimit = time.Hour * 48 // 2 days
 	c.RedialInterval = time.Second * 20
 	c.RedialReset = time.Hour * 12
 	c.RedialAttempts = 5

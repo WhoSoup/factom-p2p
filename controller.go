@@ -351,7 +351,7 @@ func (c *controller) managePeers() {
 	for {
 		if time.Since(c.lastPersist) > c.net.conf.PersistInterval {
 			c.lastPersist = time.Now()
-			c.persist()
+			c.persistEndpoints()
 		}
 
 		if time.Since(c.lastSeedRefresh) > c.net.conf.PeerReseedInterval {
@@ -640,8 +640,8 @@ func (c *controller) ToPeer(hash string, parcel *Parcel) {
 	}
 }
 
-func (c *controller) persist() {
-	path := c.net.conf.PeerFile
+func (c *controller) persistEndpoints() {
+	path := c.net.conf.PersistFile
 	if path == "" {
 		return
 	}
@@ -654,7 +654,7 @@ func (c *controller) persist() {
 	defer file.Close()
 	writer := bufio.NewWriter(file)
 
-	persist, err := c.endpoints.Persist(c.net.conf.PersistLevel, c.net.conf.PersistMinimum, c.net.conf.PeerAgeLimit)
+	persist, err := c.endpoints.Persist(c.net.conf.PersistLevel, c.net.conf.PersistMinimum, c.net.conf.PersistAgeLimit)
 	if err != nil {
 		c.logger.WithError(err).Error("persist(): Unable to encode endpoints")
 		return
@@ -676,7 +676,7 @@ func (c *controller) persist() {
 }
 
 func (c *controller) loadEndpoints() *util.Endpoints {
-	path := c.net.conf.PeerFile
+	path := c.net.conf.PersistFile
 	if path == "" {
 		return util.NewEndpoints()
 	}
@@ -702,7 +702,7 @@ func (c *controller) loadEndpoints() *util.Endpoints {
 		return util.NewEndpoints()
 	}
 
-	eps.Cleanup(c.net.conf.PeerAgeLimit)
+	eps.Cleanup(c.net.conf.PersistAgeLimit)
 	c.logger.Debugf("%d endpoints found", eps.Total())
 	return &eps
 }
