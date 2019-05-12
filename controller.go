@@ -178,14 +178,16 @@ func (c *controller) manageOnline() {
 				if old != nil {
 					old.Stop(true)
 					c.peers.Remove(old)
+					c.endpoints.RemoveConnection(old.IP)
 				}
 				err := c.peers.Add(pc.peer)
+				c.endpoints.AddConnection(pc.peer.IP)
 				if err != nil {
 					c.logger.Errorf("Unable to add peer %s to peer store because an old peer still exists", pc.peer)
 				}
 			} else {
-
 				c.peers.Remove(pc.peer)
+				c.endpoints.RemoveConnection(pc.peer.IP)
 				if pc.peer.IsIncoming {
 					// lock this connection temporarily so we don't try to connect to it
 					// before they can reconnect
@@ -397,7 +399,7 @@ func (c *controller) managePeers() {
 func (c *controller) managePeersDialOutgoing() {
 	c.logger.Debugf("We have %d peers online or connecting", c.peers.Total())
 
-	count := uint(c.peers.Total())
+	count := uint(c.peers.TotalOutgoing())
 	if want := int(c.net.conf.Outgoing - count); want > 0 {
 		var filtered []util.IP
 		var special []util.IP
@@ -493,7 +495,6 @@ func (c *controller) handleIncoming(con net.Conn) {
 	if ok, err := peer.StartWithHandshake(ip, con, true); ok {
 		c.logger.Debugf("Incoming handshake success for peer %s", peer.Hash)
 		c.endpoints.Register(peer.IP, "Incoming")
-		c.endpoints.RaiseLevel(peer.IP, util.EpIncoming)
 		c.endpoints.Lock(peer.IP, time.Hour*8760*50) // 50 years
 		c.dialer.Reset(peer.IP)
 	} else {
@@ -527,11 +528,10 @@ func (c *controller) Dial(ip util.IP) {
 	}
 	if ok, err := peer.StartWithHandshake(ip, con, false); ok {
 		c.logger.Debugf("Handshake success for peer %s", peer.Hash)
-		c.endpoints.Refresh(peer.IP)
-		c.endpoints.RaiseLevel(peer.IP, util.EpConnectable)
+		c.endpoints.Register(peer.IP, "Dial")
 		c.dialer.Reset(peer.IP)
 	} else if err.Error() == "connected to ourselves" {
-		c.logger.Debugf("Banning ourselves for 1 year")
+		c.logger.Debugf("Banning ourselves for 50 years")
 		c.endpoints.Ban(ip.Address, time.Now().AddDate(50, 0, 0)) // ban for 50 years
 		peer.Stop(false)
 	} else {
@@ -654,7 +654,7 @@ func (c *controller) persist() {
 	defer file.Close()
 	writer := bufio.NewWriter(file)
 
-	persist, err := c.endpoints.Persist(c.net.conf.PeerAgeLimit)
+	persist, err := c.endpoints.Persist(c.net.conf.PersistLevel, c.net.conf.PersistMinimum, c.net.conf.PeerAgeLimit)
 	if err != nil {
 		c.logger.WithError(err).Error("persist(): Unable to encode endpoints")
 		return

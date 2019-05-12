@@ -17,20 +17,14 @@ type Endpoints struct {
 }
 
 type endpoint struct {
-	IP     IP                   `json:"ip"`
-	Seen   time.Time            `json:"seen"`
-	Source map[string]time.Time `json:"source"`
-	Level  EpLevel              `json:"level"`
-	lock   time.Time
+	IP           IP                   `json:"ip"`
+	Seen         time.Time            `json:"seen"`
+	Source       map[string]time.Time `json:"source"`
+	connections  uint
+	connected    time.Time
+	disconnected time.Time
+	lock         time.Time
 }
-
-type EpLevel uint8
-
-const (
-	EpUntested EpLevel = iota
-	EpIncoming
-	EpConnectable
-)
 
 // NewEndPoints creates an empty endpoint holder
 func NewEndpoints() *Endpoints {
@@ -59,31 +53,43 @@ func (epm *Endpoints) Register(ip IP, source string) {
 	epm.ips = nil
 }
 
-func (epm *Endpoints) RaiseLevel(ip IP, level EpLevel) {
+func (epm *Endpoints) AddConnection(ip IP) {
 	epm.mtx.Lock()
 	defer epm.mtx.Unlock()
 	ep := epm.Ends[ip.String()]
-	if level > ep.Level {
-		ep.Level = level
-		epm.Ends[ip.String()] = ep
+	ep.connections++
+	if ep.connected.IsZero() {
+		ep.connected = time.Now()
 	}
-}
-func (epm *Endpoints) ResetLevel(ip IP) {
-	epm.mtx.Lock()
-	defer epm.mtx.Unlock()
-	ep := epm.Ends[ip.String()]
-	ep.Level = EpUntested
+	ep.disconnected = time.Time{}
 	epm.Ends[ip.String()] = ep
 }
 
-// Refresh updates the last time the endpoint had activity
-func (epm *Endpoints) Refresh(ip IP) {
+func (epm *Endpoints) RemoveConnection(ip IP) {
 	epm.mtx.Lock()
 	defer epm.mtx.Unlock()
-	if ep, ok := epm.Ends[ip.String()]; ok {
-		ep.Seen = time.Now()
+	ep := epm.Ends[ip.String()]
+	if ep.connections > 0 {
+		ep.connections--
+		if ep.connections == 0 {
+			ep.disconnected = time.Now()
+		}
 		epm.Ends[ip.String()] = ep
 	}
+}
+
+func (epm *Endpoints) Connections(ip IP) (uint, time.Duration) {
+	epm.mtx.RLock()
+	defer epm.mtx.RUnlock()
+	ep := epm.Ends[ip.String()]
+	t := ep.disconnected
+	if t.IsZero() {
+		t = time.Now()
+	}
+	if ep.connected.IsZero() {
+		return ep.connections, 0
+	}
+	return ep.connections, t.Sub(ep.connected)
 }
 
 // Deregister removes an endpoint from the store
@@ -179,9 +185,32 @@ func (epm *Endpoints) Cleanup(cutoff time.Duration) uint {
 	return removed
 }
 
-func (epm *Endpoints) Persist(cutoff time.Duration) ([]byte, error) {
+func (epm *Endpoints) Persist(level uint, min time.Duration, cutoff time.Duration) ([]byte, error) {
 	epm.mtx.RLock()
 	defer epm.mtx.RUnlock()
 	epm.Cleanup(cutoff)
-	return json.Marshal(epm)
+
+	e := NewEndpoints()
+	e.Bans = epm.Bans
+	for ip, end := range epm.Ends {
+		if level >= 1 && end.timeConnected() < min {
+			continue
+		}
+		if level >= 2 && end.Source["Dial"].IsZero() {
+			continue
+		}
+		e.Ends[ip] = end
+	}
+
+	return json.Marshal(e)
+}
+
+func (e *endpoint) timeConnected() time.Duration {
+	if e.connected.IsZero() {
+		return 0
+	}
+	if e.disconnected.IsZero() {
+		return time.Now().Sub(e.connected)
+	}
+	return e.disconnected.Sub(e.connected)
 }

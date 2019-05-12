@@ -63,6 +63,11 @@ func (ps *PeerStore) Total() int {
 	defer ps.mtx.RUnlock()
 	return len(ps.peers)
 }
+func (ps *PeerStore) TotalOutgoing() int {
+	ps.mtx.RLock()
+	defer ps.mtx.RUnlock()
+	return ps.Outgoing
+}
 
 func (ps *PeerStore) Unique() int {
 	ps.mtx.RLock()

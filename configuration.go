@@ -46,15 +46,21 @@ type Configuration struct {
 	PeerFile string
 	// how often to save these
 	PersistInterval time.Duration
+	PersistLevel    uint // 0 persist all peers
+	// 1 persist peers we have had a connection with
+	// 2 persist only peers we have been able to dial to
+
+	PersistMinimum time.Duration // the minimum amount of time a connection has to last to last
+	// to count as being connected
+	// PeerShareAmount is the number of peers we share
+	PeerShareAmount     uint
+	MinimumQualityScore int32
 
 	// === Gossip Behavior ===
 	// Outgoing is the number of peers this node attempts to connect to
 	Outgoing uint
 	// Incoming is the number of incoming connections this node is willing to accept
 	Incoming uint
-	// PeerShareAmount is the number of peers we share
-	PeerShareAmount     uint
-	MinimumQualityScore int32
 
 	// Fanout controls how many random peers are selected for propagating messages
 	// Higher values increase fault tolerance but also increase network congestion
@@ -79,7 +85,7 @@ type Configuration struct {
 	// silent (no writes) before sending a Ping
 	PingInterval time.Duration
 
-	// PeerAgeLimit dictates how long a peer can fail to connect before being considered dead
+	// PeerAgeLimit dictates how long a peer can be offline before being considered dead
 	PeerAgeLimit time.Duration
 	// RedialInterval dictates how long to wait between connection attempts
 	RedialInterval time.Duration
@@ -145,6 +151,8 @@ func DefaultP2PConfiguration() (c Configuration) {
 	c.Fanout = 16
 	c.PeerShareAmount = 4 * c.Outgoing // legacy math
 	c.MinimumQualityScore = 20
+	c.PersistLevel = 2
+	c.PersistMinimum = time.Minute * 1
 
 	c.BindIP = "" // bind to all
 	c.ListenPort = "8108"
