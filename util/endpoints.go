@@ -20,8 +20,17 @@ type endpoint struct {
 	IP     IP                   `json:"ip"`
 	Seen   time.Time            `json:"seen"`
 	Source map[string]time.Time `json:"source"`
+	Level  EpLevel              `json:"level"`
 	lock   time.Time
 }
+
+type EpLevel uint8
+
+const (
+	EpUntested EpLevel = iota
+	EpIncoming
+	EpConnectable
+)
 
 // NewEndPoints creates an empty endpoint holder
 func NewEndpoints() *Endpoints {
@@ -48,6 +57,23 @@ func (epm *Endpoints) Register(ip IP, source string) {
 	ep.IP = ip
 	epm.Ends[ip.String()] = ep
 	epm.ips = nil
+}
+
+func (epm *Endpoints) RaiseLevel(ip IP, level EpLevel) {
+	epm.mtx.Lock()
+	defer epm.mtx.Unlock()
+	ep := epm.Ends[ip.String()]
+	if level > ep.Level {
+		ep.Level = level
+		epm.Ends[ip.String()] = ep
+	}
+}
+func (epm *Endpoints) ResetLevel(ip IP) {
+	epm.mtx.Lock()
+	defer epm.mtx.Unlock()
+	ep := epm.Ends[ip.String()]
+	ep.Level = EpUntested
+	epm.Ends[ip.String()] = ep
 }
 
 // Refresh updates the last time the endpoint had activity

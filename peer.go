@@ -86,7 +86,7 @@ func (p *Peer) bootstrapProtocol(hs *Handshake, conn net.Conn, decoder *gob.Deco
 		p.prot = v9
 
 		// bootstrap
-		p.lastPeerRequest = time.Now()
+		p.lastPeerRequest = time.Time{}
 		p.lastPeerSend = time.Time{}
 		p.peerShareAsk = true
 

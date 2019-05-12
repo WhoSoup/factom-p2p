@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math/rand"
 	"net/http"
+	"sort"
 	"time"
 
 	log "github.com/sirupsen/logrus"
@@ -81,7 +82,13 @@ func DebugServer(n *Network) {
 		out += fmt.Sprintf("\tFromNetwork: %d / %d\n", len(n.FromNetwork), cap(n.FromNetwork))
 		out += fmt.Sprintf("\tpeerData: %d / %d\n", len(n.controller.peerData), cap(n.controller.peerData))
 		out += fmt.Sprintf("\nPeers (%d)\n", n.controller.peers.Total())
-		for _, p := range n.controller.peers.Slice() {
+
+		slice := n.controller.peers.Slice()
+		sort.Slice(slice, func(i, j int) bool {
+			return slice[i].Connected.Before(slice[j].Connected)
+		})
+
+		for _, p := range slice {
 			out += fmt.Sprintf("\t%s\n", p.IP)
 			out += fmt.Sprintf("\t\tsend: %d / %d\n", len(p.send), cap(p.send))
 			m := p.GetMetrics()
@@ -146,7 +153,7 @@ func (n *Network) SetMetricsHook(f func(pm map[string]PeerMetrics)) {
 // Listens to incoming connections on the specified port
 // and connects to other peers
 func (n *Network) Start() {
-	n.logger.Info("Starting the P2P Network")
+	n.logger.Infof("Starting the P2P Network with configuration %+v", n.conf)
 	n.controller.Start() // this will get peer manager ready to handle incoming connections
 	n.stopRoute = make(chan bool, 1)
 	DebugServer(n)

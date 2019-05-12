@@ -42,7 +42,7 @@ type controller struct {
 	logger *log.Entry
 }
 
-// newController creates a new peer manager for the given controller
+// newController creates a new controller
 // configuration is shared between the two
 func newController(network *Network) *controller {
 	c := &controller{}
@@ -53,7 +53,7 @@ func newController(network *Network) *controller {
 		"node":    conf.NodeName,
 		"port":    conf.ListenPort,
 		"network": conf.Network})
-	c.logger.WithField("peermanager_init", c).Debugf("Initializing Peer Manager")
+	c.logger.Debugf("Initializing Controller")
 
 	c.dialer = util.NewDialer(conf.BindIP, conf.RedialInterval, conf.RedialReset, conf.DialTimeout, conf.RedialAttempts)
 	c.lastPersist = time.Now()
@@ -131,10 +131,10 @@ func (c *controller) parseSpecial(raw string) {
 	}
 }
 
-// Start starts the peer manager
+// Start starts the controller
 // reads from the seed and connect to peers
 func (c *controller) Start() {
-	c.logger.Info("Starting the Peer Manager")
+	c.logger.Info("Starting the Controller")
 
 	go c.managePeers()
 	go c.manageData()
@@ -142,7 +142,7 @@ func (c *controller) Start() {
 	go c.listen()
 }
 
-// Stop shuts down the peer manager and all active connections
+// Stop shuts down the controller and all active connections
 func (c *controller) Stop() {
 	c.stopData <- true
 	c.stopPeers <- true
@@ -291,9 +291,7 @@ func (c *controller) discoverSeeds() {
 
 // processPeers processes a peer share response
 func (c *controller) processPeers(peer *Peer, parcel *Parcel) {
-	fmt.Println("MOO")
 	list, err := peer.prot.ParsePeerShare(parcel.Payload)
-	fmt.Println(string(parcel.Payload))
 
 	if err != nil {
 		c.logger.WithError(err).Warnf("Failed to unmarshal peer share from peer %s", peer)
@@ -495,6 +493,7 @@ func (c *controller) handleIncoming(con net.Conn) {
 	if ok, err := peer.StartWithHandshake(ip, con, true); ok {
 		c.logger.Debugf("Incoming handshake success for peer %s", peer.Hash)
 		c.endpoints.Register(peer.IP, "Incoming")
+		c.endpoints.RaiseLevel(peer.IP, util.EpIncoming)
 		c.endpoints.Lock(peer.IP, time.Hour*8760*50) // 50 years
 		c.dialer.Reset(peer.IP)
 	} else {
@@ -529,6 +528,7 @@ func (c *controller) Dial(ip util.IP) {
 	if ok, err := peer.StartWithHandshake(ip, con, false); ok {
 		c.logger.Debugf("Handshake success for peer %s", peer.Hash)
 		c.endpoints.Refresh(peer.IP)
+		c.endpoints.RaiseLevel(peer.IP, util.EpConnectable)
 		c.dialer.Reset(peer.IP)
 	} else if err.Error() == "connected to ourselves" {
 		c.logger.Debugf("Banning ourselves for 1 year")
@@ -680,6 +680,8 @@ func (c *controller) loadEndpoints() *util.Endpoints {
 	if path == "" {
 		return util.NewEndpoints()
 	}
+	c.logger.Debugf("Attempting to parse file %s for endpoints", path)
+
 	file, err := os.Open(path)
 	if err != nil {
 		c.logger.WithError(err).Errorf("loadEndpoints(): file open error for %s", path)
@@ -701,11 +703,11 @@ func (c *controller) loadEndpoints() *util.Endpoints {
 	}
 
 	eps.Cleanup(c.net.conf.PeerAgeLimit)
-
+	c.logger.Debugf("%d endpoints found", eps.Total())
 	return &eps
 }
 
-// listen listens for incoming TCP connections and passes them off to peer manager
+// listen listens for incoming TCP connections and passes them off to handshake maneuver
 func (c *controller) listen() {
 	tmpLogger := c.logger.WithFields(log.Fields{"address": c.net.conf.BindIP, "port": c.net.conf.ListenPort})
 	tmpLogger.Debug("controller.listen() starting up")
