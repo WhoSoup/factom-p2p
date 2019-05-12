@@ -396,6 +396,12 @@ func (c *controller) managePeers() {
 	}
 }
 
+func (c *controller) isSpecial(ip util.IP) bool {
+	c.specialMtx.RLock()
+	defer c.specialMtx.RUnlock()
+	return c.special[ip.Address] || c.special[ip.String()]
+}
+
 func (c *controller) managePeersDialOutgoing() {
 	c.logger.Debugf("We have %d peers online or connecting", c.peers.Total())
 
@@ -405,7 +411,7 @@ func (c *controller) managePeersDialOutgoing() {
 		var special []util.IP
 		c.specialMtx.RLock()
 		for _, ip := range c.endpoints.IPs() {
-			if c.special[ip.Address] {
+			if c.special[ip.Address] || c.special[ip.String()] {
 				if !c.peers.IsConnected(ip.Address) {
 					special = append(special, ip)
 				}
@@ -420,6 +426,9 @@ func (c *controller) managePeersDialOutgoing() {
 
 		if len(special) > 0 {
 			for _, ip := range special {
+				if c.endpoints.IsLocked(ip) {
+					continue
+				}
 				go c.Dial(ip)
 			}
 		}
@@ -616,12 +625,38 @@ func (c *controller) selectRandomPeers(count uint) []*Peer {
 		return peers
 	}
 
-	util.Shuffle(len(peers), func(i, j int) {
-		peers[i], peers[j] = peers[j], peers[i]
+	var special []*Peer
+	var regular []*Peer
+
+	for _, p := range peers {
+		if c.special[p.IP.Address] {
+			special = append(special, p)
+		} else {
+			regular = append(regular, p)
+		}
+	}
+
+	if uint(len(regular)) < count {
+		return append(special, regular...)
+	}
+
+	util.Shuffle(len(regular), func(i, j int) {
+		regular[i], regular[j] = regular[j], regular[i]
 	})
 
-	// TODO add special?
-	return peers[:count]
+	return append(special, peers[:count]...)
+}
+
+func (c *controller) selectRandomPeer() *Peer {
+	peers := c.peers.Slice()
+	if len(peers) == 0 {
+		return nil
+	}
+	if len(peers) == 1 {
+		return peers[0]
+	}
+
+	return peers[c.net.rng.Intn(len(peers))]
 }
 
 // ToPeer sends a parcel to a single peer, specified by their peer hash
@@ -629,8 +664,10 @@ func (c *controller) selectRandomPeers(count uint) []*Peer {
 // If the hash is empty, a random connected peer will be chosen
 func (c *controller) ToPeer(hash string, parcel *Parcel) {
 	if hash == "" {
-		if random := c.selectRandomPeers(1); len(random) > 0 {
-			random[0].Send(parcel)
+		if random := c.selectRandomPeer(); random != nil {
+			random.Send(parcel)
+		} else {
+			c.logger.Warnf("attempted to send parcel %s to a random peer but no peers are connected", parcel)
 		}
 	} else {
 		p := c.peers.Get(hash)
