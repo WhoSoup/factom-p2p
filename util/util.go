@@ -28,7 +28,7 @@ func Shuffle(n int, swap func(i, j int)) {
 	}
 }
 
-// IP2Loc converts an ip address to a uint32
+// IP2Location converts an ip address to a uint32
 //
 // If the address is a hostmask, it attempts to resolve the address first
 func IP2Location(addr string) (uint32, error) {

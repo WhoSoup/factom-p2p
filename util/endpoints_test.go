@@ -47,7 +47,7 @@ func TestEndpoints_Register(t *testing.T) {
 	}
 }
 
-func TestEndpoints_Refresh(t *testing.T) {
+/*func TestEndpoints_Refresh(t *testing.T) {
 	ip := testIPs()[0]
 	eps := NewEndpoints()
 	eps.Register(ip, "")
@@ -60,7 +60,7 @@ func TestEndpoints_Refresh(t *testing.T) {
 	if eps.LastSeen(ip).Before(old) {
 		t.Errorf("went back in time after refresh. zero time = %v", eps.Ends[ip.String()].Seen.IsZero())
 	}
-}
+}*/
 
 func TestEndpoints_Deregister(t *testing.T) {
 	eps := NewEndpoints()

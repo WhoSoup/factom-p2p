@@ -8,7 +8,7 @@ import (
 func TestDialer(t *testing.T) {
 	ip := IP{Address: "127.255.255.254", Port: "65535"}
 
-	d := NewDialer("127.0.0.1", time.Millisecond*50, time.Millisecond*25, 2)
+	d := NewDialer("127.0.0.1", time.Millisecond*50, time.Millisecond*25, time.Minute, 2)
 
 	if !d.CanDial(ip) {
 		t.Error("failed to connect first time")

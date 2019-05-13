@@ -15,7 +15,7 @@ import (
 	"github.com/whosoup/factom-p2p/util"
 )
 
-var pmLogger = packageLogger.WithField("subpack", "controller")
+var controllerLogger = packageLogger.WithField("subpack", "controller")
 
 // controller is responsible for managing Peers and Endpoints
 type controller struct {
@@ -28,12 +28,13 @@ type controller struct {
 	stopData   chan bool
 	stopOnline chan bool
 
-	peers      *PeerStore
-	endpoints  *util.Endpoints
-	dialer     *util.Dialer
-	listener   *util.LimitedListener
-	special    map[string]bool
-	specialMtx sync.RWMutex
+	peers     *PeerStore
+	endpoints *util.Endpoints
+	dialer    *util.Dialer
+	listener  *util.LimitedListener
+
+	specialMtx   sync.RWMutex
+	specialCount int
 
 	lastPeerDial    time.Time
 	lastSeedRefresh time.Time
@@ -49,7 +50,7 @@ func newController(network *Network) *controller {
 	c.net = network
 	conf := network.conf
 
-	c.logger = pmLogger.WithFields(log.Fields{
+	c.logger = controllerLogger.WithFields(log.Fields{
 		"node":    conf.NodeName,
 		"port":    conf.ListenPort,
 		"network": conf.Network})
@@ -66,8 +67,7 @@ func newController(network *Network) *controller {
 	c.stopOnline = make(chan bool, 1)
 
 	c.bootStrapPeers()
-	c.special = make(map[string]bool)
-	c.parseSpecial(c.net.conf.Special)
+	c.addSpecial(c.net.conf.Special)
 
 	if c.net.prom != nil {
 		c.net.prom.KnownPeers.Set(float64(c.endpoints.Total()))
@@ -113,22 +113,33 @@ func (c *controller) disconnect(hash string) {
 	}
 }
 
-func (c *controller) parseSpecial(raw string) {
-	c.specialMtx.Lock()
-	defer c.specialMtx.Unlock()
-
+func (c *controller) addSpecial(raw string) {
 	if len(raw) == 0 {
 		return
 	}
-	split := strings.Split(raw, ",")
-	for _, e := range split {
-		ip := net.ParseIP(e)
-		if ip == nil {
-			c.logger.Warnf("Unable to parse IP in special configuration: %s", e)
-		} else {
-			c.special[e] = true
-		}
+	adds := c.parseSpecial(raw)
+	for _, add := range adds {
+		c.logger.Debugf("Registering special endpoint %s", add)
+		c.endpoints.Register(add, "Special")
 	}
+
+	c.specialMtx.Lock()
+	c.specialCount += len(adds)
+	c.specialMtx.Unlock()
+}
+
+func (c *controller) parseSpecial(raw string) []util.IP {
+	var ips []util.IP
+	split := strings.Split(raw, ",")
+	for _, item := range split {
+		ip, err := util.ParseAddress(item)
+		if err != nil {
+			c.logger.Warnf("unable to determine host and port of special entry \"%s\"", item)
+			continue
+		}
+		ips = append(ips, ip)
+	}
+	return ips
 }
 
 // Start starts the controller
@@ -351,7 +362,10 @@ func (c *controller) managePeers() {
 	for {
 		if time.Since(c.lastPersist) > c.net.conf.PersistInterval {
 			c.lastPersist = time.Now()
-			c.persistEndpoints()
+			err := c.endpoints.Persist(c.net.conf.PersistFile, c.net.conf.PersistLevel, c.net.conf.PersistMinimum, c.net.conf.PersistAgeLimit)
+			if err != nil {
+				c.logger.WithError(err).Errorf("unable to persist peers")
+			}
 		}
 
 		if time.Since(c.lastSeedRefresh) > c.net.conf.PeerReseedInterval {
@@ -396,22 +410,17 @@ func (c *controller) managePeers() {
 	}
 }
 
-func (c *controller) isSpecial(ip util.IP) bool {
-	c.specialMtx.RLock()
-	defer c.specialMtx.RUnlock()
-	return c.special[ip.Address] || c.special[ip.String()]
-}
-
 func (c *controller) managePeersDialOutgoing() {
 	c.logger.Debugf("We have %d peers online or connecting", c.peers.Total())
 
-	count := uint(c.peers.TotalOutgoing())
-	if want := int(c.net.conf.Outgoing - count); want > 0 {
+	c.specialMtx.RLock()
+	defer c.specialMtx.RUnlock()
+	count := c.peers.Total()
+	if want := int(c.net.conf.Outgoing - uint(count-c.specialCount)); want > 0 || c.specialCount > 0 {
 		var filtered []util.IP
 		var special []util.IP
-		c.specialMtx.RLock()
 		for _, ip := range c.endpoints.IPs() {
-			if c.special[ip.Address] || c.special[ip.String()] {
+			if c.endpoints.IsSpecial(ip) {
 				if !c.peers.IsConnected(ip.Address) {
 					special = append(special, ip)
 				}
@@ -419,7 +428,6 @@ func (c *controller) managePeersDialOutgoing() {
 				filtered = append(filtered, ip)
 			}
 		}
-		c.specialMtx.RUnlock()
 
 		c.logger.Debugf("special: %d, filtered: %d", len(special), len(filtered))
 		//fmt.Println(filtered)
@@ -453,9 +461,7 @@ func (c *controller) managePeersDialOutgoing() {
 }
 
 func (c *controller) allowIncoming(addr string) error {
-	c.specialMtx.RLock()
-	defer c.specialMtx.RUnlock()
-	if c.special[addr] { // always allow special
+	if c.endpoints.IsSpecialAddress(addr) {
 		return nil
 	}
 
@@ -487,7 +493,8 @@ func (c *controller) handleIncoming(con net.Conn) {
 		return
 	}
 
-	ip, err := util.NewIP(addr, "")
+	// port is overriden during handshake, use default port as temp port
+	ip, err := util.NewIP(addr, c.net.conf.ListenPort)
 	if err != nil { // should never happen for incoming
 		c.logger.WithError(err).Debugf("Unable to decode address %s", addr)
 		con.Close()
@@ -547,23 +554,6 @@ func (c *controller) Dial(ip util.IP) {
 		c.logger.WithError(err).Debugf("Handshake fail with %s", ip)
 		peer.Stop(false)
 	}
-}
-
-func (c *controller) Broadcast(parcel *Parcel, full bool) {
-	if full {
-		for _, p := range c.peers.Slice() {
-			p.Send(parcel)
-		}
-		return
-	}
-	// fanout
-	selection := c.selectRandomPeers(c.net.conf.Fanout)
-	//fmt.Println("selected", len(selection), "random peers")
-	for _, p := range selection {
-		//fmt.Println("sending to random peer", p.String())
-		p.Send(parcel)
-	}
-	// TODO always send to special
 }
 
 // getOutgoingSelection creates a subset of total connectable peers by getting
@@ -629,7 +619,7 @@ func (c *controller) selectRandomPeers(count uint) []*Peer {
 	var regular []*Peer
 
 	for _, p := range peers {
-		if c.special[p.IP.Address] {
+		if c.endpoints.IsSpecial(p.IP) {
 			special = append(special, p)
 		} else {
 			regular = append(regular, p)
@@ -659,8 +649,22 @@ func (c *controller) selectRandomPeer() *Peer {
 	return peers[c.net.rng.Intn(len(peers))]
 }
 
-// ToPeer sends a parcel to a single peer, specified by their peer hash
-//
+// Broadcast delivers a parcel to multiple connections specified by the fanout.
+// A full broadcast sends the parcel to ALL connected peers
+func (c *controller) Broadcast(parcel *Parcel, full bool) {
+	if full {
+		for _, p := range c.peers.Slice() {
+			p.Send(parcel)
+		}
+		return
+	}
+	selection := c.selectRandomPeers(c.net.conf.Fanout)
+	for _, p := range selection {
+		p.Send(parcel)
+	}
+}
+
+// ToPeer sends a parcel to a single peer, specified by their peer hash.
 // If the hash is empty, a random connected peer will be chosen
 func (c *controller) ToPeer(hash string, parcel *Parcel) {
 	if hash == "" {
@@ -677,61 +681,27 @@ func (c *controller) ToPeer(hash string, parcel *Parcel) {
 	}
 }
 
-func (c *controller) persistEndpoints() {
-	path := c.net.conf.PersistFile
-	if path == "" {
-		return
-	}
-
-	file, err := os.Create(path)
-	if err != nil {
-		c.logger.WithError(err).Errorf("persist(): File create error for %s", path)
-		return
-	}
-	defer file.Close()
-	writer := bufio.NewWriter(file)
-
-	persist, err := c.endpoints.Persist(c.net.conf.PersistLevel, c.net.conf.PersistMinimum, c.net.conf.PersistAgeLimit)
-	if err != nil {
-		c.logger.WithError(err).Error("persist(): Unable to encode endpoints")
-		return
-	}
-
-	n, err := writer.Write(persist)
-	if err != nil {
-		c.logger.WithError(err).Errorf("persist(): Unable to write to file, wrote %d bytes", n)
-		return
-	}
-
-	err = writer.Flush()
-	if err != nil {
-		c.logger.WithError(err).Error("persist(): Unable to flush")
-		return
-	}
-
-	c.logger.Debugf("Persisted peers json file")
-}
-
 func (c *controller) loadEndpoints() *util.Endpoints {
+	eps := util.NewEndpoints()
+
 	path := c.net.conf.PersistFile
 	if path == "" {
-		return util.NewEndpoints()
+		return eps
 	}
 	c.logger.Debugf("Attempting to parse file %s for endpoints", path)
 
 	file, err := os.Open(path)
 	if err != nil {
 		c.logger.WithError(err).Errorf("loadEndpoints(): file open error for %s", path)
-		return util.NewEndpoints()
+		return eps
 	}
 
-	var eps util.Endpoints
 	dec := json.NewDecoder(bufio.NewReader(file))
-	err = dec.Decode(&eps)
+	err = dec.Decode(eps)
 
 	if err != nil {
 		c.logger.WithError(err).Errorf("loadEndpoints(): error decoding")
-		return util.NewEndpoints()
+		return eps
 	}
 
 	// decoding from a blank or invalid file
@@ -741,7 +711,7 @@ func (c *controller) loadEndpoints() *util.Endpoints {
 
 	eps.Cleanup(c.net.conf.PersistAgeLimit)
 	c.logger.Debugf("%d endpoints found", eps.Total())
-	return &eps
+	return eps
 }
 
 // listen listens for incoming TCP connections and passes them off to handshake maneuver

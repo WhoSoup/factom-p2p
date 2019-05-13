@@ -201,16 +201,16 @@ func (n *Network) Disconnect(hash string) {
 	go n.controller.disconnect(hash)
 }
 
-// ParseSpecial takes a set of ip addresses that should be treated as special.
+// AddSpecial takes a set of ip addresses that should be treated as special.
 // Network will always attempt to have a connection to a special peer.
 // Format is a single line of ip addresses and ports, separated by semicolon, eg
 // "127.0.0.1:8088;8.8.8.8;192.168.0.1:8110"
 //
 // The port is optional and the entire ip will be considered special if no port is
 // provided
-func (n *Network) ParseSpecial(raw string) {
+func (n *Network) AddSpecial(raw string) {
 	n.logger.Debugf("Received new list of special peers from application: %s", raw)
-	go n.controller.parseSpecial(raw)
+	go n.controller.addSpecial(raw)
 }
 
 // Total returns the number of active connections

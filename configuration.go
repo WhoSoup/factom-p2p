@@ -148,7 +148,7 @@ func DefaultP2PConfiguration() (c Configuration) {
 	c.PeerShareAmount = 4 * c.Outgoing // legacy math
 	c.MinimumQualityScore = 20
 	c.PersistLevel = 2
-	c.PersistMinimum = time.Minute * 1
+	c.PersistMinimum = time.Minute
 
 	c.BindIP = "" // bind to all
 	c.ListenPort = "8108"

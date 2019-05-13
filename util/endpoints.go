@@ -1,7 +1,9 @@
 package util
 
 import (
+	"bufio"
 	"encoding/json"
+	"os"
 	"sync"
 	"time"
 )
@@ -10,10 +12,11 @@ import (
 // Aka the partial peer view.
 // Endpoints are unique and there can be only one for a given IP
 type Endpoints struct {
-	Ends map[string]endpoint  `json:"endpoints"`
-	Bans map[string]time.Time `json:"bans"`
-	mtx  sync.RWMutex
-	ips  []IP
+	Ends    map[string]endpoint  `json:"endpoints"` // addr:port -> endpoint
+	Bans    map[string]time.Time `json:"bans"`
+	special map[string]bool      // (address|address:port) -> bool
+	mtx     sync.RWMutex
+	ips     []IP
 }
 
 type endpoint struct {
@@ -31,6 +34,7 @@ func NewEndpoints() *Endpoints {
 	epm := new(Endpoints)
 	epm.Ends = make(map[string]endpoint)
 	epm.Bans = make(map[string]time.Time)
+	epm.special = make(map[string]bool)
 	return epm
 }
 
@@ -50,6 +54,10 @@ func (epm *Endpoints) Register(ip IP, source string) {
 	if ep.Source[source].IsZero() {
 		ep.Seen = time.Now()
 		ep.Source[source] = time.Now()
+	}
+	if source == "Special" {
+		epm.special[ip.String()] = true
+		epm.special[ip.Address] = true
 	}
 	ep.IP = ip
 	epm.Ends[ip.String()] = ep
@@ -155,6 +163,18 @@ func (epm *Endpoints) IsLocked(ip IP) bool {
 	return time.Now().Before(epm.Ends[ip.String()].lock)
 }
 
+func (epm *Endpoints) IsSpecial(ip IP) bool {
+	epm.mtx.RLock()
+	defer epm.mtx.RUnlock()
+	return epm.special[ip.String()]
+}
+
+func (epm *Endpoints) IsSpecialAddress(addr string) bool {
+	epm.mtx.RLock()
+	defer epm.mtx.RUnlock()
+	return epm.special[addr]
+}
+
 // IPs returns a concurrency safe slice of the current endpoints.
 //
 func (epm *Endpoints) IPs() []IP {
@@ -172,6 +192,8 @@ func (epm *Endpoints) IPs() []IP {
 }
 
 func (epm *Endpoints) Cleanup(cutoff time.Duration) uint {
+	epm.mtx.RLock()
+	defer epm.mtx.RUnlock()
 	removed := uint(0)
 	for addr, ep := range epm.Ends {
 		if time.Since(ep.Seen) > cutoff {
@@ -188,16 +210,14 @@ func (epm *Endpoints) Cleanup(cutoff time.Duration) uint {
 	return removed
 }
 
-func (epm *Endpoints) Persist(level uint, min time.Duration, cutoff time.Duration) ([]byte, error) {
+func (epm *Endpoints) trim(level uint, min time.Duration, cutoff time.Duration) *Endpoints {
 	epm.mtx.RLock()
 	defer epm.mtx.RUnlock()
-	epm.Cleanup(cutoff)
-
 	e := NewEndpoints()
 	e.Bans = epm.Bans
 	cut := time.Now().Add(-cutoff)
 	for ip, end := range epm.Ends {
-		if end.Disconnected.Before(cut) {
+		if !end.Disconnected.IsZero() && end.Disconnected.Before(cut) {
 			continue
 		}
 		if level >= 1 && end.timeConnected() < min {
@@ -212,8 +232,41 @@ func (epm *Endpoints) Persist(level uint, min time.Duration, cutoff time.Duratio
 		}
 		e.Ends[ip] = end
 	}
+	return e
+}
 
-	return json.Marshal(e)
+func (epm *Endpoints) Persist(path string, level uint, min time.Duration, cutoff time.Duration) error {
+	if path == "" {
+		return nil
+	}
+
+	file, err := os.Create(path)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	writer := bufio.NewWriter(file)
+
+	epm.Cleanup(cutoff)
+	e := epm.trim(level, min, cutoff)
+
+	persist, err := json.Marshal(e)
+	if err != nil {
+		return err
+	}
+
+	_, err = writer.Write(persist)
+	if err != nil {
+		return err
+	}
+
+	err = writer.Flush()
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func (e *endpoint) timeConnected() time.Duration {
