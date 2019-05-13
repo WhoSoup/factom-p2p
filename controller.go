@@ -461,15 +461,11 @@ func (c *controller) managePeersDialOutgoing() {
 }
 
 func (c *controller) allowIncoming(addr string) error {
-	if c.endpoints.IsSpecialAddress(addr) {
-		return nil
-	}
-
 	if c.endpoints.Banned(addr) {
 		return fmt.Errorf("Address %s is banned", addr)
 	}
 
-	if uint(c.peers.Total()) >= c.net.conf.Incoming {
+	if uint(c.peers.Total()) >= c.net.conf.Incoming && !c.endpoints.IsSpecialAddress(addr) {
 		return fmt.Errorf("Refusing incoming connection from %s because we are maxed out (%d of %d)", addr, c.peers.Total(), c.net.conf.Incoming)
 	}
 

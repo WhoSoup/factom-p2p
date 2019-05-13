@@ -86,15 +86,15 @@ func (p *Peer) bootstrapProtocol(hs *Handshake, conn net.Conn, decoder *gob.Deco
 		p.prot = v9
 
 		// bootstrap
-		p.lastPeerRequest = time.Time{}
+		/*p.lastPeerRequest = time.Time{}
 		p.lastPeerSend = time.Time{}
-		p.peerShareAsk = true
+		p.peerShareAsk = false*/
 
 		hsParcel := new(Parcel)
 		hsParcel.Address = hs.Header.TargetPeer
 		hsParcel.Payload = hs.Payload
-		hsParcel.Type = hs.Header.Type
-		if !p.deliver(hsParcel) { // push the handshake to controller
+		hsParcel.Type = TypePeerRequest // v9 starts with a peer request
+		if !p.deliver(hsParcel) {       // push the handshake to controller
 			return fmt.Errorf("unable to deliver peer request to controller")
 		}
 	case 10:
