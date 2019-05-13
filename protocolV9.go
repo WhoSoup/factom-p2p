@@ -79,19 +79,19 @@ type V9Msg struct {
 }
 
 type V9Header struct {
-	Network     NetworkID  // 4 bytes - the network we are on (eg testnet, main net, etc.)
-	Version     uint16     // 2 bytes - the version of the protocol we are running.
-	Type        ParcelType // 2 bytes - network level commands (eg: ping/pong)
-	Length      uint32     // 4 bytes - length of the payload (that follows this header) in bytes
-	TargetPeer  string     // ? bytes - "" or nil for broadcast, otherwise the destination peer's hash.
-	Crc32       uint32     // 4 bytes - data integrity hash (of the payload itself.)
-	PartNo      uint16     // 2 bytes - in case of multipart parcels, indicates which part this corresponds to, otherwise should be 0
-	PartsTotal  uint16     // 2 bytes - in case of multipart parcels, indicates the total number of parts that the receiver should expect
+	Network     NetworkID
+	Version     uint16
+	Type        ParcelType
+	Length      uint32
+	TargetPeer  string
+	Crc32       uint32
+	PartNo      uint16
+	PartsTotal  uint16
 	NodeID      uint64
-	PeerAddress string // address of the peer set by connection to know who sent message (for tracking source of other peers)
-	PeerPort    string // port of the peer , or we are listening on
-	AppHash     string // Application specific message hash, for tracing
-	AppType     string // Application specific message type, for tracing
+	PeerAddress string
+	PeerPort    string
+	AppHash     string
+	AppType     string
 }
 
 // Valid checks header for inconsistencies
