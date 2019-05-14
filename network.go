@@ -142,8 +142,8 @@ func NewNetwork(conf Configuration) *Network {
 	}
 
 	n.controller = newController(n)
-	n.ToNetwork = NewParcelChannel(conf.ChannelCapacity)
-	n.FromNetwork = NewParcelChannel(conf.ChannelCapacity)
+	n.ToNetwork = newParcelChannel(conf.ChannelCapacity)
+	n.FromNetwork = newParcelChannel(conf.ChannelCapacity)
 	return n
 }
 

@@ -6,8 +6,8 @@ import (
 )
 
 func TestParcelChannel_Send(t *testing.T) {
-	smolChannel := NewParcelChannel(1)
-	bigChannel := NewParcelChannel(15)
+	smolChannel := newParcelChannel(1)
+	bigChannel := newParcelChannel(15)
 
 	parcel := new(Parcel)
 	parcel.Payload = []byte("test")
@@ -35,7 +35,7 @@ func TestParcelChannel_Send(t *testing.T) {
 }
 
 func TestParcelChannel_Reader(t *testing.T) {
-	ch := NewParcelChannel(100)
+	ch := newParcelChannel(100)
 
 	for i := 0; i < 100; i++ {
 		parcel := new(Parcel)

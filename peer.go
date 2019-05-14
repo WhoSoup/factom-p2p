@@ -148,7 +148,7 @@ func (p *Peer) StartWithHandshake(ip util.IP, con net.Conn, incoming bool) (bool
 	p.IP = ip
 	p.NodeID = uint32(handshake.Header.NodeID)
 	p.Hash = fmt.Sprintf("%s:%s %08x", ip.Address, ip.Port, p.NodeID)
-	p.send = NewParcelChannel(p.net.conf.ChannelCapacity)
+	p.send = newParcelChannel(p.net.conf.ChannelCapacity)
 	p.IsIncoming = incoming
 	p.conn = con
 	p.Connected = time.Now()

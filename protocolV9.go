@@ -129,17 +129,17 @@ func (msg V9Msg) Valid() error {
 // V9Share is the legacy code's "Peer" struct. Resets QualityScore and Source list when
 // decoding, filters out wrong Networks
 type V9Share struct {
-	QualityScore int32     // 0 is neutral quality, negative is a bad peer.
-	Address      string    // Must be in form of x.x.x.x
-	Port         string    // Must be in form of xxxx
-	NodeID       uint64    // a nonce to distinguish multiple nodes behind one IP address
-	Hash         string    // This is more of a connection ID than hash right now.
-	Location     uint32    // IP address as an int.
-	Network      NetworkID // The network this peer reference lives on.
+	QualityScore int32
+	Address      string
+	Port         string
+	NodeID       uint64
+	Hash         string
+	Location     uint32
+	Network      NetworkID
 	Type         uint8
-	Connections  int                  // Number of successful connections.
-	LastContact  time.Time            // Keep track of how long ago we talked to the peer.
-	Source       map[string]time.Time // source where we heard from the peer.
+	Connections  int
+	LastContact  time.Time
+	Source       map[string]time.Time
 }
 
 // MakePeerShare serializes the given endpoints to a V9Share encoded in json
