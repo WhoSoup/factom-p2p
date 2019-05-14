@@ -30,8 +30,10 @@ func (p *Parcel) String() string {
 	return fmt.Sprintf("[%s] %dB", p.Type, len(p.Payload))
 }
 
-func NewMessage(payload []byte) *Parcel {
-	return newParcel(TypeMessage, payload)
+func NewMessage(target string, payload []byte) *Parcel {
+	p := newParcel(TypeMessage, payload)
+	p.Address = target
+	return p
 }
 
 func newParcel(command ParcelType, payload []byte) *Parcel {

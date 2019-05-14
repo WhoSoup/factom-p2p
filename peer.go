@@ -315,6 +315,7 @@ func (p *Peer) sendLoop() {
 	}
 }
 
+// GetMetrics returns live metrics for this connection
 func (p *Peer) GetMetrics() PeerMetrics {
 	p.metricsMtx.RLock()
 	defer p.metricsMtx.RUnlock()

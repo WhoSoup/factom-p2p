@@ -226,11 +226,11 @@ func (n *Network) route() {
 		select {
 		case message := <-n.ToNetwork:
 			switch message.Address {
-			case FullBroadcastFlag:
+			case FullBroadcast:
 				n.controller.Broadcast(message, true)
-			case BroadcastFlag:
+			case Broadcast:
 				n.controller.Broadcast(message, false)
-			case RandomPeerFlag:
+			case RandomPeer:
 				n.controller.ToPeer("", message)
 			default:
 				n.controller.ToPeer(message.Address, message)

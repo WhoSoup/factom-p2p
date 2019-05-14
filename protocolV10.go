@@ -62,7 +62,9 @@ func (v10 *ProtocolV10) Receive() (*Parcel, error) {
 	}
 
 	p := newParcel(msg.Type, msg.Payload)
+	// temporary identification for logging, gets overwritten with hash by peer
 	p.Address = v10.conn.RemoteAddr().String()
+
 	return p, nil
 }
 

@@ -7,9 +7,9 @@ import (
 )
 
 const (
-	BroadcastFlag     = "<BROADCAST>"
-	FullBroadcastFlag = "<FULLBORADCAST>"
-	RandomPeerFlag    = "<RANDOMPEER>"
+	Broadcast     = "<BROADCAST>"
+	FullBroadcast = "<FULLBORADCAST>"
+	RandomPeer    = "<RANDOMPEER>"
 )
 
 // Configuration defines the behavior of the gossip network protocol

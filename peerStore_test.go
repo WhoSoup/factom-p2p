@@ -97,6 +97,7 @@ func TestPeerStore_Remove(t *testing.T) {
 	ps.Add(p1)
 	ps.Add(p3)
 	ps.Remove(p2)
+	ps.Remove(nil)
 	if _, ok := ps.peers[p1.Hash]; !ok {
 		t.Error("Removed peer p1 despite not being the same pointer")
 	}
