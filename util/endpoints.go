@@ -24,12 +24,12 @@ type endpoint struct {
 	Seen         time.Time            `json:"seen"`
 	Source       map[string]time.Time `json:"source"`
 	Connected    time.Time            `json:"connected"`
-	Disconnected time.Time            `json:"Disconnected"`
+	Disconnected time.Time            `json:"disconnected"`
 	connections  uint
 	lock         time.Time
 }
 
-// NewEndPoints creates an empty endpoint holder
+// NewEndpoints creates an empty endpoint holder
 func NewEndpoints() *Endpoints {
 	epm := new(Endpoints)
 	epm.Ends = make(map[string]endpoint)
@@ -38,6 +38,7 @@ func NewEndpoints() *Endpoints {
 	return epm
 }
 
+// Total returns the total amount of connected peers
 func (epm *Endpoints) Total() int {
 	return len(epm.Ends)
 }
@@ -64,6 +65,7 @@ func (epm *Endpoints) Register(ip IP, source string) {
 	epm.ips = nil
 }
 
+// AddConnection registers that a connection to this endpoint has been established
 func (epm *Endpoints) AddConnection(ip IP) {
 	epm.mtx.Lock()
 	defer epm.mtx.Unlock()
@@ -76,6 +78,7 @@ func (epm *Endpoints) AddConnection(ip IP) {
 	epm.Ends[ip.String()] = ep
 }
 
+// RemoveConnection registers that a connection to this endpoint has been severed
 func (epm *Endpoints) RemoveConnection(ip IP) {
 	epm.mtx.Lock()
 	defer epm.mtx.Unlock()
@@ -89,6 +92,8 @@ func (epm *Endpoints) RemoveConnection(ip IP) {
 	}
 }
 
+// Connections returns the amount of connections to this endpoint along with a duration of
+// how long at least one connection has been active
 func (epm *Endpoints) Connections(ip IP) (uint, time.Duration) {
 	epm.mtx.RLock()
 	defer epm.mtx.RUnlock()
@@ -163,20 +168,22 @@ func (epm *Endpoints) IsLocked(ip IP) bool {
 	return time.Now().Before(epm.Ends[ip.String()].lock)
 }
 
+// IsSpecial checks if the given endpoint is special
 func (epm *Endpoints) IsSpecial(ip IP) bool {
 	epm.mtx.RLock()
 	defer epm.mtx.RUnlock()
 	return epm.special[ip.String()]
 }
 
+// IsSpecialAddress checks if there is a special endpoint on this ip address
 func (epm *Endpoints) IsSpecialAddress(addr string) bool {
 	epm.mtx.RLock()
 	defer epm.mtx.RUnlock()
 	return epm.special[addr]
 }
 
-// IPs returns a concurrency safe slice of the current endpoints.
-//
+// IPs returns a concurrency safe slice of the current endpoints to loop over.
+// The slice should not be modified.
 func (epm *Endpoints) IPs() []IP {
 	epm.mtx.RLock()
 	defer epm.mtx.RUnlock()
@@ -191,12 +198,14 @@ func (epm *Endpoints) IPs() []IP {
 	return epm.ips
 }
 
+// Cleanup performs janitorial duties on the data, removing endpoints that have
+// not been connected to since the cutoff and removing expired bans
 func (epm *Endpoints) Cleanup(cutoff time.Duration) uint {
 	epm.mtx.RLock()
 	defer epm.mtx.RUnlock()
 	removed := uint(0)
 	for addr, ep := range epm.Ends {
-		if time.Since(ep.Seen) > cutoff {
+		if time.Since(ep.Connected) > cutoff {
 			delete(epm.Ends, addr)
 			removed++
 		}
@@ -210,6 +219,7 @@ func (epm *Endpoints) Cleanup(cutoff time.Duration) uint {
 	return removed
 }
 
+// trim the endpoints for persisting according to the level. see configuration for details
 func (epm *Endpoints) trim(level uint, min time.Duration, cutoff time.Duration) *Endpoints {
 	epm.mtx.RLock()
 	defer epm.mtx.RUnlock()
