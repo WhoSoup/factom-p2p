@@ -32,6 +32,7 @@ func (v9 *ProtocolV9) init(peer *Peer, conn net.Conn, decoder *gob.Decoder, enco
 	v9.encoder = encoder
 }
 
+// Send a parcel over the connection
 func (v9 *ProtocolV9) Send(p *Parcel) error {
 	var msg V9Msg
 	msg.Header.Network = v9.net.conf.Network
@@ -52,6 +53,7 @@ func (v9 *ProtocolV9) Send(p *Parcel) error {
 	return v9.encoder.Encode(&msg)
 }
 
+// Receive a parcel from the network. Blocking.
 func (v9 *ProtocolV9) Receive() (*Parcel, error) {
 	var msg V9Msg
 	err := v9.decoder.Decode(&msg)
@@ -69,15 +71,19 @@ func (v9 *ProtocolV9) Receive() (*Parcel, error) {
 	p.Type = msg.Header.Type
 	return p, nil
 }
+
+// Version of the protocol
 func (v9 *ProtocolV9) Version() string {
 	return "9"
 }
 
+// V9Msg is the legacy format of protocol 9
 type V9Msg struct {
 	Header  V9Header
 	Payload []byte
 }
 
+// V9Header carries meta information about the parcel
 type V9Header struct {
 	Network     NetworkID
 	Version     uint16
@@ -136,6 +142,7 @@ type V9Share struct {
 	Source       map[string]time.Time // source where we heard from the peer.
 }
 
+// MakePeerShare serializes the given endpoints to a V9Share encoded in json
 func (v9 *ProtocolV9) MakePeerShare(ps []util.IP) ([]byte, error) {
 	var conv []V9Share
 	src := make(map[string]time.Time)
@@ -158,6 +165,7 @@ func (v9 *ProtocolV9) MakePeerShare(ps []util.IP) ([]byte, error) {
 	return json.Marshal(conv)
 }
 
+// ParsePeerShare unserializes the json V9Share
 func (v9 *ProtocolV9) ParsePeerShare(payload []byte) ([]PeerShare, error) {
 	var list []V9Share
 

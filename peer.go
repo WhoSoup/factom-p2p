@@ -13,14 +13,18 @@ import (
 
 var peerLogger = packageLogger.WithField("subpack", "peer")
 
-// Peer is an active connection to an endpoint in the network
+// Peer is an active connection to an endpoint in the network.
+// Represents one lifetime of a connection and should not be restarted
 type Peer struct {
 	net  *Network
 	conn net.Conn
 	prot Protocol
 
-	// current state
+	// current state, read only "constants" after the handshake
 	IsIncoming bool
+	IP         util.IP
+	NodeID     uint32 // a nonce to distinguish multiple nodes behind one endpoint
+	Hash       string // This is more of a connection ID than hash right now.
 
 	stopper      sync.Once
 	stop         chan bool
@@ -29,19 +33,11 @@ type Peer struct {
 	lastPeerRequest time.Time
 	peerShareAsk    bool
 	lastPeerSend    time.Time
-	send            ParcelChannel
-	error           chan error
-	status          chan peerStatus
-	data            chan peerParcel
 
-	connectionAttempt      time.Time
-	connectionAttemptCount uint
-
-	Seed bool
-
-	IP     util.IP
-	NodeID uint32 // a nonce to distinguish multiple nodes behind one IP address
-	Hash   string // This is more of a connection ID than hash right now.
+	// communication channels
+	send   ParcelChannel   // parcels from Send() are added here
+	status chan peerStatus // the controller's notification channel
+	data   chan peerParcel // the controller's data channel
 
 	// Metrics
 	metricsMtx      sync.RWMutex
@@ -58,7 +54,7 @@ type Peer struct {
 	logger *log.Entry
 }
 
-func NewPeer(net *Network, status chan peerStatus, data chan peerParcel) *Peer {
+func newPeer(net *Network, status chan peerStatus, data chan peerParcel) *Peer {
 	p := &Peer{}
 	p.net = net
 	p.status = status
@@ -85,16 +81,12 @@ func (p *Peer) bootstrapProtocol(hs *Handshake, conn net.Conn, decoder *gob.Deco
 		v9.init(p, conn, decoder, encoder)
 		p.prot = v9
 
-		// bootstrap
-		/*p.lastPeerRequest = time.Time{}
-		p.lastPeerSend = time.Time{}
-		p.peerShareAsk = false*/
-
+		// v9 starts with a peer request
 		hsParcel := new(Parcel)
 		hsParcel.Address = hs.Header.TargetPeer
 		hsParcel.Payload = hs.Payload
-		hsParcel.Type = TypePeerRequest // v9 starts with a peer request
-		if !p.deliver(hsParcel) {       // push the handshake to controller
+		hsParcel.Type = TypePeerRequest
+		if !p.deliver(hsParcel) {
 			return fmt.Errorf("unable to deliver peer request to controller")
 		}
 	case 10:
@@ -151,12 +143,12 @@ func (p *Peer) StartWithHandshake(ip util.IP, con net.Conn, incoming bool) (bool
 		return failfunc(err)
 	}
 
+	// initialize channels
 	ip.Port = handshake.Header.PeerPort
 	p.IP = ip
 	p.NodeID = uint32(handshake.Header.NodeID)
 	p.Hash = fmt.Sprintf("%s:%s %08x", ip.Address, ip.Port, p.NodeID)
 	p.send = NewParcelChannel(p.net.conf.ChannelCapacity)
-	p.error = make(chan error, 10)
 	p.IsIncoming = incoming
 	p.conn = con
 	p.Connected = time.Now()
@@ -182,7 +174,6 @@ func (p *Peer) Stop(andRemove bool) {
 		sc := p.send
 
 		p.send = nil
-		p.error = nil
 
 		p.stop <- true
 		p.stopDelivery <- true

@@ -4,26 +4,35 @@ package p2p
 type ParcelType uint16
 
 const ( // iota is reset to 0
-	TypeHeartbeat    ParcelType = iota // "Note, I'm still alive"
-	TypePing                           // "Are you there?"
-	TypePong                           // "yes, I'm here"
-	TypePeerRequest                    // "Please share some peers"
-	TypePeerResponse                   // "Here's some peers I know about."
-	TypeAlert                          // network wide alerts (used in bitcoin to indicate criticalities)
-	TypeMessage                        // Application level message
-	TypeMessagePart                    // Application level message that was split into multiple parts
+	// TypeHeartbeat is deprecated
+	TypeHeartbeat ParcelType = iota
+	// TypePing is sent if no other parcels have been sent in a while
+	TypePing
+	// TypePong is a response to a Ping
+	TypePong
+	// TypePeerRequest indicates a peer wants to be be updated of endpoints
+	TypePeerRequest
+	// TypePeerResponse carries a payload with protocol specific endpoints
+	TypePeerResponse
+	// TypeAlert is deprecated
+	TypeAlert
+	// TypeMessage carries an application message in the payload
+	TypeMessage
+	// TypeMessagePart is a partial message. deprecated in p2p 2.0
+	TypeMessagePart
+	// TypeHandshake is the first parcel sent after making a connection
 	TypeHandshake
 )
 
 var typeStrings = map[ParcelType]string{
-	TypeHeartbeat:    "Heartbeat",     // "Note, I'm still alive"
-	TypePing:         "Ping",          // "Are you there?"
-	TypePong:         "Pong",          // "yes, I'm here"
-	TypePeerRequest:  "Peer-Request",  // "Please share some peers"
-	TypePeerResponse: "Peer-Response", // "Here's some peers I know about."
-	TypeAlert:        "Alert",         // network wide alerts (used in bitcoin to indicate criticalities)
-	TypeMessage:      "Message",       // Application level message
-	TypeMessagePart:  "MessagePart",   // Application level message that was split into multiple parts
+	TypeHeartbeat:    "Heartbeat",
+	TypePing:         "Ping",
+	TypePong:         "Pong",
+	TypePeerRequest:  "Peer-Request",
+	TypePeerResponse: "Peer-Response",
+	TypeAlert:        "Alert",
+	TypeMessage:      "Message",
+	TypeMessagePart:  "MessagePart",
 }
 
 func (t ParcelType) String() string {

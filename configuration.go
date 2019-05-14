@@ -7,9 +7,12 @@ import (
 )
 
 const (
-	Broadcast     = "<BROADCAST>"
+	// Broadcast sends a parcel to multiple peers (randomly selected based on fanout and special peers)
+	Broadcast = "<BROADCAST>"
+	// FullBroadcast sends a parcel to all peers
 	FullBroadcast = "<FULLBORADCAST>"
-	RandomPeer    = "<RANDOMPEER>"
+	// RandomPeer sends a parcel to one randomly selected peer
+	RandomPeer = "<RANDOMPEER>"
 )
 
 // Configuration defines the behavior of the gossip network protocol

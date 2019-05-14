@@ -227,6 +227,7 @@ func (epm *Endpoints) trim(level uint, min time.Duration, cutoff time.Duration) 
 	e.Bans = epm.Bans
 	cut := time.Now().Add(-cutoff)
 	for ip, end := range epm.Ends {
+		// cutoff
 		if !end.Disconnected.IsZero() && end.Disconnected.Before(cut) {
 			continue
 		}
@@ -245,6 +246,7 @@ func (epm *Endpoints) trim(level uint, min time.Duration, cutoff time.Duration) 
 	return e
 }
 
+// Persist the endpoints to file with the specified parameters. Runs cleanup first.
 func (epm *Endpoints) Persist(path string, level uint, min time.Duration, cutoff time.Duration) error {
 	if path == "" {
 		return nil

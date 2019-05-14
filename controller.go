@@ -503,7 +503,7 @@ func (c *controller) handleIncoming(con net.Conn) {
 		return
 	}
 
-	peer := NewPeer(c.net, c.peerStatus, c.peerData)
+	peer := newPeer(c.net, c.peerStatus, c.peerData)
 	if ok, err := peer.StartWithHandshake(ip, con, true); ok {
 		c.logger.Debugf("Incoming handshake success for peer %s", peer.Hash)
 		c.endpoints.Register(peer.IP, "Incoming")
@@ -534,7 +534,7 @@ func (c *controller) Dial(ip util.IP) {
 		return
 	}
 
-	peer := NewPeer(c.net, c.peerStatus, c.peerData)
+	peer := newPeer(c.net, c.peerStatus, c.peerData)
 	if !c.endpoints.IsLocked(ip) {
 		c.endpoints.Lock(ip, c.net.conf.HandshakeTimeout)
 	}

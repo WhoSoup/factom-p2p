@@ -6,8 +6,10 @@ import (
 	"strconv"
 )
 
+// Handshake is an alias of V9MSG for backward compatibility
 type Handshake V9Msg
 
+// Valid checks if the other node is compatible
 func (h *Handshake) Valid(conf *Configuration) error {
 	if h.Header.NodeID == uint64(conf.NodeID) {
 		return (fmt.Errorf("connected to ourselves"))

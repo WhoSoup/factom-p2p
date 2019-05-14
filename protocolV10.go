@@ -12,6 +12,8 @@ import (
 
 var _ Protocol = (*ProtocolV10)(nil)
 
+// ProtocolV10 is the protocol introduced by p2p 2.0.
+// It is a slimmed down version of V9, reducing overhead
 type ProtocolV10 struct {
 	net     *Network
 	conn    net.Conn
@@ -19,6 +21,8 @@ type ProtocolV10 struct {
 	encoder *gob.Encoder
 	peer    *Peer
 }
+
+// V10Msg is the barebone message
 type V10Msg struct {
 	Type    ParcelType
 	Crc32   uint32
@@ -33,6 +37,7 @@ func (v10 *ProtocolV10) init(peer *Peer, conn net.Conn, decoder *gob.Decoder, en
 	v10.encoder = encoder
 }
 
+// Send encodes a Parcel as V10Msg, calculates the crc and encodes it as gob
 func (v10 *ProtocolV10) Send(p *Parcel) error {
 	var msg V10Msg
 	msg.Type = p.Type
@@ -41,10 +46,12 @@ func (v10 *ProtocolV10) Send(p *Parcel) error {
 	return v10.encoder.Encode(msg)
 }
 
+// Version 10
 func (v10 *ProtocolV10) Version() string {
 	return "10"
 }
 
+// Receive converts a V10Msg back to a Parcel
 func (v10 *ProtocolV10) Receive() (*Parcel, error) {
 	var msg V10Msg
 	err := v10.decoder.Decode(&msg)
@@ -68,8 +75,10 @@ func (v10 *ProtocolV10) Receive() (*Parcel, error) {
 	return p, nil
 }
 
+// V10Share is an alias of PeerShare
 type V10Share PeerShare
 
+// MakePeerShare serializes a list of ips via json
 func (v10 *ProtocolV10) MakePeerShare(ps []util.IP) ([]byte, error) {
 	var share []V10Share
 	for _, ip := range ps {
@@ -77,6 +86,8 @@ func (v10 *ProtocolV10) MakePeerShare(ps []util.IP) ([]byte, error) {
 	}
 	return json.Marshal(share)
 }
+
+// ParsePeerShare parses a peer share payload
 func (v10 *ProtocolV10) ParsePeerShare(payload []byte) ([]PeerShare, error) {
 	var share []PeerShare
 	err := json.Unmarshal(payload, &share)

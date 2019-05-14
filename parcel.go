@@ -17,6 +17,7 @@ type Parcel struct {
 	Payload []byte
 }
 
+// IsApplicationMessage checks if the message is intended for the application
 func (p *Parcel) IsApplicationMessage() bool {
 	switch p.Type {
 	case TypeMessage, TypeMessagePart:
@@ -30,6 +31,8 @@ func (p *Parcel) String() string {
 	return fmt.Sprintf("[%s] %dB", p.Type, len(p.Payload))
 }
 
+// NewMessage creates a new application message. The target should be either an identifier
+// from a previous message, or one of the custom flags: Broadcast, BroadcastFull, RandomPeer
 func NewMessage(target string, payload []byte) *Parcel {
 	p := newParcel(TypeMessage, payload)
 	p.Address = target
