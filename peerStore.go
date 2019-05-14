@@ -11,9 +11,9 @@ type PeerStore struct {
 	mtx       sync.RWMutex
 	peers     map[string]*Peer // hash -> peer
 	connected map[string]int   // address -> count
-	curSlice  []*Peer
-	Incoming  int
-	Outgoing  int
+	curSlice  []*Peer          // temporary slice that gets reset when changes are made
+	incoming  int
+	outgoing  int
 }
 
 // NewPeerStore initializes a new peer store
@@ -24,7 +24,12 @@ func NewPeerStore() *PeerStore {
 	return ps
 }
 
+// Add a peer to be managed. Throws error if a peer with that hash
+// is already tracked
 func (ps *PeerStore) Add(p *Peer) error {
+	if p == nil {
+		return fmt.Errorf("trying to add nil")
+	}
 	ps.mtx.Lock()
 	defer ps.mtx.Unlock()
 	_, ok := ps.peers[p.Hash]
@@ -36,63 +41,86 @@ func (ps *PeerStore) Add(p *Peer) error {
 	ps.connected[p.IP.Address]++
 
 	if p.IsIncoming {
-		ps.Incoming++
+		ps.incoming++
 	} else {
-		ps.Outgoing++
+		ps.outgoing++
 	}
 	return nil
 }
 
+// Remove a specific peer if it exists. This checks by pointer reference and not by hash.
+// If you have two distinct peer instances (A and B) with the same hash and add A, removing B has no
+// effect, even if they have the same values
 func (ps *PeerStore) Remove(p *Peer) {
+	if p == nil {
+		return
+	}
 	ps.mtx.Lock()
 	defer ps.mtx.Unlock()
 	if old, ok := ps.peers[p.Hash]; ok && old == p { // pointer comparison
 		ps.connected[p.IP.Address]--
 		if old.IsIncoming {
-			ps.Incoming--
+			ps.incoming--
 		} else {
-			ps.Outgoing--
+			ps.outgoing--
 		}
 		ps.curSlice = nil
 		delete(ps.peers, p.Hash)
 	}
 }
 
+// Total amount of peers connected
 func (ps *PeerStore) Total() int {
 	ps.mtx.RLock()
 	defer ps.mtx.RUnlock()
 	return len(ps.peers)
 }
-func (ps *PeerStore) TotalOutgoing() int {
+
+// Outgoing is the amount of outgoing peers connected
+func (ps *PeerStore) Outgoing() int {
 	ps.mtx.RLock()
 	defer ps.mtx.RUnlock()
-	return ps.Outgoing
+	return ps.outgoing
 }
 
+// Incoming is the amount of incoming peers connected
+func (ps *PeerStore) Incoming() int {
+	ps.mtx.RLock()
+	defer ps.mtx.RUnlock()
+	return ps.incoming
+}
+
+// Unique is the amount of unique ip addresses that are connected
 func (ps *PeerStore) Unique() int {
 	ps.mtx.RLock()
 	defer ps.mtx.RUnlock()
 	return len(ps.connected)
 }
 
+// Get retrieves a Peer with a specific hash, nil if it doesn't exist
 func (ps *PeerStore) Get(hash string) *Peer {
 	ps.mtx.RLock()
 	defer ps.mtx.RUnlock()
 	return ps.peers[hash]
 }
 
+// IsConnected tests whether there is a peer connected from a specified ip address
 func (ps *PeerStore) IsConnected(addr string) bool {
 	ps.mtx.RLock()
 	defer ps.mtx.RUnlock()
 	return ps.connected[addr] > 0
 }
 
+// Count returns the amount of peers connected from a specified ip address
 func (ps *PeerStore) Count(addr string) int {
 	ps.mtx.RLock()
 	defer ps.mtx.RUnlock()
 	return ps.connected[addr]
 }
 
+// Slice returns a slice of the current peers that is considered concurrency
+// safe for reading operations. The slice should not be modified. Peers are randomly
+// ordered
 func (ps *PeerStore) Slice() []*Peer {
 	ps.mtx.RLock()
 	defer ps.mtx.RUnlock()

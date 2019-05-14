@@ -10,6 +10,9 @@ import "github.com/whosoup/factom-p2p/util"
 // Send:    Parcel => Protocol Encoder => Protocol Format => TCP
 // Receive: TCP => Protocol Format => Protocol Decoder => Parcel
 //
+// Peer Sharing creates the protocol specific payload for a TypePeerShare
+// Parcel
+//
 // Every protocol should be bootstraped in peer:bootstrapProtocol() where
 // it can be initialized with the required serialization methods
 type Protocol interface {
