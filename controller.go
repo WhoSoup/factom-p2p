@@ -324,7 +324,7 @@ func (c *controller) processPeers(peer *Peer, parcel *Parcel) {
 		ip, err := util.NewIP(p.Address, p.Port)
 		if err != nil {
 			c.logger.WithError(err).Infof("Unable to register endpoint %s:%s from peer %s", p.Address, p.Port, peer)
-		} else {
+		} else if !c.endpoints.BannedEndpoint(ip) {
 			c.endpoints.Register(ip, peer.IP.Address)
 		}
 	}
