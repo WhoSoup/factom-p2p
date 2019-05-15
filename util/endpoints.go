@@ -70,10 +70,10 @@ func (epm *Endpoints) AddConnection(ip IP) {
 	epm.mtx.Lock()
 	defer epm.mtx.Unlock()
 	ep := epm.Ends[ip.String()]
-	ep.connections++
-	if ep.Connected.IsZero() {
+	if ep.connections == 0 {
 		ep.Connected = time.Now()
 	}
+	ep.connections++
 	ep.Disconnected = time.Time{}
 	epm.Ends[ip.String()] = ep
 }
