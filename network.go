@@ -27,8 +27,9 @@ type Network struct {
 	stopRoute   chan bool
 	metricsHook func(pm map[string]PeerMetrics)
 
-	rng    *rand.Rand
-	logger *log.Entry
+	rng        *rand.Rand
+	instanceID uint64
+	logger     *log.Entry
 }
 
 var packageLogger = log.WithField("package", "p2p")
@@ -64,6 +65,12 @@ func (n *Network) DebugMessage() (string, string, int) {
 		known += ip.Address + " "
 	}
 	r += "\nKNOWN:\n" + known
+
+	banned := ""
+	for ip, time := range n.controller.endpoints.Bans {
+		banned += fmt.Sprintf("\t%s %s\n", ip, time)
+	}
+	r += "\nBANNED:\n" + banned
 	return r, hv, count
 }
 
@@ -135,6 +142,8 @@ func NewNetwork(conf Configuration) *Network {
 	}
 
 	n.rng = rand.New(rand.NewSource(time.Now().UnixNano()))
+	// generate random instanceid for loopback detection
+	n.instanceID = n.rng.Uint64()
 
 	// turn nodename into nodeid
 	if n.conf.NodeID == 0 {

@@ -11,30 +11,39 @@ type Handshake V9Msg
 
 // Valid checks if the other node is compatible
 func (h *Handshake) Valid(conf *Configuration) error {
-	if h.Header.NodeID == uint64(conf.NodeID) {
-		return (fmt.Errorf("connected to ourselves"))
-	}
-
 	if h.Header.Version < conf.ProtocolVersionMinimum {
-		return (fmt.Errorf("version %d is below the minimum", h.Header.Version))
+		return fmt.Errorf("version %d is below the minimum", h.Header.Version)
 	}
 
 	if h.Header.Network != conf.Network {
-		return (fmt.Errorf("wrong network id %x", h.Header.Network))
+		return fmt.Errorf("wrong network id %x", h.Header.Network)
+	}
+
+	if len(h.Payload) == 0 {
+		return fmt.Errorf("zero-length payload")
+	}
+
+	if h.Header.Length != uint32(len(h.Payload)) {
+		return fmt.Errorf("length in header does not match payload")
+	}
+
+	csum := crc32.Checksum(h.Payload, crcTable)
+	if csum != h.Header.Crc32 {
+		return fmt.Errorf("invalid checksum")
 	}
 
 	port, err := strconv.Atoi(h.Header.PeerPort)
 	if err != nil {
-		return (fmt.Errorf("unable to parse port %s: %v", h.Header.PeerPort, err))
+		return fmt.Errorf("unable to parse port %s: %v", h.Header.PeerPort, err)
 	}
 
 	if port < 1 || port > 65535 {
-		return (fmt.Errorf("given port out of range: %d", port))
+		return fmt.Errorf("given port out of range: %d", port)
 	}
 	return nil
 }
 
-func newHandshake(conf *Configuration) *Handshake {
+func newHandshake(conf *Configuration, nonce []byte) *Handshake {
 	hs := new(Handshake)
 	hs.Header = V9Header{
 		Network:  conf.Network,
@@ -45,12 +54,13 @@ func newHandshake(conf *Configuration) *Handshake {
 		AppHash:  "NetworkMessage",
 		AppType:  "Network",
 	}
-	hs.SetPayload([]byte("Handshake"))
+	hs.SetPayload(nonce)
 	return hs
 }
 
-func (hs *Handshake) SetPayload(payload []byte) {
-	hs.Payload = payload
-	hs.Header.Crc32 = crc32.Checksum(hs.Payload, crcTable)
-	hs.Header.Length = uint32(len(hs.Payload))
+// SetPayload adds a payload to the handshake and updates the header with metadata
+func (h *Handshake) SetPayload(payload []byte) {
+	h.Payload = payload
+	h.Header.Crc32 = crc32.Checksum(h.Payload, crcTable)
+	h.Header.Length = uint32(len(h.Payload))
 }

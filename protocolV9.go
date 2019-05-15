@@ -114,10 +114,6 @@ func (msg V9Msg) Valid() error {
 		return fmt.Errorf("length in header does not match payload")
 	}
 
-	if len(msg.Payload) == 0 {
-		return fmt.Errorf("nul payload")
-	}
-
 	csum := crc32.Checksum(msg.Payload, crcTable)
 	if csum != msg.Header.Crc32 {
 		return fmt.Errorf("invalid checksum")

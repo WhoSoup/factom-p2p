@@ -116,8 +116,8 @@ func (epm *Endpoints) Deregister(ip IP) {
 	epm.ips = nil
 }
 
-// Ban all endpoints with a given ip address until a certain time
-func (epm *Endpoints) Ban(addr string, t time.Time) {
+// BanAddress bans all endpoints with a given ip address until a certain time
+func (epm *Endpoints) BanAddress(addr string, t time.Time) {
 	epm.mtx.Lock()
 	defer epm.mtx.Unlock()
 	for i, ep := range epm.Ends {
@@ -129,9 +129,27 @@ func (epm *Endpoints) Ban(addr string, t time.Time) {
 	epm.ips = nil
 }
 
-// Banned checks if an ip address is banned
-func (epm *Endpoints) Banned(addr string) bool {
+// BanEndpoint bans a single endpoint
+func (epm *Endpoints) BanEndpoint(ip IP, t time.Time) {
+	epm.mtx.Lock()
+	defer epm.mtx.Unlock()
+	delete(epm.Ends, ip.String())
+	epm.Bans[ip.String()] = t
+	epm.ips = nil
+}
+
+// BannedAddress checks if an ip address is blanket banned
+func (epm *Endpoints) BannedAddress(addr string) bool {
+	epm.mtx.RLock()
+	defer epm.mtx.RUnlock()
 	return time.Now().Before(epm.Bans[addr])
+}
+
+// BannedEndpoint checks if an endpoint is banned (both specifically or blanket banned by ip)
+func (epm *Endpoints) BannedEndpoint(ip IP) bool {
+	epm.mtx.RLock()
+	defer epm.mtx.RUnlock()
+	return time.Now().Before(epm.Bans[ip.String()]) || time.Now().Before(epm.Bans[ip.Address])
 }
 
 // LastSeen returns the time of the last activity

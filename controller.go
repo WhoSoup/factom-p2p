@@ -81,7 +81,7 @@ func newController(network *Network) *controller {
 func (c *controller) ban(hash string, duration time.Duration) {
 	peer := c.peers.Get(hash)
 	if peer != nil {
-		c.endpoints.Ban(peer.IP.Address, time.Now().Add(duration))
+		c.endpoints.BanAddress(peer.IP.Address, time.Now().Add(duration))
 		for _, p := range c.peers.Slice() {
 			if p.IP.Address == peer.IP.Address {
 				peer.Stop(true)
@@ -445,7 +445,7 @@ func (c *controller) managePeersDialOutgoing() {
 			limit := c.net.conf.PeerIPLimitOutgoing
 			for _, ip := range ips {
 
-				if c.endpoints.Banned(ip.Address) {
+				if c.endpoints.BannedEndpoint(ip) {
 					continue
 				}
 				if limit > 0 && uint(c.peers.Count(ip.Address)) >= limit {
@@ -461,7 +461,7 @@ func (c *controller) managePeersDialOutgoing() {
 }
 
 func (c *controller) allowIncoming(addr string) error {
-	if c.endpoints.Banned(addr) {
+	if c.endpoints.BannedAddress(addr) {
 		return fmt.Errorf("Address %s is banned", addr)
 	}
 
@@ -506,6 +506,12 @@ func (c *controller) handleIncoming(con net.Conn) {
 	peer := newPeer(c.net, c.peerStatus, c.peerData)
 	if ok, err := peer.StartWithHandshake(ip, con, true); ok {
 		c.logger.Debugf("Incoming handshake success for peer %s", peer.Hash)
+
+		if c.endpoints.BannedEndpoint(peer.IP) {
+			c.logger.Debugf("Peer %s is banned, disconnecting", peer.Hash)
+			return
+		}
+
 		c.endpoints.Register(peer.IP, "Incoming")
 		c.endpoints.Lock(peer.IP, time.Hour*8760*50) // 50 years
 		c.dialer.Reset(peer.IP)
@@ -542,9 +548,9 @@ func (c *controller) Dial(ip util.IP) {
 		c.logger.Debugf("Handshake success for peer %s", peer.Hash)
 		c.endpoints.Register(peer.IP, "Dial")
 		c.dialer.Reset(peer.IP)
-	} else if err.Error() == "connected to ourselves" {
+	} else if err.Error() == "loopback" {
 		c.logger.Debugf("Banning ourselves for 50 years")
-		c.endpoints.Ban(ip.Address, time.Now().AddDate(50, 0, 0)) // ban for 50 years
+		c.endpoints.BanEndpoint(ip, time.Now().AddDate(50, 0, 0)) // ban for 50 years
 		peer.Stop(false)
 	} else {
 		c.logger.WithError(err).Debugf("Handshake fail with %s", ip)

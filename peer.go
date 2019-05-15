@@ -111,12 +111,14 @@ func (p *Peer) StartWithHandshake(ip util.IP, con net.Conn, incoming bool) (bool
 	tmplogger := p.logger.WithField("addr", ip.Address)
 	timeout := time.Now().Add(p.net.conf.HandshakeTimeout)
 
-	handshake := newHandshake(p.net.conf)
+	nonce := []byte(fmt.Sprintf("%x", p.net.instanceID))
 
+	handshake := newHandshake(p.net.conf, nonce)
 	decoder := gob.NewDecoder(con)
 	encoder := gob.NewEncoder(con)
 	con.SetWriteDeadline(timeout)
 	con.SetReadDeadline(timeout)
+
 	err := encoder.Encode(handshake)
 
 	failfunc := func(err error) (bool, error) {
@@ -129,24 +131,30 @@ func (p *Peer) StartWithHandshake(ip util.IP, con net.Conn, incoming bool) (bool
 		return failfunc(fmt.Errorf("Failed to send handshake to incoming connection"))
 	}
 
-	err = decoder.Decode(&handshake)
+	var reply Handshake
+	err = decoder.Decode(&reply)
 	if err != nil {
 		return failfunc(fmt.Errorf("Failed to read handshake from incoming connection"))
 	}
 
 	// check basic structure
-	if err = handshake.Valid(p.net.conf); err != nil {
+	if err = reply.Valid(p.net.conf); err != nil {
 		return failfunc(err)
 	}
 
-	if err = p.bootstrapProtocol(handshake, con, decoder, encoder); err != nil {
+	// loopback detection
+	if string(reply.Payload) == string(nonce) {
+		return failfunc(fmt.Errorf("loopback"))
+	}
+
+	if err = p.bootstrapProtocol(&reply, con, decoder, encoder); err != nil {
 		return failfunc(err)
 	}
 
 	// initialize channels
-	ip.Port = handshake.Header.PeerPort
+	ip.Port = reply.Header.PeerPort
 	p.IP = ip
-	p.NodeID = uint32(handshake.Header.NodeID)
+	p.NodeID = uint32(reply.Header.NodeID)
 	p.Hash = fmt.Sprintf("%s:%s %08x", ip.Address, ip.Port, p.NodeID)
 	p.send = newParcelChannel(p.net.conf.ChannelCapacity)
 	p.IsIncoming = incoming

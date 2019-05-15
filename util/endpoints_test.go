@@ -79,7 +79,7 @@ func TestEndpoints_Deregister(t *testing.T) {
 	}
 }
 
-func TestEndpoints_Ban(t *testing.T) {
+func TestEndpoints_BanAddress(t *testing.T) {
 	eps := NewEndpoints()
 	ips := testIPs()
 
@@ -88,14 +88,14 @@ func TestEndpoints_Ban(t *testing.T) {
 	}
 
 	now := time.Now()
-	eps.Ban(ips[0].Address, now)
-	eps.Ban(ips[2].Address, now)
+	eps.BanAddress(ips[0].Address, now)
+	eps.BanAddress(ips[2].Address, now)
 
 	if len(eps.IPs()) != 1 {
 		t.Errorf("ips didn't get removed after banning 2/3: %v", eps.IPs())
 	}
 
-	eps.Ban(ips[4].Address, now)
+	eps.BanAddress(ips[4].Address, now)
 	if len(eps.IPs()) != 0 {
 		t.Errorf("ips didn't get removed after banning all: %v", eps.IPs())
 	}
@@ -104,8 +104,8 @@ func TestEndpoints_Ban(t *testing.T) {
 func TestEndpoints_Banned(t *testing.T) {
 	eps := NewEndpoints()
 	now := time.Now()
-	eps.Ban("a", now.Add(-time.Second))
-	eps.Ban("b", now.Add(time.Second))
+	eps.BanAddress("a", now.Add(-time.Second))
+	eps.BanAddress("b", now.Add(time.Second))
 	type args struct {
 		addr string
 	}
@@ -121,7 +121,7 @@ func TestEndpoints_Banned(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := tt.epm.Banned(tt.args.addr); got != tt.want {
+			if got := tt.epm.BannedAddress(tt.args.addr); got != tt.want {
 				t.Errorf("Endpoints.Banned() = %v, want %v", got, tt.want)
 			}
 		})
