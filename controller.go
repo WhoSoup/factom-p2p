@@ -420,6 +420,9 @@ func (c *controller) managePeersDialOutgoing() {
 		var filtered []util.IP
 		var special []util.IP
 		for _, ip := range c.endpoints.IPs() {
+			if c.endpoints.BannedEndpoint(ip) {
+				continue
+			}
 			if c.endpoints.IsSpecial(ip) {
 				if !c.peers.IsConnected(ip.Address) {
 					special = append(special, ip)
@@ -444,10 +447,6 @@ func (c *controller) managePeersDialOutgoing() {
 			ips := c.getOutgoingSelection(filtered, want)
 			limit := c.net.conf.PeerIPLimitOutgoing
 			for _, ip := range ips {
-
-				if c.endpoints.BannedEndpoint(ip) {
-					continue
-				}
 				if limit > 0 && uint(c.peers.Count(ip.Address)) >= limit {
 					continue
 				}
