@@ -632,7 +632,7 @@ func (c *controller) selectRandomPeers(count uint) []*Peer {
 		return append(special, regular...)
 	}
 
-	util.Shuffle(len(regular), func(i, j int) {
+	c.net.rng.Shuffle(len(regular), func(i, j int) {
 		regular[i], regular[j] = regular[j], regular[i]
 	})
 
