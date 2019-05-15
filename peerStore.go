@@ -59,6 +59,9 @@ func (ps *PeerStore) Remove(p *Peer) {
 	defer ps.mtx.Unlock()
 	if old, ok := ps.peers[p.Hash]; ok && old == p { // pointer comparison
 		ps.connected[p.IP.Address]--
+		if ps.connected[p.IP.Address] == 0 {
+			delete(ps.connected, p.IP.Address)
+		}
 		if old.IsIncoming {
 			ps.incoming--
 		} else {
