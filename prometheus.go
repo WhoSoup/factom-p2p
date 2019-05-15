@@ -53,9 +53,9 @@ func (p *Prometheus) Setup() {
 		p.ReceiveRoutines = ng("factomd_p2p_tech_receiveroutines", "Number of active receive routines")
 		p.ParcelsSent = ng("factomd_p2p_parcels_sent", "Total number of parcels sent out")
 		p.ParcelsReceived = ng("factomd_p2p_parcels_received", "Total number of parcels received")
-		p.Invalid = ng("factom_p2p_parcels_invalid", "Total number of invalid parcels received")
-		p.AppSent = ng("factom_p2p_messages_sent", "Total number of application messages sent")
-		p.AppReceived = ng("factom_p2p_messages_received", "Total number of application messages received")
+		p.Invalid = ng("factomd_p2p_parcels_invalid", "Total number of invalid parcels received")
+		p.AppSent = ng("factomd_p2p_messages_sent", "Total number of application messages sent")
+		p.AppReceived = ng("factomd_p2p_messages_received", "Total number of application messages received")
 		p.ParcelSize = prometheus.NewHistogram(prometheus.HistogramOpts{
 			Name:    "factomd_p2p_parcels_size",
 			Help:    "Number of parcels encountered for specific sizes (in KiBi)",
