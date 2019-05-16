@@ -1,8 +1,6 @@
 package p2p
 
 import (
-	"crypto/sha256"
-	"encoding/binary"
 	"time"
 )
 
@@ -176,9 +174,4 @@ func DefaultP2PConfiguration() (c Configuration) {
 	c.EnablePrometheus = true
 
 	return
-}
-
-func generateNodeID(name string) uint32 {
-	hashSuffix := sha256.Sum256([]byte(name))
-	return binary.BigEndian.Uint32(hashSuffix[:4])
 }

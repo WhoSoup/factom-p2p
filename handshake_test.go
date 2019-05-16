@@ -7,7 +7,7 @@ func TestHandshake_Valid(t *testing.T) {
 
 	var handshakes []*Handshake
 	for i := 0; i < 13; i++ {
-		hs := newHandshake(&conf)
+		hs := newHandshake(&conf, []byte("nonce"))
 		hs.Header.NodeID++
 		hs.Header.PeerAddress = "127.0.0.1"
 		handshakes = append(handshakes, hs)
@@ -49,7 +49,7 @@ func TestHandshake_Valid(t *testing.T) {
 		{"wrong payload length", handshakes[9], args{&conf}, true},
 		{"wrong payload crc", handshakes[10], args{&conf}, true},
 		{"wrong payload bytes", handshakes[11], args{&conf}, true},
-		{"no peer address", handshakes[12], args{&conf}, true},
+		{"no peer address", handshakes[12], args{&conf}, false},
 	}
 
 	for _, tt := range tests {

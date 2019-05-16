@@ -1,9 +1,9 @@
 package p2p
 
 import (
-	"crypto/sha256"
-	"encoding/binary"
 	"fmt"
+
+	"github.com/whosoup/factom-p2p/util"
 )
 
 // NetworkIdentifier represents the P2P network we are participating in (eg: test, nmain, etc.)
@@ -23,8 +23,7 @@ const (
 
 // NewNetworkID converts a string to a network id
 func NewNetworkID(name string) NetworkID {
-	hashSuffix := sha256.Sum256([]byte(name))
-	return NetworkID(binary.BigEndian.Uint32(hashSuffix[:4]))
+	return NetworkID(util.StringToUint32(name))
 }
 
 func (n *NetworkID) String() string {

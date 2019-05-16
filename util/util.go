@@ -1,6 +1,7 @@
 package util
 
 import (
+	"crypto/sha256"
 	"encoding/binary"
 	"net"
 )
@@ -24,4 +25,10 @@ func IP2Location(addr string) (uint32, error) {
 	}
 
 	return binary.BigEndian.Uint32(ip), nil
+}
+
+// StringToUint32 hashes the input to generate a deterministic number representation
+func StringToUint32(input string) uint32 {
+	hash := sha256.Sum256([]byte(input))
+	return binary.BigEndian.Uint32(hash[:4])
 }

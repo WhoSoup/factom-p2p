@@ -8,6 +8,7 @@ import (
 	"time"
 
 	log "github.com/sirupsen/logrus"
+	"github.com/whosoup/factom-p2p/util"
 )
 
 // Network is the main access point for outside applications.
@@ -147,7 +148,7 @@ func NewNetwork(conf Configuration) *Network {
 
 	// turn nodename into nodeid
 	if n.conf.NodeID == 0 {
-		n.conf.NodeID = generateNodeID(n.conf.NodeName)
+		n.conf.NodeID = util.StringToUint32(n.conf.NodeName)
 	}
 
 	n.controller = newController(n)
