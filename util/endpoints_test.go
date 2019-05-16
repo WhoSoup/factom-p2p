@@ -127,3 +127,82 @@ func TestEndpoints_Banned(t *testing.T) {
 		})
 	}
 }
+
+func TestEndpoints_Special(t *testing.T) {
+	eps := NewEndpoints()
+	ips := testIPs()
+	eps.Register(ips[0], "Special")
+
+	type args struct {
+		ip IP
+	}
+	tests := []struct {
+		name     string
+		epm      *Endpoints
+		args     args
+		wantIP   bool
+		wantAddr bool
+	}{ // sp = special
+		{"special both", eps, args{ips[0]}, true, true},
+		{"special addr but not port", eps, args{ips[1]}, false, true},
+		{"not special", eps, args{ips[2]}, false, false},
+		{"blank", eps, args{IP{}}, false, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.epm.IsSpecial(tt.args.ip); got != tt.wantIP {
+				t.Errorf("Endpoints.IsSpecial() = %v, want %v", got, tt.wantIP)
+			}
+			if got := tt.epm.IsSpecialAddress(tt.args.ip.Address); got != tt.wantAddr {
+				t.Errorf("Endpoints.IsSpecial() = %v, want %v", got, tt.wantAddr)
+			}
+		})
+	}
+}
+
+func TestEndpoints_Connections(t *testing.T) {
+	eps := NewEndpoints()
+	ips := testIPs()
+
+	if amt, dur := eps.Connections(ips[0]); amt > 0 || dur > 0 {
+		t.Errorf("Empty endpoint has connections for %s: %d %v", ips[0], amt, dur)
+	}
+
+	eps.RemoveConnection(IP{})
+
+	//          NOT 6, last is duplicate
+	for i := 0; i < 5; i++ {
+		for j := 0; j <= i; j++ { // add ips[i] i-times
+			eps.AddConnection(ips[i])
+		}
+	}
+	time.Sleep(time.Millisecond)
+	for i := 0; i < 5; i++ {
+		if amt, dur := eps.Connections(ips[i]); amt != uint(i+1) || dur == 0 || dur > time.Millisecond*5 {
+			t.Errorf("Pass 1: %s. expected = %d, have %d. duration %v", ips[i], i+1, amt, dur)
+		}
+	}
+
+	for i := 0; i < 5; i++ {
+		// remove one
+		eps.RemoveConnection(ips[i])
+	}
+
+	for i := 0; i < 5; i++ {
+		if amt, dur := eps.Connections(ips[i]); amt != uint(i) || dur == 0 || dur > time.Millisecond*5 {
+			t.Errorf("Pass 2: %s. expected = %d, have %d. duration %v", ips[i], i+1, amt, dur)
+		}
+	}
+
+	for i := 0; i < 5; i++ {
+		for j := 0; j <= i; j++ { // remove all + 1
+			eps.RemoveConnection(ips[i])
+		}
+	}
+
+	for i := 0; i < 5; i++ {
+		if amt, dur := eps.Connections(ips[i]); amt != 0 || dur == 0 || dur > time.Millisecond*5 {
+			t.Errorf("Pass 3: %s. expected = %d, have %d. duration %v", ips[i], 0, amt, dur)
+		}
+	}
+}
