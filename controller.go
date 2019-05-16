@@ -310,7 +310,7 @@ func (c *controller) processPeers(peer *Peer, parcel *Parcel) {
 		c.logger.WithError(err).Warnf("Failed to unmarshal peer share from peer %s", peer)
 	}
 
-	c.logger.Debugf("Received peer share from %s: %v", peer, list)
+	c.logger.Debugf("Received peer share from %s: %+v", peer, list)
 
 	// cycles through list twice but we don't want to add any if one of them is bad
 	for _, p := range list {
