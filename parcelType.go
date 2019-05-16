@@ -33,6 +33,7 @@ var typeStrings = map[ParcelType]string{
 	TypeAlert:        "Alert",
 	TypeMessage:      "Message",
 	TypeMessagePart:  "MessagePart",
+	TypeHandshake:    "Handshake",
 }
 
 func (t ParcelType) String() string {

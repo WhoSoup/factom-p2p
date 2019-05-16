@@ -9,8 +9,21 @@ var (
 	crcTable = crc32.MakeTable(crc32.Koopman)
 )
 
-// Parcel is the atomic level of communication for the p2p network.  It contains within it the necessary info for
-// the networking protocol, plus the message that the Application is sending.
+// Parcel is the raw data interface between the network, the p2p package, and the application.
+//
+// Type indicates the network or application type. Messages routed to and from the application
+// will only have application types
+//
+// Address is a unique internal identifier for origin or target of the parcel. For messages from the
+// network to the application, the address will the id of the sender. Messages intended to be
+// returned to the sender should bear the same address.
+//
+// There are three special address constants:
+// 		Broadcast: The message will be sent to multiple peers as specified by the fanout
+//		FullBroadcast: The message will be sent to all peers
+//		RandomPeer: The message will be sent to one peer picked at random
+//
+// The payload is arbitrary data defined at application level
 type Parcel struct {
 	Type    ParcelType // 2 bytes - network level commands (eg: ping/pong)
 	Address string     // ? bytes - "" or nil for broadcast, otherwise the destination peer's hash.
