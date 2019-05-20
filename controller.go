@@ -504,7 +504,7 @@ func (c *controller) handleIncoming(con net.Conn) {
 
 	peer := newPeer(c.net, c.peerStatus, c.peerData)
 	if ok, err := peer.StartWithHandshake(ip, con, true); ok {
-		c.logger.Debugf("Incoming handshake success for peer %s", peer.Hash)
+		c.logger.Debugf("Incoming handshake success for peer %s, version %s", peer.Hash, peer.prot.Version())
 
 		if c.endpoints.BannedEndpoint(peer.IP) {
 			c.logger.Debugf("Peer %s is banned, disconnecting", peer.Hash)
@@ -544,7 +544,7 @@ func (c *controller) Dial(ip util.IP) {
 		c.endpoints.Lock(ip, c.net.conf.HandshakeTimeout)
 	}
 	if ok, err := peer.StartWithHandshake(ip, con, false); ok {
-		c.logger.Debugf("Handshake success for peer %s", peer.Hash)
+		c.logger.Debugf("Handshake success for peer %s, version %s", peer.Hash, peer.prot.Version())
 		c.endpoints.Register(peer.IP, "Dial")
 		c.dialer.Reset(peer.IP)
 	} else if err.Error() == "loopback" {
