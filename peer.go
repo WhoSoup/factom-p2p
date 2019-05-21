@@ -75,6 +75,8 @@ func (p *Peer) bootstrapProtocol(hs *Handshake, conn net.Conn, decoder *gob.Deco
 	if v > p.net.conf.ProtocolVersion {
 		v = p.net.conf.ProtocolVersion
 	}
+
+	fmt.Printf("@@@ %d %+v %s\n", v, hs.Header, conn.RemoteAddr())
 	switch v {
 	case 9:
 		v9 := new(ProtocolV9)
@@ -118,7 +120,7 @@ func (p *Peer) StartWithHandshake(ip util.IP, con net.Conn, incoming bool) (bool
 	encoder := gob.NewEncoder(con)
 	con.SetWriteDeadline(timeout)
 	con.SetReadDeadline(timeout)
-
+	//fmt.Printf("@@@ %+v %s\n", handshake.Header, con.RemoteAddr())
 	err := encoder.Encode(handshake)
 
 	failfunc := func(err error) (bool, error) {
@@ -318,6 +320,10 @@ func (p *Peer) sendLoop() {
 func (p *Peer) GetMetrics() PeerMetrics {
 	p.metricsMtx.RLock()
 	defer p.metricsMtx.RUnlock()
+	pt := "regular"
+	if p.net.controller.endpoints.IsSpecial(p.IP) {
+		pt = "special_config"
+	}
 	return PeerMetrics{
 		Hash:             p.Hash,
 		PeerQuality:      p.QualityScore,
@@ -330,5 +336,7 @@ func (p *Peer) GetMetrics() PeerMetrics {
 		MessagesReceived: p.ParcelsReceived,
 		MessagesSent:     p.ParcelsSent,
 		Incoming:         p.IsIncoming,
+		PeerType:         pt,
+		ConnectionState:  fmt.Sprintf("v%s", p.prot.Version()),
 	}
 }

@@ -21,6 +21,8 @@ type PeerMetrics struct {
 	MessagesReceived uint64
 	BytesReceived    uint64
 	Incoming         bool
+	PeerType         string
+	ConnectionState  string
 }
 
 // peerStatus is an indicator for peer manager whether the associated peer is going online or offline
