@@ -76,7 +76,7 @@ func (p *Peer) bootstrapProtocol(hs *Handshake, conn net.Conn, decoder *gob.Deco
 		v = p.net.conf.ProtocolVersion
 	}
 
-	fmt.Printf("@@@ %d %+v %s\n", v, hs.Header, conn.RemoteAddr())
+	///fmt.Printf("@@@ %d %+v %s\n", v, hs.Header, conn.RemoteAddr())
 	switch v {
 	case 9:
 		v9 := new(ProtocolV9)
