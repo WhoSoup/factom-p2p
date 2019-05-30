@@ -6,6 +6,7 @@ import (
 )
 
 type Filter struct {
+	enabled    bool
 	expiration time.Duration
 	cleanTimer time.Duration
 	hashes     map[string]time.Time
@@ -21,16 +22,22 @@ type item struct {
 
 func NewFilter(t time.Duration, ct time.Duration) *Filter {
 	f := new(Filter)
+	f.enabled = t > 0
 	f.expiration = t
 	f.cleanTimer = ct
 	f.hashes = make(map[string]time.Time)
 	f.stop = make(chan bool, 1)
-	go f.clean()
+	if f.enabled {
+		go f.clean()
+	}
 	return f
 }
 
 // Check returns TRUE if the hash is new, false if the hash is a duplicate
 func (f *Filter) Check(hash string) bool {
+	if !f.enabled {
+		return true
+	}
 	n := time.Now()
 	cutoff := n.Add(-f.expiration)
 	f.mtx.Lock()
