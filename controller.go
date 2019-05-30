@@ -2,6 +2,7 @@ package p2p
 
 import (
 	"bufio"
+	"crypto/sha1"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -243,7 +244,15 @@ func (c *controller) manageData() {
 				fallthrough
 			case TypeMessagePart:
 				parcel.Type = TypeMessage
-				c.net.FromNetwork.Send(parcel)
+
+				dupe := sha1.New()
+				dupe.Write(parcel.Payload)
+				dh := dupe.Sum(nil)
+				if c.net.filter.Check(string(dh)) {
+					c.net.FromNetwork.Send(parcel)
+				} else {
+					c.net.prom.AppDuplicate.Inc()
+				}
 			case TypePeerRequest:
 				if time.Since(peer.lastPeerSend) >= c.net.conf.PeerRequestInterval {
 					peer.lastPeerSend = time.Now().Add(-time.Second * 5) // leeway
@@ -263,7 +272,6 @@ func (c *controller) manageData() {
 			}
 		}
 	}
-
 }
 
 func (c *controller) discoverSeeds() {

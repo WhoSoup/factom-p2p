@@ -114,6 +114,13 @@ type Configuration struct {
 	// if a connection takes longer, it is disconnected
 	WriteDeadline time.Duration
 
+	// DuplicateFilter is how long message hashes are cashed to filter out duplicates.
+	// Zero to disable
+	DuplicateFilter time.Duration
+	// DuplicateFilterCleanup is how frequently the cleanup mechanism is run to trim
+	// memory of the duplicate filter
+	DuplicateFilterCleanup time.Duration
+
 	ProtocolVersion uint16
 	// ProtocolVersionMinimum is the earliest version this package supports
 	ProtocolVersionMinimum uint16
@@ -165,6 +172,9 @@ func DefaultP2PConfiguration() (c Configuration) {
 	c.WriteDeadline = time.Minute * 5     // but fail eventually
 	c.HandshakeTimeout = time.Second * 10 // can be quite low
 	c.DialTimeout = time.Second * 10      // can be quite low
+
+	c.DuplicateFilter = time.Hour
+	c.DuplicateFilterCleanup = time.Minute
 
 	c.ProtocolVersion = 10
 	c.ProtocolVersionMinimum = 9

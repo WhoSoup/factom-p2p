@@ -27,6 +27,7 @@ type Prometheus struct {
 	Invalid         prometheus.Counter
 	AppSent         prometheus.Counter
 	AppReceived     prometheus.Counter
+	AppDuplicate    prometheus.Counter
 
 	ParcelSize prometheus.Histogram
 }
@@ -56,6 +57,7 @@ func (p *Prometheus) Setup() {
 		p.Invalid = ng("factomd_p2p_parcels_invalid", "Total number of invalid parcels received")
 		p.AppSent = ng("factomd_p2p_messages_sent", "Total number of application messages sent")
 		p.AppReceived = ng("factomd_p2p_messages_received", "Total number of application messages received")
+		p.AppDuplicate = ng("factomd_p2p_messages_duplicate", "Total number of duplicate messages filtered out")
 		p.ParcelSize = prometheus.NewHistogram(prometheus.HistogramOpts{
 			Name:    "factomd_p2p_parcels_size",
 			Help:    "Number of parcels encountered for specific sizes (in KiBi)",
