@@ -152,7 +152,7 @@ func DefaultP2PConfiguration() (c Configuration) {
 
 	c.Outgoing = 32
 	c.Incoming = 150
-	c.Fanout = 16
+	c.Fanout = 8
 	c.PeerShareAmount = 4 * c.Outgoing // legacy math
 	c.MinimumQualityScore = 20
 	c.PersistLevel = 2
