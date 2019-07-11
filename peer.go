@@ -8,7 +8,6 @@ import (
 	"time"
 
 	log "github.com/sirupsen/logrus"
-	"github.com/whosoup/factom-p2p/util"
 )
 
 var peerLogger = packageLogger.WithField("subpack", "peer")
@@ -22,7 +21,7 @@ type Peer struct {
 
 	// current state, read only "constants" after the handshake
 	IsIncoming bool
-	IP         util.IP
+	IP         IP
 	NodeID     uint32 // a nonce to distinguish multiple nodes behind one endpoint
 	Hash       string // This is more of a connection ID than hash right now.
 
@@ -109,7 +108,7 @@ func (p *Peer) bootstrapProtocol(hs *Handshake, conn net.Conn, decoder *gob.Deco
 // The handshake ensures that ALL peers have a valid Port field to start with.
 // If there is no reply within the specified HandshakeTimeout config setting, the process
 // fails
-func (p *Peer) StartWithHandshake(ip util.IP, con net.Conn, incoming bool) (bool, error) {
+func (p *Peer) StartWithHandshake(ip IP, con net.Conn, incoming bool) (bool, error) {
 	tmplogger := p.logger.WithField("addr", ip.Address)
 	timeout := time.Now().Add(p.net.conf.HandshakeTimeout)
 

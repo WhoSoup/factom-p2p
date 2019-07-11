@@ -4,8 +4,6 @@ import (
 	"fmt"
 	"strconv"
 	"time"
-
-	"github.com/whosoup/factom-p2p/util"
 )
 
 // PeerMetrics is the data shared to the metrics hook
@@ -58,7 +56,7 @@ func (ps PeerShare) Verify() bool {
 // PeerDistance is a sorting metric for sorting peers by location relative to a specific peer
 type PeerDistance struct {
 	Pivot  uint32
-	Sorted []util.IP
+	Sorted []IP
 }
 
 func (pd *PeerDistance) Len() int {

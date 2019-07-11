@@ -6,8 +6,6 @@ import (
 	"fmt"
 	"hash/crc32"
 	"net"
-
-	"github.com/whosoup/factom-p2p/util"
 )
 
 var _ Protocol = (*ProtocolV10)(nil)
@@ -79,7 +77,7 @@ func (v10 *ProtocolV10) Receive() (*Parcel, error) {
 type V10Share PeerShare
 
 // MakePeerShare serializes a list of ips via json
-func (v10 *ProtocolV10) MakePeerShare(ps []util.IP) ([]byte, error) {
+func (v10 *ProtocolV10) MakePeerShare(ps []IP) ([]byte, error) {
 	var share []V10Share
 	for _, ip := range ps {
 		share = append(share, V10Share{Address: ip.Address, Port: ip.Port})

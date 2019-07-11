@@ -13,7 +13,6 @@ import (
 	"time"
 
 	log "github.com/sirupsen/logrus"
-	"github.com/whosoup/factom-p2p/util"
 )
 
 var controllerLogger = packageLogger.WithField("subpack", "controller")
@@ -30,9 +29,9 @@ type controller struct {
 	stopOnline chan bool
 
 	peers     *PeerStore
-	endpoints *util.Endpoints
-	dialer    *util.Dialer
-	listener  *util.LimitedListener
+	endpoints *Endpoints
+	dialer    *Dialer
+	listener  *LimitedListener
 
 	specialMtx   sync.RWMutex
 	specialCount int
@@ -57,7 +56,7 @@ func newController(network *Network) *controller {
 		"network": conf.Network})
 	c.logger.Debugf("Initializing Controller")
 
-	c.dialer = util.NewDialer(conf.BindIP, conf.RedialInterval, conf.RedialReset, conf.DialTimeout, conf.RedialAttempts)
+	c.dialer = NewDialer(conf.BindIP, conf.RedialInterval, conf.RedialReset, conf.DialTimeout, conf.RedialAttempts)
 	c.lastPersist = time.Now()
 
 	c.peerStatus = make(chan peerStatus, 10) // TODO reconsider this value
@@ -129,11 +128,11 @@ func (c *controller) addSpecial(raw string) {
 	c.specialMtx.Unlock()
 }
 
-func (c *controller) parseSpecial(raw string) []util.IP {
-	var ips []util.IP
+func (c *controller) parseSpecial(raw string) []IP {
+	var ips []IP
 	split := strings.Split(raw, ",")
 	for _, item := range split {
-		ip, err := util.ParseAddress(item)
+		ip, err := ParseAddress(item)
 		if err != nil {
 			c.logger.Warnf("unable to determine host and port of special entry \"%s\"", item)
 			continue
@@ -296,7 +295,7 @@ func (c *controller) discoverSeeds() {
 				continue
 			}
 
-			if ip, err := util.NewIP(address, port); err != nil {
+			if ip, err := NewIP(address, port); err != nil {
 				c.logger.WithError(err).Debugf("Invalid endpoint in seed list: %s", line)
 			} else {
 				c.endpoints.Register(ip, "Seed")
@@ -329,7 +328,7 @@ func (c *controller) processPeers(peer *Peer, parcel *Parcel) {
 	}
 
 	for _, p := range list {
-		ip, err := util.NewIP(p.Address, p.Port)
+		ip, err := NewIP(p.Address, p.Port)
 		if err != nil {
 			c.logger.WithError(err).Infof("Unable to register endpoint %s:%s from peer %s", p.Address, p.Port, peer)
 		} else if !c.endpoints.BannedEndpoint(ip) {
@@ -344,7 +343,7 @@ func (c *controller) processPeers(peer *Peer, parcel *Parcel) {
 
 // sharePeers creates a list of peers to share and sends it to peer
 func (c *controller) sharePeers(peer *Peer) {
-	var list []util.IP
+	var list []IP
 	for _, ip := range c.endpoints.IPs() {
 		if ip != peer.IP && !c.dialer.Failed(ip) {
 			list = append(list, ip)
@@ -425,8 +424,8 @@ func (c *controller) managePeersDialOutgoing() {
 	defer c.specialMtx.RUnlock()
 	count := c.peers.Total()
 	if want := int(c.net.conf.Outgoing - uint(count-c.specialCount)); want > 0 || c.specialCount > 0 {
-		var filtered []util.IP
-		var special []util.IP
+		var filtered []IP
+		var special []IP
 		for _, ip := range c.endpoints.IPs() {
 			if c.endpoints.BannedEndpoint(ip) {
 				continue
@@ -497,7 +496,7 @@ func (c *controller) handleIncoming(con net.Conn) {
 	}
 
 	// port is overriden during handshake, use default port as temp port
-	ip, err := util.NewIP(addr, c.net.conf.ListenPort)
+	ip, err := NewIP(addr, c.net.conf.ListenPort)
 	if err != nil { // should never happen for incoming
 		c.logger.WithError(err).Debugf("Unable to decode address %s", addr)
 		con.Close()
@@ -528,7 +527,7 @@ func (c *controller) handleIncoming(con net.Conn) {
 	}
 }
 
-func (c *controller) Dial(ip util.IP) {
+func (c *controller) Dial(ip IP) {
 	if c.net.prom != nil {
 		c.net.prom.Connecting.Inc()
 		defer c.net.prom.Connecting.Dec()
@@ -571,7 +570,7 @@ func (c *controller) Dial(ip util.IP) {
 // Takes the input and spreads peers out over n equally sized buckets based on their
 // ipv4 prefix, then iterates over those buckets and removes a random peer from each
 // one until it has enough
-func (c *controller) getOutgoingSelection(filtered []util.IP, wanted int) []util.IP {
+func (c *controller) getOutgoingSelection(filtered []IP, wanted int) []IP {
 	if wanted < 1 {
 		return nil
 	}
@@ -583,11 +582,11 @@ func (c *controller) getOutgoingSelection(filtered []util.IP, wanted int) []util
 
 	if wanted == 1 { // edge case
 		rand := c.net.rng.Intn(len(filtered))
-		return []util.IP{filtered[rand]}
+		return []IP{filtered[rand]}
 	}
 
 	// generate a list of peers distant to each other
-	buckets := make([][]util.IP, wanted)
+	buckets := make([][]IP, wanted)
 	bucketSize := uint32(4294967295/uint32(wanted)) + 1 // 33554432 for wanted=128
 
 	// distribute peers over n buckets
@@ -597,7 +596,7 @@ func (c *controller) getOutgoingSelection(filtered []util.IP, wanted int) []util
 	}
 
 	// pick random peers from each bucket
-	var picked []util.IP
+	var picked []IP
 	for len(picked) < wanted {
 		offset := c.net.rng.Intn(len(buckets)) // start at a random point in the bucket array
 		for i := 0; i < len(buckets); i++ {
@@ -690,8 +689,8 @@ func (c *controller) ToPeer(hash string, parcel *Parcel) {
 	}
 }
 
-func (c *controller) loadEndpoints() *util.Endpoints {
-	eps := util.NewEndpoints()
+func (c *controller) loadEndpoints() *Endpoints {
+	eps := NewEndpoints()
 
 	path := c.net.conf.PersistFile
 	if path == "" {
@@ -715,7 +714,7 @@ func (c *controller) loadEndpoints() *util.Endpoints {
 
 	// decoding from a blank or invalid file
 	if eps.Ends == nil || eps.Bans == nil {
-		return util.NewEndpoints()
+		return NewEndpoints()
 	}
 
 	eps.Cleanup(c.net.conf.PersistAgeLimit)
@@ -730,7 +729,7 @@ func (c *controller) listen() {
 
 	addr := fmt.Sprintf("%s:%s", c.net.conf.BindIP, c.net.conf.ListenPort)
 
-	l, err := util.NewLimitedListener(addr, c.net.conf.ListenLimit)
+	l, err := NewLimitedListener(addr, c.net.conf.ListenLimit)
 	if err != nil {
 		tmpLogger.WithError(err).Error("controller.Start() unable to start limited listener")
 		return

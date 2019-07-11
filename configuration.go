@@ -56,6 +56,13 @@ type Configuration struct {
 	PeerShareAmount     uint
 	MinimumQualityScore int32
 
+	// CAT Settings
+	RoundTime time.Duration
+	Target    uint
+	Max       uint
+	Drop      uint
+	MinReseed uint
+
 	// === Gossip Behavior ===
 	// Outgoing is the number of peers this node attempts to connect to
 	Outgoing uint

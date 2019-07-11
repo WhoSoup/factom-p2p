@@ -7,8 +7,6 @@ import (
 	"hash/crc32"
 	"net"
 	"time"
-
-	"github.com/whosoup/factom-p2p/util"
 )
 
 var _ Protocol = (*ProtocolV9)(nil)
@@ -139,7 +137,7 @@ type V9Share struct {
 }
 
 // MakePeerShare serializes the given endpoints to a V9Share encoded in json
-func (v9 *ProtocolV9) MakePeerShare(ps []util.IP) ([]byte, error) {
+func (v9 *ProtocolV9) MakePeerShare(ps []IP) ([]byte, error) {
 	var conv []V9Share
 	src := make(map[string]time.Time)
 	for _, ip := range ps {

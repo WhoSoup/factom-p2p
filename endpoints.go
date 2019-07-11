@@ -1,4 +1,4 @@
-package util
+package p2p
 
 import (
 	"bufio"

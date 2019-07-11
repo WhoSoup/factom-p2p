@@ -8,7 +8,6 @@ import (
 	"time"
 
 	log "github.com/sirupsen/logrus"
-	"github.com/whosoup/factom-p2p/util"
 )
 
 // Network is the main access point for outside applications.
@@ -22,7 +21,7 @@ type Network struct {
 
 	conf       *Configuration
 	controller *controller
-	filter     *util.Filter
+	filter     *Filter
 
 	prom *Prometheus
 
@@ -149,11 +148,11 @@ func NewNetwork(conf Configuration) *Network {
 
 	// turn nodename into nodeid
 	if n.conf.NodeID == 0 {
-		n.conf.NodeID = util.StringToUint32(n.conf.NodeName)
+		n.conf.NodeID = StringToUint32(n.conf.NodeName)
 	}
 
 	n.controller = newController(n)
-	n.filter = util.NewFilter(n.conf.DuplicateFilter, n.conf.DuplicateFilterCleanup)
+	n.filter = NewFilter(n.conf.DuplicateFilter, n.conf.DuplicateFilterCleanup)
 	n.ToNetwork = newParcelChannel(conf.ChannelCapacity)
 	n.FromNetwork = newParcelChannel(conf.ChannelCapacity)
 	return n

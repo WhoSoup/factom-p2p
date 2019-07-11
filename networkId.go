@@ -2,8 +2,6 @@ package p2p
 
 import (
 	"fmt"
-
-	"github.com/whosoup/factom-p2p/util"
 )
 
 // NetworkIdentifier represents the P2P network we are participating in (eg: test, nmain, etc.)
@@ -23,7 +21,7 @@ const (
 
 // NewNetworkID converts a string to a network id
 func NewNetworkID(name string) NetworkID {
-	return NetworkID(util.StringToUint32(name))
+	return NetworkID(StringToUint32(name))
 }
 
 func (n *NetworkID) String() string {
