@@ -54,6 +54,7 @@ func (ps PeerShare) Verify() bool {
 }
 
 // PeerDistance is a sorting metric for sorting peers by location relative to a specific peer
+/*
 type PeerDistance struct {
 	Pivot  uint32
 	Sorted []IP
@@ -75,6 +76,7 @@ func (pd *PeerDistance) Distance(i int) uint32 {
 	return uintDistance(pd.Pivot, pd.Sorted[i].Location)
 }
 
+
 // uintDistance returns the absolute difference between i and j
 func uintDistance(i, j uint32) uint32 {
 	if i > j {
@@ -82,3 +84,4 @@ func uintDistance(i, j uint32) uint32 {
 	}
 	return j - i
 }
+*/

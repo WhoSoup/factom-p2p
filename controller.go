@@ -591,7 +591,7 @@ func (c *controller) getOutgoingSelection(filtered []IP, wanted int) []IP {
 
 	// distribute peers over n buckets
 	for _, peer := range filtered {
-		bucketIndex := int(peer.Location / bucketSize)
+		bucketIndex := int(IP2LocationQuick(peer.Address) / bucketSize)
 		buckets[bucketIndex] = append(buckets[bucketIndex], peer)
 	}
 

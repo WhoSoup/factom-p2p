@@ -7,9 +7,8 @@ import (
 )
 
 type IP struct {
-	Address  string `json:"address"`
-	Port     string `json:"port"`
-	Location uint32 `json:"location,omitempty"`
+	Address string `json:"address"`
+	Port    string `json:"port"`
 }
 
 // NewIP creates an IP struct from a given addr and port, throws error if addr could not be resolved
@@ -17,12 +16,13 @@ func NewIP(addr, port string) (IP, error) {
 	if len(addr) == 0 || len(port) == 0 {
 		return IP{}, fmt.Errorf("no address or port given (%s:%s)", addr, port)
 	}
-	ip := IP{addr, port, 0}
-	loc, err := IP2Location(addr)
-	if err != nil {
-		return IP{}, err
+
+	parse := net.ParseIP(addr)
+	if parse == nil {
+		return IP{}, fmt.Errorf("unable to parse ip address: %s", addr)
 	}
-	ip.Location = loc
+
+	ip := IP{addr, port}
 	return ip, nil
 }
 

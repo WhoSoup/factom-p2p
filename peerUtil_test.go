@@ -1,12 +1,10 @@
 package p2p
 
 import (
-	"fmt"
-	"math/rand"
-	"sort"
 	"testing"
 )
 
+/*
 func createSet(locations ...uint32) *PeerDistance {
 	pd := new(PeerDistance)
 	pd.Pivot = locations[0]
@@ -82,7 +80,7 @@ func Test_uintDistance(t *testing.T) {
 		})
 	}
 }
-
+*/
 func TestPeerShare_String(t *testing.T) {
 	tests := []struct {
 		name string

@@ -22,6 +22,7 @@ type Network struct {
 	conf       *Configuration
 	controller *controller
 	filter     *Filter
+	seed       *seed
 
 	prom *Prometheus
 
@@ -151,6 +152,7 @@ func NewNetwork(conf Configuration) *Network {
 		n.conf.NodeID = StringToUint32(n.conf.NodeName)
 	}
 
+	n.seed = newSeed(n.conf.SeedURL)
 	n.controller = newController(n)
 	n.filter = NewFilter(n.conf.DuplicateFilter, n.conf.DuplicateFilterCleanup)
 	n.ToNetwork = newParcelChannel(conf.ChannelCapacity)
