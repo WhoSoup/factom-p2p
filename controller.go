@@ -39,9 +39,11 @@ type controller struct {
 	lastSeedRefresh time.Time
 	lastPersist     time.Time
 
-	cat       *cat
-	lastRound time.Time
-	seed      *seed
+	cat          *cat
+	lastRound    time.Time
+	seed         *seed
+	replenishing bool
+	rounds       int // TODO make prometheus
 
 	logger *log.Entry
 }
@@ -69,13 +71,13 @@ func newController(network *Network) *controller {
 	c.stopData = make(chan bool, 1)
 	c.stopOnline = make(chan bool, 1)
 
-	c.bootStrapPeers()
-	c.addSpecial(c.net.conf.Special)
-
 	// CAT
 	c.cat = newCat(c.net)
 	c.lastRound = time.Now()
 	c.seed = newSeed(c.net.conf.SeedURL)
+
+	c.bootStrapPeers()
+	c.addSpecial(c.net.conf.Special)
 
 	if c.net.prom != nil {
 		c.net.prom.KnownPeers.Set(float64(c.endpoints.Total()))
@@ -257,7 +259,7 @@ func (c *controller) manageData() {
 				dh := dupe.Sum(nil)
 				if c.net.filter.Check(string(dh)) {
 					c.net.FromNetwork.Send(parcel)
-				} else {
+				} else if c.net.prom != nil {
 					c.net.prom.AppDuplicate.Inc()
 				}
 			case TypePeerRequest:
@@ -323,11 +325,16 @@ func (c *controller) processPeers(peer *Peer, parcel *Parcel) []IP {
 
 // sharePeers creates a list of peers to share and sends it to peer
 func (c *controller) sharePeers(peer *Peer) {
-
+	if peer == nil {
+		return
+	}
 	// CAT select n random active peers
 	var list []IP
 	tmp := c.peers.Slice()
 	for _, i := range c.net.rng.Perm(len(tmp)) {
+		if tmp[i] == nil { // TODO investigate why this happens
+			continue
+		}
 		if tmp[i].Hash == peer.Hash {
 			continue
 		}
@@ -360,6 +367,8 @@ func (c *controller) catRound() {
 	c.logger.Debug("Cat Round")
 	c.reseed()
 
+	c.rounds++
+
 	peers := c.peers.Slice()
 	toDrop := len(peers) - int(c.net.conf.Drop)
 
@@ -384,12 +393,19 @@ func (c *controller) catRound() {
 }
 
 func (c *controller) catReplenish() {
+	if c.replenishing {
+		return
+	}
+	c.replenishing = true
 	for uint(c.peers.Total()) < c.net.conf.Target {
-
 		p := c.selectRandomPeer()
 
-		async := make(chan *Parcel, 1)
+		if p == nil { // no peers connected
+			time.Sleep(time.Second)
+			continue
+		}
 
+		async := make(chan *Parcel, 1)
 		p.peerShareDeliver = async
 
 		req := newParcel(TypePeerRequest, []byte("Peer Request"))
@@ -405,6 +421,7 @@ func (c *controller) catReplenish() {
 		}
 		p.peerShareDeliver = nil
 	}
+	c.replenishing = false
 }
 
 // managePeers is responsible for everything that involves proactive management

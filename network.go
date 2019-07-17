@@ -174,7 +174,7 @@ func (n *Network) Start() {
 	n.logger.Infof("Starting the P2P Network with configuration %+v", n.conf)
 	n.controller.Start() // this will get peer manager ready to handle incoming connections
 	n.stopRoute = make(chan bool, 1)
-	//DebugServer(n)
+	DebugServer(n)
 	go n.route()
 }
 
@@ -230,6 +230,10 @@ func (n *Network) AddSpecial(raw string) {
 // Total returns the number of active connections
 func (n *Network) Total() int {
 	return n.controller.peers.Total()
+}
+
+func (n *Network) Rounds() int {
+	return n.controller.rounds
 }
 
 // route Takes messages from the network's ToNetwork channel and routes it
