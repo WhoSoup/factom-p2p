@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net"
-	"net/http"
 	"os"
 	"strings"
 	"sync"
@@ -40,6 +39,10 @@ type controller struct {
 	lastSeedRefresh time.Time
 	lastPersist     time.Time
 
+	cat       *cat
+	lastRound time.Time
+	seed      *seed
+
 	logger *log.Entry
 }
 
@@ -68,6 +71,11 @@ func newController(network *Network) *controller {
 
 	c.bootStrapPeers()
 	c.addSpecial(c.net.conf.Special)
+
+	// CAT
+	c.cat = newCat(c.net)
+	c.lastRound = time.Now()
+	c.seed = newSeed(c.net.conf.SeedURL)
 
 	if c.net.prom != nil {
 		c.net.prom.KnownPeers.Set(float64(c.endpoints.Total()))
@@ -173,7 +181,7 @@ func (c *controller) bootStrapPeers() {
 	c.peers = NewPeerStore()
 	c.endpoints = c.loadEndpoints() // creates blank if none exist
 	c.lastSeedRefresh = time.Now()
-	c.discoverSeeds()
+	c.reseed()
 }
 
 func (c *controller) manageOnline() {
@@ -254,15 +262,19 @@ func (c *controller) manageData() {
 				}
 			case TypePeerRequest:
 				if time.Since(peer.lastPeerSend) >= c.net.conf.PeerRequestInterval {
-					peer.lastPeerSend = time.Now().Add(-time.Second * 5) // leeway
+					peer.lastPeerSend = time.Now()
 					go c.sharePeers(peer)
 				} else {
-					c.logger.Warnf("Peer %s requested peer share sooner than expected", peer)
+					c.logger.Warnf("Peer %s is hammering peer requests", peer)
 				}
 			case TypePeerResponse:
-				if peer.peerShareAsk {
-					peer.peerShareAsk = false
-					go c.processPeers(peer, parcel)
+				if peer.peerShareDeliver != nil { // they have a special channel, aka we asked!!
+					select {
+					case peer.peerShareDeliver <- parcel: // nonblocking
+					default:
+					}
+					peer.peerShareDeliver = nil
+					//go c.processPeers(peer, parcel)
 				} else {
 					c.logger.Warnf("Peer %s sent us an umprompted peer share", peer)
 				}
@@ -273,44 +285,8 @@ func (c *controller) manageData() {
 	}
 }
 
-func (c *controller) discoverSeeds() {
-	c.logger.Info("Contacting seed URL to get peers")
-	resp, err := http.Get(c.net.conf.SeedURL)
-	if nil != err {
-		c.logger.Errorf("discoverSeeds from %s produced error %+v", c.net.conf.SeedURL, err)
-		return
-	}
-	defer resp.Body.Close()
-
-	scanner := bufio.NewScanner(resp.Body)
-	report := ""
-	for scanner.Scan() {
-		line := scanner.Text()
-		report = report + "," + line
-
-		address, port, err := net.SplitHostPort(line)
-		if err == nil {
-			if address == c.net.conf.BindIP && port == c.net.conf.ListenPort {
-				c.logger.Debugf("Discovered ourself in seed list")
-				continue
-			}
-
-			if ip, err := NewIP(address, port); err != nil {
-				c.logger.WithError(err).Debugf("Invalid endpoint in seed list: %s", line)
-			} else {
-				c.endpoints.Register(ip, "Seed")
-			}
-
-		} else {
-			c.logger.Errorf("Bad peer in " + c.net.conf.SeedURL + " [" + line + "]")
-		}
-	}
-
-	c.logger.Debugf("discoverSeed got peers: %s", report)
-}
-
 // processPeers processes a peer share response
-func (c *controller) processPeers(peer *Peer, parcel *Parcel) {
+func (c *controller) processPeers(peer *Peer, parcel *Parcel) []IP {
 	list, err := peer.prot.ParsePeerShare(parcel.Payload)
 
 	if err != nil {
@@ -323,30 +299,41 @@ func (c *controller) processPeers(peer *Peer, parcel *Parcel) {
 	for _, p := range list {
 		if !p.Verify() {
 			c.logger.Infof("Peer %s tried to send us peer share with bad data: %s", peer, p)
-			return
+			return nil
 		}
 	}
 
+	var res []IP
 	for _, p := range list {
 		ip, err := NewIP(p.Address, p.Port)
 		if err != nil {
 			c.logger.WithError(err).Infof("Unable to register endpoint %s:%s from peer %s", p.Address, p.Port, peer)
 		} else if !c.endpoints.BannedEndpoint(ip) {
-			c.endpoints.Register(ip, peer.IP.Address)
+			//c.endpoints.Register(ip, peer.IP.Address)
+			res = append(res, ip)
 		}
 	}
 
 	if c.net.prom != nil {
 		c.net.prom.KnownPeers.Set(float64(c.endpoints.Total()))
 	}
+
+	return res
 }
 
 // sharePeers creates a list of peers to share and sends it to peer
 func (c *controller) sharePeers(peer *Peer) {
+
+	// CAT select n random active peers
 	var list []IP
-	for _, ip := range c.endpoints.IPs() {
-		if ip != peer.IP && !c.dialer.Failed(ip) {
-			list = append(list, ip)
+	tmp := c.peers.Slice()
+	for _, i := range c.net.rng.Perm(len(tmp)) {
+		if tmp[i].Hash == peer.Hash {
+			continue
+		}
+		list = append(list, tmp[i].IP)
+		if uint(len(tmp)) >= c.net.conf.PeerShareAmount {
+			break
 		}
 	}
 
@@ -360,6 +347,66 @@ func (c *controller) sharePeers(peer *Peer) {
 	peer.Send(parcel)
 }
 
+func (c *controller) reseed() {
+	if uint(c.peers.Total()) < c.net.conf.MinReseed {
+		seeds := c.seed.retrieve()
+		for _, ip := range seeds {
+			go c.Dial(ip)
+		}
+	}
+}
+
+func (c *controller) catRound() {
+	c.logger.Debug("Cat Round")
+	c.reseed()
+
+	peers := c.peers.Slice()
+	toDrop := len(peers) - int(c.net.conf.Drop)
+
+	if toDrop > 0 {
+		perm := c.net.rng.Perm(len(peers))
+
+		dropped := 0
+		for _, i := range perm {
+			if c.endpoints.IsSpecial(peers[i].IP) {
+				continue
+			}
+			peers[i].Stop(true)
+			dropped++
+			if dropped >= toDrop {
+				break
+			}
+		}
+	}
+
+	go c.catReplenish()
+
+}
+
+func (c *controller) catReplenish() {
+	for uint(c.peers.Total()) < c.net.conf.Target {
+
+		p := c.selectRandomPeer()
+
+		async := make(chan *Parcel, 1)
+
+		p.peerShareDeliver = async
+
+		req := newParcel(TypePeerRequest, []byte("Peer Request"))
+		p.Send(req)
+
+		select {
+		case resp := <-async:
+			ips := c.processPeers(p, resp)
+			for _, ip := range ips {
+				c.Dial(ip) // NOT A GOROUTINE, wait for it to finish
+			}
+		case <-time.After(time.Second * 10):
+		}
+		p.peerShareDeliver = nil
+	}
+}
+
 // managePeers is responsible for everything that involves proactive management
 // not based on reactions. runs once a second
 func (c *controller) managePeers() {
@@ -369,34 +416,24 @@ func (c *controller) managePeers() {
 	for {
 		if time.Since(c.lastPersist) > c.net.conf.PersistInterval {
 			c.lastPersist = time.Now()
-			err := c.endpoints.Persist(c.net.conf.PersistFile, c.net.conf.PersistLevel, c.net.conf.PersistMinimum, c.net.conf.PersistAgeLimit)
-			if err != nil {
-				c.logger.WithError(err).Errorf("unable to persist peers")
-			}
+
+			// TODO persist peers instead
+			//err := c.endpoints.Persist(c.net.conf.PersistFile, c.net.conf.PersistLevel, c.net.conf.PersistMinimum, c.net.conf.PersistAgeLimit)
+			//if err != nil {
+			//	c.logger.WithError(err).Errorf("unable to persist peers")
+			//}
 		}
 
-		if time.Since(c.lastSeedRefresh) > c.net.conf.PeerReseedInterval {
-			c.lastSeedRefresh = time.Now()
-			c.discoverSeeds()
-		}
+		// CAT rounds
+		if time.Since(c.lastRound) > c.net.conf.RoundTime {
+			c.lastRound = time.Now()
 
-		// manage online connectivity
-		if time.Since(c.lastPeerDial) > c.net.conf.RedialInterval {
-			c.lastPeerDial = time.Now()
-			c.managePeersDialOutgoing()
+			c.catRound()
 		}
 
 		metrics := make(map[string]PeerMetrics)
 		for _, p := range c.peers.Slice() {
 			metrics[p.Hash] = p.GetMetrics()
-
-			if time.Since(p.lastPeerRequest) > c.net.conf.PeerRequestInterval {
-				p.lastPeerRequest = time.Now()
-				p.peerShareAsk = true
-				c.logger.Debugf("Requesting peers from %s", p.Hash)
-				req := newParcel(TypePeerRequest, []byte("Peer Request"))
-				p.Send(req)
-			}
 
 			if time.Since(p.LastSend) > c.net.conf.PingInterval {
 				ping := newParcel(TypePing, []byte("Ping"))
@@ -408,60 +445,10 @@ func (c *controller) managePeers() {
 			go c.net.metricsHook(metrics)
 		}
 
-		// manages peers every second
 		select {
 		case <-c.stopPeers:
 			return
 		case <-time.After(time.Second):
-		}
-	}
-}
-
-func (c *controller) managePeersDialOutgoing() {
-	c.logger.Debugf("We have %d peers online or connecting", c.peers.Total())
-
-	c.specialMtx.RLock()
-	defer c.specialMtx.RUnlock()
-	count := c.peers.Total()
-	if want := int(c.net.conf.Outgoing - uint(count-c.specialCount)); want > 0 || c.specialCount > 0 {
-		var filtered []IP
-		var special []IP
-		for _, ip := range c.endpoints.IPs() {
-			if c.endpoints.BannedEndpoint(ip) {
-				continue
-			}
-			if c.endpoints.IsSpecial(ip) {
-				if !c.peers.IsConnected(ip.Address) {
-					special = append(special, ip)
-				}
-			} else if c.dialer.CanDial(ip) {
-				filtered = append(filtered, ip)
-			}
-		}
-
-		c.logger.Debugf("special: %d, filtered: %d", len(special), len(filtered))
-		//fmt.Println(filtered)
-
-		if len(special) > 0 {
-			for _, ip := range special {
-				if c.endpoints.IsLocked(ip) {
-					continue
-				}
-				go c.Dial(ip)
-			}
-		}
-		if len(filtered) > 0 {
-			ips := c.getOutgoingSelection(filtered, want)
-			limit := c.net.conf.PeerIPLimitOutgoing
-			for _, ip := range ips {
-				if limit > 0 && uint(c.peers.Count(ip.Address)) >= limit {
-					continue
-				}
-				if c.endpoints.IsLocked(ip) {
-					continue
-				}
-				go c.Dial(ip)
-			}
 		}
 	}
 }

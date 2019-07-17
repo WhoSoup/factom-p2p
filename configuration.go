@@ -147,7 +147,7 @@ func DefaultP2PConfiguration() (c Configuration) {
 	c.NodeID = 0
 	c.NodeName = "FNode0"
 
-	c.PeerRequestInterval = time.Minute * 3
+	c.PeerRequestInterval = time.Second
 	c.PeerReseedInterval = time.Hour * 4
 	c.PeerIPLimitIncoming = 0
 	c.PeerIPLimitOutgoing = 0
@@ -160,7 +160,13 @@ func DefaultP2PConfiguration() (c Configuration) {
 	c.Outgoing = 32
 	c.Incoming = 150
 	c.Fanout = 8
-	c.PeerShareAmount = 4 * c.Outgoing // legacy math
+	c.PeerShareAmount = 2 // CAT share
+	c.RoundTime = time.Minute * 30
+	c.Target = 32
+	c.Max = 48
+	c.Drop = 30
+	c.MinReseed = 10
+
 	c.MinimumQualityScore = 20
 	c.PersistLevel = 2
 	c.PersistMinimum = time.Minute

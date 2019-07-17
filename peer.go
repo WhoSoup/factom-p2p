@@ -29,9 +29,10 @@ type Peer struct {
 	stop         chan bool
 	stopDelivery chan bool
 
-	lastPeerRequest time.Time
-	peerShareAsk    bool
-	lastPeerSend    time.Time
+	lastPeerRequest  time.Time
+	peerShareAsk     bool
+	peerShareDeliver chan *Parcel
+	lastPeerSend     time.Time
 
 	// communication channels
 	send   ParcelChannel   // parcels from Send() are added here
@@ -64,6 +65,8 @@ func newPeer(net *Network, status chan peerStatus, data chan peerParcel) *Peer {
 	})
 	p.stop = make(chan bool, 1)
 	p.stopDelivery = make(chan bool, 1)
+
+	p.peerShareDeliver = nil
 
 	p.logger.Debugf("Creating blank peer")
 	return p

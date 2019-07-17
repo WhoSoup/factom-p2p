@@ -2,6 +2,8 @@ package p2p
 
 import (
 	"time"
+
+	log "github.com/sirupsen/logrus"
 )
 
 // Cat = Cyclic Auto Truncate
@@ -10,6 +12,9 @@ type cat struct {
 	peerStatus chan peerStatus
 	peers      *PeerStore
 	queue      chan IP
+
+	listener *LimitedListener
+	logger   *log.Entry
 }
 
 func newCat(net *Network) *cat {
@@ -18,7 +23,12 @@ func newCat(net *Network) *cat {
 	c.peerStatus = make(chan peerStatus, 10)
 	c.queue = make(chan IP, 50)
 	c.peers = NewPeerStore()
+	c.logger = packageLogger.WithField("subpackage", "cat")
 	return c
+}
+
+func (c *cat) incomingPeer(peer *Peer) {
+
 }
 
 func (c *cat) queueLoop() {
