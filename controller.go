@@ -26,6 +26,8 @@ type controller struct {
 	stopPeers  chan bool
 	stopData   chan bool
 	stopOnline chan bool
+	stopFill   chan bool
+	dial       chan IP
 
 	peers     *PeerStore
 	endpoints *Endpoints
@@ -70,6 +72,8 @@ func newController(network *Network) *controller {
 	c.stopPeers = make(chan bool, 1)
 	c.stopData = make(chan bool, 1)
 	c.stopOnline = make(chan bool, 1)
+	c.stopFill = make(chan bool, 1)
+	c.dial = make(chan IP, 50)
 
 	// CAT
 	c.cat = newCat(c.net)
@@ -161,6 +165,7 @@ func (c *controller) Start() {
 	go c.manageData()
 	go c.manageOnline()
 	go c.listen()
+	go c.fillLoop()
 }
 
 // Stop shuts down the controller and all active connections
@@ -168,6 +173,7 @@ func (c *controller) Stop() {
 	c.stopData <- true
 	c.stopPeers <- true
 	c.stopOnline <- true
+	c.stopFill <- true
 
 	if c.listener != nil {
 		c.listener.Close()
@@ -184,6 +190,23 @@ func (c *controller) bootStrapPeers() {
 	c.endpoints = c.loadEndpoints() // creates blank if none exist
 	c.lastSeedRefresh = time.Now()
 	c.reseed()
+}
+
+// CAT responsible for filling connections back up to conf.Target connections
+func (c *controller) fillLoop() {
+	c.logger.Debug("Start fillLoop()")
+	defer c.logger.Debug("Stop fillLoop()")
+	for {
+		select {
+		case <-c.stopFill:
+			return
+		case ip := <-c.dial:
+			total := c.peers.Total()
+			_ = ip
+			_ = total
+			// todo: worker loop, total + temp workers
+		}
+	}
 }
 
 func (c *controller) manageOnline() {
