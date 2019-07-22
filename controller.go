@@ -2,10 +2,7 @@ package p2p
 
 import (
 	"bufio"
-	"crypto/sha1"
 	"encoding/json"
-	"fmt"
-	"net"
 	"os"
 	"strings"
 	"sync"
@@ -27,7 +24,7 @@ type controller struct {
 	stopData   chan bool
 	stopOnline chan bool
 	stopFill   chan bool
-	dial       chan IP
+	//dial       chan IP
 
 	peers     *PeerStore
 	endpoints *Endpoints
@@ -40,6 +37,10 @@ type controller struct {
 	lastPeerDial    time.Time
 	lastSeedRefresh time.Time
 	lastPersist     time.Time
+
+	counterMtx sync.RWMutex
+	online     int
+	connecting int
 
 	cat          *cat
 	lastRound    time.Time
@@ -73,7 +74,7 @@ func newController(network *Network) *controller {
 	c.stopData = make(chan bool, 1)
 	c.stopOnline = make(chan bool, 1)
 	c.stopFill = make(chan bool, 1)
-	c.dial = make(chan IP, 50)
+	//c.dial = make(chan IP, 50)
 
 	// CAT
 	c.cat = newCat(c.net)
@@ -165,7 +166,7 @@ func (c *controller) Start() {
 	go c.manageData()
 	go c.manageOnline()
 	go c.listen()
-	go c.fillLoop()
+	//go c.fillLoop()
 }
 
 // Stop shuts down the controller and all active connections
@@ -190,62 +191,6 @@ func (c *controller) bootStrapPeers() {
 	c.endpoints = c.loadEndpoints() // creates blank if none exist
 	c.lastSeedRefresh = time.Now()
 	c.reseed()
-}
-
-// CAT responsible for filling connections back up to conf.Target connections
-func (c *controller) fillLoop() {
-	c.logger.Debug("Start fillLoop()")
-	defer c.logger.Debug("Stop fillLoop()")
-	for {
-		select {
-		case <-c.stopFill:
-			return
-		case ip := <-c.dial:
-			total := c.peers.Total()
-			_ = ip
-			_ = total
-			// todo: worker loop, total + temp workers
-		}
-	}
-}
-
-func (c *controller) manageOnline() {
-	c.logger.Debug("Start manageOnline()")
-	defer c.logger.Debug("Stop manageOnline()")
-	for {
-		select {
-		case <-c.stopOnline:
-			return
-		case pc := <-c.peerStatus:
-			if pc.online {
-				old := c.peers.Get(pc.peer.Hash)
-				if old != nil {
-					old.Stop(true)
-					c.peers.Remove(old)
-					c.endpoints.RemoveConnection(old.IP)
-				}
-				err := c.peers.Add(pc.peer)
-				c.endpoints.AddConnection(pc.peer.IP)
-				if err != nil {
-					c.logger.Errorf("Unable to add peer %s to peer store because an old peer still exists", pc.peer)
-				}
-			} else {
-				c.peers.Remove(pc.peer)
-				c.endpoints.RemoveConnection(pc.peer.IP)
-				if pc.peer.IsIncoming {
-					// lock this connection temporarily so we don't try to connect to it
-					// before they can reconnect
-					c.endpoints.Lock(pc.peer.IP, c.net.conf.DisconnectLock)
-				}
-			}
-			if c.net.prom != nil {
-				c.net.prom.Connections.Set(float64(c.peers.Total()))
-				c.net.prom.Unique.Set(float64(c.peers.Unique()))
-				c.net.prom.Incoming.Set(float64(c.peers.Incoming()))
-				c.net.prom.Outgoing.Set(float64(c.peers.Outgoing()))
-			}
-		}
-	}
 }
 
 func (c *controller) manageData() {
@@ -276,15 +221,7 @@ func (c *controller) manageData() {
 				fallthrough
 			case TypeMessagePart:
 				parcel.Type = TypeMessage
-
-				dupe := sha1.New()
-				dupe.Write(parcel.Payload)
-				dh := dupe.Sum(nil)
-				if c.net.filter.Check(string(dh)) {
-					c.net.FromNetwork.Send(parcel)
-				} else if c.net.prom != nil {
-					c.net.prom.AppDuplicate.Inc()
-				}
+				c.net.FromNetwork.Send(parcel)
 			case TypePeerRequest:
 				if time.Since(peer.lastPeerSend) >= c.net.conf.PeerRequestInterval {
 					peer.lastPeerSend = time.Now()
@@ -493,155 +430,6 @@ func (c *controller) managePeers() {
 	}
 }
 
-func (c *controller) allowIncoming(addr string) error {
-	if c.endpoints.BannedAddress(addr) {
-		return fmt.Errorf("Address %s is banned", addr)
-	}
-
-	if uint(c.peers.Total()) >= c.net.conf.Incoming && !c.endpoints.IsSpecialAddress(addr) {
-		return fmt.Errorf("Refusing incoming connection from %s because we are maxed out (%d of %d)", addr, c.peers.Total(), c.net.conf.Incoming)
-	}
-
-	if c.net.conf.PeerIPLimitIncoming > 0 && uint(c.peers.Count(addr)) >= c.net.conf.PeerIPLimitIncoming {
-		return fmt.Errorf("Rejecting %s due to per ip limit of %d", addr, c.net.conf.PeerIPLimitIncoming)
-	}
-
-	return nil
-}
-
-func (c *controller) handleIncoming(con net.Conn) {
-	if c.net.prom != nil {
-		c.net.prom.Connecting.Inc()
-		defer c.net.prom.Connecting.Dec()
-	}
-
-	addr, _, err := net.SplitHostPort(con.RemoteAddr().String())
-	if err != nil {
-		c.logger.WithError(err).Debugf("Unable to parse address %s", con.RemoteAddr().String())
-		con.Close()
-		return
-	}
-
-	// port is overriden during handshake, use default port as temp port
-	ip, err := NewIP(addr, c.net.conf.ListenPort)
-	if err != nil { // should never happen for incoming
-		c.logger.WithError(err).Debugf("Unable to decode address %s", addr)
-		con.Close()
-		return
-	}
-
-	if err = c.allowIncoming(addr); err != nil {
-		c.logger.WithError(err).Infof("Rejecting connection")
-		con.Close()
-		return
-	}
-
-	peer := newPeer(c.net, c.peerStatus, c.peerData)
-	if ok, err := peer.StartWithHandshake(ip, con, true); ok {
-		c.logger.Debugf("Incoming handshake success for peer %s, version %s", peer.Hash, peer.prot.Version())
-
-		if c.endpoints.BannedEndpoint(peer.IP) {
-			c.logger.Debugf("Peer %s is banned, disconnecting", peer.Hash)
-			return
-		}
-
-		c.endpoints.Register(peer.IP, "Incoming")
-		c.endpoints.Lock(peer.IP, time.Hour*8760*50) // 50 years
-		c.dialer.Reset(peer.IP)
-	} else {
-		c.logger.WithError(err).Debugf("Handshake failed for address %s, stopping", ip)
-		peer.Stop(false)
-	}
-}
-
-func (c *controller) Dial(ip IP) {
-	if c.net.prom != nil {
-		c.net.prom.Connecting.Inc()
-		defer c.net.prom.Connecting.Dec()
-	}
-
-	if ip.Port == "" {
-		ip.Port = c.net.conf.ListenPort // TODO add a "default port"?
-		c.logger.Debugf("Dialing to %s (with no previously known port)", ip)
-	} else {
-		c.logger.Debugf("Dialing to %s", ip)
-	}
-
-	con, err := c.dialer.Dial(ip)
-	if err != nil {
-		c.logger.WithError(err).Infof("Failed to dial to %s", ip)
-		return
-	}
-
-	peer := newPeer(c.net, c.peerStatus, c.peerData)
-	if !c.endpoints.IsLocked(ip) {
-		c.endpoints.Lock(ip, c.net.conf.HandshakeTimeout)
-	}
-	if ok, err := peer.StartWithHandshake(ip, con, false); ok {
-		c.logger.Debugf("Handshake success for peer %s, version %s", peer.Hash, peer.prot.Version())
-		c.endpoints.Register(peer.IP, "Dial")
-		c.dialer.Reset(peer.IP)
-	} else if err.Error() == "loopback" {
-		c.logger.Debugf("Banning ourselves for 50 years")
-		c.endpoints.BanEndpoint(ip, time.Now().AddDate(50, 0, 0)) // ban for 50 years
-		peer.Stop(false)
-	} else {
-		c.logger.WithError(err).Debugf("Handshake fail with %s", ip)
-		peer.Stop(false)
-	}
-}
-
-// getOutgoingSelection creates a subset of total connectable peers by getting
-// as much prefix variation as possible
-//
-// Takes the input and spreads peers out over n equally sized buckets based on their
-// ipv4 prefix, then iterates over those buckets and removes a random peer from each
-// one until it has enough
-func (c *controller) getOutgoingSelection(filtered []IP, wanted int) []IP {
-	if wanted < 1 {
-		return nil
-	}
-	// we have just enough
-	if len(filtered) <= wanted {
-		c.logger.Debugf("getOutgoingSelection returning %d peers", len(filtered))
-		return filtered
-	}
-
-	if wanted == 1 { // edge case
-		rand := c.net.rng.Intn(len(filtered))
-		return []IP{filtered[rand]}
-	}
-
-	// generate a list of peers distant to each other
-	buckets := make([][]IP, wanted)
-	bucketSize := uint32(4294967295/uint32(wanted)) + 1 // 33554432 for wanted=128
-
-	// distribute peers over n buckets
-	for _, peer := range filtered {
-		bucketIndex := int(IP2LocationQuick(peer.Address) / bucketSize)
-		buckets[bucketIndex] = append(buckets[bucketIndex], peer)
-	}
-
-	// pick random peers from each bucket
-	var picked []IP
-	for len(picked) < wanted {
-		offset := c.net.rng.Intn(len(buckets)) // start at a random point in the bucket array
-		for i := 0; i < len(buckets); i++ {
-			bi := (i + offset) % len(buckets)
-			bucket := buckets[bi]
-			if len(bucket) > 0 {
-				pi := c.net.rng.Intn(len(bucket)) // random member in bucket
-				picked = append(picked, bucket[pi])
-				bucket[pi] = bucket[len(bucket)-1] // fast remove
-				buckets[bi] = bucket[:len(bucket)-1]
-			}
-		}
-	}
-
-	c.logger.Debugf("getOutgoingSelection returning %d peers: %+v", len(picked), picked)
-	return picked
-}
-
 func (c *controller) selectRandomPeers(count uint) []*Peer {
 	peers := c.peers.Slice()
 
@@ -747,37 +535,4 @@ func (c *controller) loadEndpoints() *Endpoints {
 	eps.Cleanup(c.net.conf.PersistAgeLimit)
 	c.logger.Debugf("%d endpoints found", eps.Total())
 	return eps
-}
-
-// listen listens for incoming TCP connections and passes them off to handshake maneuver
-func (c *controller) listen() {
-	tmpLogger := c.logger.WithFields(log.Fields{"address": c.net.conf.BindIP, "port": c.net.conf.ListenPort})
-	tmpLogger.Debug("controller.listen() starting up")
-
-	addr := fmt.Sprintf("%s:%s", c.net.conf.BindIP, c.net.conf.ListenPort)
-
-	l, err := NewLimitedListener(addr, c.net.conf.ListenLimit)
-	if err != nil {
-		tmpLogger.WithError(err).Error("controller.Start() unable to start limited listener")
-		return
-	}
-
-	c.listener = l
-
-	// start permanent loop
-	// terminates on program exit or when listener is closed
-	for {
-		conn, err := c.listener.Accept()
-		if err != nil {
-			if ne, ok := err.(*net.OpError); ok && !ne.Timeout() {
-				if !ne.Temporary() {
-					tmpLogger.WithError(err).Warn("controller.acceptLoop() error accepting")
-					return
-				}
-			}
-			continue
-		}
-
-		go c.handleIncoming(conn)
-	}
 }

@@ -21,7 +21,6 @@ type Network struct {
 
 	conf       *Configuration
 	controller *controller
-	filter     *Filter
 	seed       *seed
 
 	prom *Prometheus
@@ -154,7 +153,6 @@ func NewNetwork(conf Configuration) *Network {
 
 	n.seed = newSeed(n.conf.SeedURL)
 	n.controller = newController(n)
-	n.filter = NewFilter(n.conf.DuplicateFilter, n.conf.DuplicateFilterCleanup)
 	n.ToNetwork = newParcelChannel(conf.ChannelCapacity)
 	n.FromNetwork = newParcelChannel(conf.ChannelCapacity)
 	return n
@@ -183,7 +181,6 @@ func (n *Network) Start() {
 func (n *Network) Stop() {
 	n.logger.Info("Stopping the P2P Network")
 	n.controller.Stop()
-	n.filter.Stop()
 	n.stopRoute <- true
 }
 
