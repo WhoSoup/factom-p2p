@@ -24,7 +24,7 @@ type controller struct {
 	stopData   chan bool
 	stopOnline chan bool
 	stopFill   chan bool
-	//dial       chan IP
+	dial       chan IP
 
 	peers     *PeerStore
 	endpoints *Endpoints

@@ -8,18 +8,10 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-/*// CAT responsible for filling connections back up to conf.Target connections
-func (c *controller) fillLoop() {
-	c.logger.Debug("Start fillLoop()")
-	defer c.logger.Debug("Stop fillLoop()")
-
-	count := 4
-	workers := make(chan bool, count)
-	for i := 0; i < count; i++ {
-		workers <- true
-	}
-
-	connecting := uint32(0)
+// CAT responsible for filling connections back up to conf.Target connections
+func (c *controller) dialLoop() {
+	c.logger.Debug("Start dialLoop()")
+	defer c.logger.Debug("Stop dialLoop()")
 
 	for {
 		select {
@@ -31,22 +23,12 @@ func (c *controller) fillLoop() {
 				break
 			}
 
-			for total + connecting >= c.net.conf.Target {
-				time.Sleep(time.Second)
+			if c.peers.IsConnected(ip.Address) {
+
 			}
-
-			atomic.AddInt32
-
-			for len(c.dial) > 0 {
-				<-c.dial
-			}
-
-			_ = ip
-			_ = total
-			// todo: worker loop, total + temp workers
 		}
 	}
-}*/
+}
 
 func (c *controller) manageOnline() {
 	c.logger.Debug("Start manageOnline()")
