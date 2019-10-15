@@ -25,7 +25,6 @@ type Network struct {
 
 	prom *Prometheus
 
-	stopRoute   chan bool
 	metricsHook func(pm map[string]PeerMetrics)
 
 	rng        *rand.Rand
@@ -43,7 +42,7 @@ func (n *Network) DebugMessage() (string, string, int) {
 	count := len(s)
 	for _, p := range s {
 
-		r += fmt.Sprintf("\tPeer %s %d\n", p.String(), p.QualityScore)
+		r += fmt.Sprintf("\tPeer %s\n", p.String())
 		edge := ""
 		if n.conf.NodeID < 4 || p.NodeID < 4 {
 			min := n.conf.NodeID
@@ -171,30 +170,8 @@ func (n *Network) SetMetricsHook(f func(pm map[string]PeerMetrics)) {
 func (n *Network) Start() {
 	n.logger.Infof("Starting the P2P Network with configuration %+v", n.conf)
 	n.controller.Start() // this will get peer manager ready to handle incoming connections
-	n.stopRoute = make(chan bool, 1)
 	DebugServer(n)
 	go n.route()
-}
-
-// Stop tears down all the active connections and stops the listener.
-// Use before shutting down.
-func (n *Network) Stop() {
-	n.logger.Info("Stopping the P2P Network")
-	n.controller.Stop()
-	n.stopRoute <- true
-}
-
-// Merit rewards a peer for doing something right
-func (n *Network) Merit(hash string) {
-	n.logger.Debugf("Received merit for %s from application", hash)
-	go n.controller.merit(hash)
-}
-
-// Demerit punishes a peer for doing something wrong. Too many demerits
-// and the peer will be banned
-func (n *Network) Demerit(hash string) {
-	n.logger.Debugf("Received demerit for %s from application", hash)
-	go n.controller.demerit(hash)
 }
 
 // Ban removes a peer as well as any other peer from that address
@@ -250,9 +227,6 @@ func (n *Network) route() {
 			default:
 				n.controller.ToPeer(message.Address, message)
 			}
-		// stop this loop if anything shows up
-		case <-n.stopRoute:
-			return
 		}
 	}
 }

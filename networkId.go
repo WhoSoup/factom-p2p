@@ -4,7 +4,7 @@ import (
 	"fmt"
 )
 
-// NetworkIdentifier represents the P2P network we are participating in (eg: test, nmain, etc.)
+// NetworkID represents the P2P network we are participating in (eg: test, nmain, etc.)
 type NetworkID uint32
 
 // NetworkID are specific uint32s to identify separate networks

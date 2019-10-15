@@ -35,14 +35,14 @@ type Peer struct {
 	lastPeerSend     time.Time
 
 	// communication channels
-	send   ParcelChannel   // parcels from Send() are added here
-	status chan peerStatus // the controller's notification channel
-	data   chan peerParcel // the controller's data channel
+	send       ParcelChannel   // parcels from Send() are added here
+	status     chan peerStatus // the controller's notification channel
+	data       chan peerParcel // the controller's data channel
+	registered bool
 
 	// Metrics
 	metricsMtx      sync.RWMutex
 	Connected       time.Time
-	QualityScore    int32     // 0 is neutral quality, negative is a bad peer.
 	LastReceive     time.Time // Keep track of how long ago we talked to the peer.
 	LastSend        time.Time // Keep track of how long ago we talked to the peer.
 	ParcelsSent     uint64
@@ -172,6 +172,7 @@ func (p *Peer) StartWithHandshake(ip IP, con net.Conn, incoming bool) (bool, err
 	})
 
 	p.status <- peerStatus{peer: p, online: true}
+	p.registered = true
 
 	go p.sendLoop()
 	go p.readLoop()
@@ -180,7 +181,7 @@ func (p *Peer) StartWithHandshake(ip IP, con net.Conn, incoming bool) (bool, err
 }
 
 // Stop disconnects the peer from its active connection
-func (p *Peer) Stop(andRemove bool) {
+func (p *Peer) Stop() {
 	p.stopper.Do(func() {
 		p.logger.Debug("Stopping peer")
 		sc := p.send
@@ -198,7 +199,7 @@ func (p *Peer) Stop(andRemove bool) {
 			close(sc)
 		}
 
-		if andRemove {
+		if p.registered {
 			p.status <- peerStatus{peer: p, online: false}
 		}
 	})
@@ -212,13 +213,6 @@ func (p *Peer) Send(parcel *Parcel) {
 	p.send.Send(parcel)
 }
 
-func (p *Peer) quality(diff int32) int32 {
-	p.metricsMtx.Lock()
-	defer p.metricsMtx.Unlock()
-	p.QualityScore += diff
-	return p.QualityScore
-}
-
 func (p *Peer) readLoop() {
 	if p.net.prom != nil {
 		p.net.prom.ReceiveRoutines.Inc()
@@ -230,27 +224,27 @@ func (p *Peer) readLoop() {
 		msg, err := p.prot.Receive()
 		if err != nil {
 			p.logger.WithError(err).Debug("connection error (readLoop)")
-			p.Stop(true)
+			p.Stop()
 			return
 		}
 
 		if err := msg.Valid(); err != nil {
 			p.logger.WithError(err).Warnf("received invalid msg, disconnecting peer")
-			p.Stop(true)
+			p.Stop()
 			if p.net.prom != nil {
 				p.net.prom.Invalid.Inc()
 			}
 			return
 		}
 
+		// metrics
 		p.metricsMtx.Lock()
 		p.LastReceive = time.Now()
-		p.QualityScore++
 		p.ParcelsReceived++
 		p.BytesReceived += uint64(len(msg.Payload))
 		p.metricsMtx.Unlock()
 
-		msg.Address = p.Hash
+		// stats
 		if p.net.prom != nil {
 			p.net.prom.ParcelsReceived.Inc()
 			p.net.prom.ParcelSize.Observe(float64(len(msg.Payload)) / 1024)
@@ -258,6 +252,8 @@ func (p *Peer) readLoop() {
 				p.net.prom.AppReceived.Inc()
 			}
 		}
+
+		msg.Address = p.Hash // always set sender = peer
 		if !p.deliver(msg) {
 			return
 		}
@@ -289,7 +285,7 @@ func (p *Peer) sendLoop() {
 			return
 		case parcel := <-p.send:
 			if parcel == nil {
-				p.logger.Error("Received <nil> pointer")
+				p.logger.Error("Received <nil> pointer from application")
 				continue
 			}
 
@@ -297,16 +293,18 @@ func (p *Peer) sendLoop() {
 			err := p.prot.Send(parcel)
 			if err != nil { // no error is recoverable
 				p.logger.WithError(err).Debug("connection error (sendLoop)")
-				p.Stop(true)
+				p.Stop()
 				return
 			}
 
+			// metrics
 			p.metricsMtx.Lock()
 			p.ParcelsSent++
 			p.BytesSent += uint64(len(parcel.Payload))
 			p.LastSend = time.Now()
 			p.metricsMtx.Unlock()
 
+			// stats
 			if p.net.prom != nil {
 				p.net.prom.ParcelsSent.Inc()
 				p.net.prom.ParcelSize.Observe(float64(len(parcel.Payload)+32) / 1024) // TODO FIX
@@ -328,7 +326,6 @@ func (p *Peer) GetMetrics() PeerMetrics {
 	}
 	return PeerMetrics{
 		Hash:             p.Hash,
-		PeerQuality:      p.QualityScore,
 		PeerAddress:      p.IP.Address,
 		MomentConnected:  p.Connected,
 		LastReceive:      p.LastReceive,

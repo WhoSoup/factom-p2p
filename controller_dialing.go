@@ -15,8 +15,6 @@ func (c *controller) dialLoop() {
 
 	for {
 		select {
-		case <-c.stopFill:
-			return
 		case ip := <-c.dial:
 			total := c.peers.Total()
 			if uint(total) >= c.net.conf.Target { // this will clear c.dial if target reached
@@ -35,13 +33,11 @@ func (c *controller) manageOnline() {
 	defer c.logger.Debug("Stop manageOnline()")
 	for {
 		select {
-		case <-c.stopOnline:
-			return
 		case pc := <-c.peerStatus:
 			if pc.online {
 				old := c.peers.Get(pc.peer.Hash)
 				if old != nil {
-					old.Stop(true)
+					old.Stop()
 					c.peers.Remove(old)
 					c.endpoints.RemoveConnection(old.IP)
 				}
@@ -125,7 +121,7 @@ func (c *controller) handleIncoming(con net.Conn) {
 		c.dialer.Reset(peer.IP)
 	} else {
 		c.logger.WithError(err).Debugf("Handshake failed for address %s, stopping", ip)
-		peer.Stop(false)
+		peer.Stop()
 	}
 }
 
@@ -159,10 +155,10 @@ func (c *controller) Dial(ip IP) {
 	} else if err.Error() == "loopback" {
 		c.logger.Debugf("Banning ourselves for 50 years")
 		c.endpoints.BanEndpoint(ip, time.Now().AddDate(50, 0, 0)) // ban for 50 years
-		peer.Stop(false)
+		peer.Stop()
 	} else {
 		c.logger.WithError(err).Debugf("Handshake fail with %s", ip)
-		peer.Stop(false)
+		peer.Stop()
 	}
 }
 

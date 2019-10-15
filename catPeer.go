@@ -7,8 +7,7 @@ import (
 
 type CatStore struct {
 	peers    map[string]*Peer // hash -> peer
-	byIP     map[string]int   // address -> count
-	byIPPort map[string]int   // address:port -> count
+	counts   map[string]int   // address[:port] -> count
 	curSlice []*Peer          // temporary slice that gets reset when changes are made
 
 	incoming int
@@ -36,8 +35,8 @@ func (cs *CatStore) Add(peer *Peer) {
 	defer cs.mtx.Unlock()
 
 	cs.peers[peer.Hash] = peer
-	cs.byIP[peer.IP.Address]++
-	cs.byIPPort[peer.IP.String()]++
+	cs.counts[peer.IP.Address]++
+	cs.counts[peer.IP.String()]++
 
 	if peer.IsIncoming {
 		cs.incoming++
@@ -46,5 +45,8 @@ func (cs *CatStore) Add(peer *Peer) {
 	}
 
 	cs.curSlice = nil
+}
+
+func (cs *CatStore) Remove(peer *Peer) {
 
 }
