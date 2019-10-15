@@ -39,20 +39,16 @@ func (c *controller) manageOnline() {
 				if old != nil {
 					old.Stop()
 					c.peers.Remove(old)
-					c.endpoints.RemoveConnection(old.IP)
 				}
 				err := c.peers.Add(pc.peer)
-				c.endpoints.AddConnection(pc.peer.IP)
 				if err != nil {
 					c.logger.Errorf("Unable to add peer %s to peer store because an old peer still exists", pc.peer)
 				}
 			} else {
 				c.peers.Remove(pc.peer)
-				c.endpoints.RemoveConnection(pc.peer.IP)
 				if pc.peer.IsIncoming {
 					// lock this connection temporarily so we don't try to connect to it
 					// before they can reconnect
-					c.endpoints.Lock(pc.peer.IP, c.net.conf.DisconnectLock)
 				}
 			}
 			if c.net.prom != nil {
@@ -65,11 +61,11 @@ func (c *controller) manageOnline() {
 	}
 }
 func (c *controller) allowIncoming(addr string) error {
-	if c.endpoints.BannedAddress(addr) {
+	if c.isBannedAddress(addr) {
 		return fmt.Errorf("Address %s is banned", addr)
 	}
 
-	if uint(c.peers.Total()) >= c.net.conf.Incoming && !c.endpoints.IsSpecialAddress(addr) {
+	if uint(c.peers.Total()) >= c.net.conf.Incoming && !c.isSpecialAddr(addr) {
 		return fmt.Errorf("Refusing incoming connection from %s because we are maxed out (%d of %d)", addr, c.peers.Total(), c.net.conf.Incoming)
 	}
 
@@ -111,13 +107,10 @@ func (c *controller) handleIncoming(con net.Conn) {
 	if ok, err := peer.StartWithHandshake(ip, con, true); ok {
 		c.logger.Debugf("Incoming handshake success for peer %s, version %s", peer.Hash, peer.prot.Version())
 
-		if c.endpoints.BannedEndpoint(peer.IP) {
+		if c.isBannedIP(peer.IP) {
 			c.logger.Debugf("Peer %s is banned, disconnecting", peer.Hash)
 			return
 		}
-
-		c.endpoints.Register(peer.IP, "Incoming")
-		c.endpoints.Lock(peer.IP, time.Hour*8760*50) // 50 years
 		c.dialer.Reset(peer.IP)
 	} else {
 		c.logger.WithError(err).Debugf("Handshake failed for address %s, stopping", ip)
@@ -145,16 +138,12 @@ func (c *controller) Dial(ip IP) {
 	}
 
 	peer := newPeer(c.net, c.peerStatus, c.peerData)
-	if !c.endpoints.IsLocked(ip) {
-		c.endpoints.Lock(ip, c.net.conf.HandshakeTimeout)
-	}
 	if ok, err := peer.StartWithHandshake(ip, con, false); ok {
 		c.logger.Debugf("Handshake success for peer %s, version %s", peer.Hash, peer.prot.Version())
-		c.endpoints.Register(peer.IP, "Dial")
 		c.dialer.Reset(peer.IP)
 	} else if err.Error() == "loopback" {
 		c.logger.Debugf("Banning ourselves for 50 years")
-		c.endpoints.BanEndpoint(ip, time.Now().AddDate(50, 0, 0)) // ban for 50 years
+		c.banIP(ip, time.Hour*24*365*50) // ban for 50 years
 		peer.Stop()
 	} else {
 		c.logger.WithError(err).Debugf("Handshake fail with %s", ip)

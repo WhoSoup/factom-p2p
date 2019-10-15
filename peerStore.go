@@ -129,7 +129,7 @@ func (ps *PeerStore) Slice() []*Peer {
 	defer ps.mtx.RUnlock()
 
 	if ps.curSlice != nil {
-		return ps.curSlice
+		return append(ps.curSlice[:0:0], ps.curSlice...)
 	}
 	r := make([]*Peer, 0)
 	for _, p := range ps.peers {

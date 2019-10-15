@@ -61,16 +61,16 @@ func (n *Network) DebugMessage() (string, string, int) {
 		}
 	}
 	known := ""
-	for _, ip := range n.controller.endpoints.IPs() {
+	/*for _, ip := range n.controller.endpoints.IPs() {
 		known += ip.Address + " "
-	}
+	}*/
 	r += "\nKNOWN:\n" + known
 
-	banned := ""
+	/*banned := ""
 	for ip, time := range n.controller.endpoints.Bans {
 		banned += fmt.Sprintf("\t%s %s\n", ip, time)
 	}
-	r += "\nBANNED:\n" + banned
+	r += "\nBANNED:\n" + banned*/
 	return r, hv, count
 }
 
@@ -112,14 +112,14 @@ func DebugServer(n *Network) {
 		}
 
 		out += fmt.Sprintf("\nEndpoints\n")
-		ips := n.controller.endpoints.IPs()
-		sort.Slice(ips, func(i, j int) bool {
-			return ips[i].Address < (ips[j].Address)
-		})
-		for _, ep := range n.controller.endpoints.IPs() {
-			c, d := n.controller.endpoints.Connections(ep)
-			out += fmt.Sprintf("\t%s: %d active, connected: %s\n", ep, c, d)
-		}
+		/*		ips := n.controller.endpoints.IPs()
+				sort.Slice(ips, func(i, j int) bool {
+					return ips[i].Address < (ips[j].Address)
+				})
+				for _, ep := range n.controller.endpoints.IPs() {
+					c, d := n.controller.endpoints.Connections(ep)
+					out += fmt.Sprintf("\t%s: %d active, connected: %s\n", ep, c, d)
+				}*/
 
 		rw.Write([]byte(out))
 	})

@@ -1,9 +1,6 @@
 package p2p
 
 import (
-	"bufio"
-	"encoding/json"
-	"os"
 	"strings"
 	"sync"
 	"time"
@@ -22,13 +19,16 @@ type controller struct {
 
 	dial chan IP
 
-	peers     *PeerStore
-	endpoints *Endpoints
-	dialer    *Dialer
-	listener  *LimitedListener
+	peers    *PeerStore
+	dialer   *Dialer
+	listener *LimitedListener
 
 	specialMtx   sync.RWMutex
 	specialCount int
+
+	banMtx  sync.RWMutex
+	Bans    map[string]time.Time // (ip|ip:port) => time the ban ends
+	Special map[string]bool      // (ip|ip:port) => bool
 
 	lastPeerDial    time.Time
 	lastSeedRefresh time.Time
@@ -65,6 +65,9 @@ func newController(network *Network) *controller {
 	c.peerStatus = make(chan peerStatus, 10) // TODO reconsider this value
 	c.peerData = make(chan peerParcel, c.net.conf.ChannelCapacity)
 
+	c.Bans = make(map[string]time.Time)
+	c.Special = make(map[string]bool)
+
 	// CAT
 	c.lastRound = time.Now()
 	c.seed = newSeed(c.net.conf.SeedURL)
@@ -73,7 +76,7 @@ func newController(network *Network) *controller {
 	c.addSpecial(c.net.conf.Special)
 
 	if c.net.prom != nil {
-		c.net.prom.KnownPeers.Set(float64(c.endpoints.Total()))
+		c.net.prom.KnownPeers.Set(float64(c.peers.Total()))
 	}
 
 	return c
@@ -84,13 +87,62 @@ func newController(network *Network) *controller {
 func (c *controller) ban(hash string, duration time.Duration) {
 	peer := c.peers.Get(hash)
 	if peer != nil {
-		c.endpoints.BanAddress(peer.IP.Address, time.Now().Add(duration))
+		c.banMtx.Lock()
+
+		end := time.Now().Add(duration)
+
+		// there's a stronger ban in place already
+		if existing, ok := c.Bans[peer.IP.Address]; ok && end.Before(existing) {
+			end = existing
+		}
+
+		c.Bans[peer.IP.Address] = end
+		c.Bans[peer.IP.String()] = end
+
 		for _, p := range c.peers.Slice() {
 			if p.IP.Address == peer.IP.Address {
 				peer.Stop()
 			}
 		}
+		c.banMtx.Unlock()
 	}
+}
+
+func (c *controller) banIP(ip IP, duration time.Duration) {
+	c.banMtx.Lock()
+	c.Bans[ip.String()] = time.Now().Add(duration)
+	c.banMtx.Unlock()
+
+	if duration > 0 {
+		for _, p := range c.peers.Slice() {
+			if p.IP == ip {
+				p.Stop()
+			}
+		}
+	}
+}
+
+func (c *controller) isBannedIP(ip IP) bool {
+	c.banMtx.RLock()
+	defer c.banMtx.RUnlock()
+	return time.Now().Before(c.Bans[ip.Address]) || time.Now().Before(c.Bans[ip.String()])
+}
+
+func (c *controller) isBannedAddress(addr string) bool {
+	c.banMtx.RLock()
+	defer c.banMtx.RUnlock()
+	return time.Now().Before(c.Bans[addr])
+}
+
+func (c *controller) isSpecial(ip IP) bool {
+	c.specialMtx.RLock()
+	defer c.specialMtx.RUnlock()
+	return c.Special[ip.String()]
+}
+func (c *controller) isSpecialAddr(addr string) bool {
+	c.specialMtx.RLock()
+	defer c.specialMtx.RUnlock()
+	return c.Special[addr]
 }
 
 func (c *controller) disconnect(hash string) {
@@ -105,13 +157,13 @@ func (c *controller) addSpecial(raw string) {
 		return
 	}
 	adds := c.parseSpecial(raw)
+	c.specialMtx.Lock()
 	for _, add := range adds {
 		c.logger.Debugf("Registering special endpoint %s", add)
-		c.endpoints.Register(add, "Special")
+		c.Special[add.String()] = true
+		c.Special[add.Address] = true
 	}
-
-	c.specialMtx.Lock()
-	c.specialCount += len(adds)
+	c.specialCount = len(c.Special)
 	c.specialMtx.Unlock()
 }
 
@@ -143,7 +195,6 @@ func (c *controller) Start() {
 
 func (c *controller) bootStrapPeers() {
 	c.peers = NewPeerStore()
-	c.endpoints = c.loadEndpoints() // creates blank if none exist
 	c.lastSeedRefresh = time.Now()
 	c.reseed()
 }
@@ -274,37 +325,4 @@ func (c *controller) ToPeer(hash string, parcel *Parcel) {
 			p.Send(parcel)
 		}
 	}
-}
-
-func (c *controller) loadEndpoints() *Endpoints {
-	eps := NewEndpoints()
-
-	path := c.net.conf.PersistFile
-	if path == "" {
-		return eps
-	}
-	c.logger.Debugf("Attempting to parse file %s for endpoints", path)
-
-	file, err := os.Open(path)
-	if err != nil {
-		c.logger.WithError(err).Errorf("loadEndpoints(): file open error for %s", path)
-		return eps
-	}
-
-	dec := json.NewDecoder(bufio.NewReader(file))
-	err = dec.Decode(eps)
-
-	if err != nil {
-		c.logger.WithError(err).Errorf("loadEndpoints(): error decoding")
-		return eps
-	}
-
-	// decoding from a blank or invalid file
-	if eps.Ends == nil || eps.Bans == nil {
-		return NewEndpoints()
-	}
-
-	eps.Cleanup(c.net.conf.PersistAgeLimit)
-	c.logger.Debugf("%d endpoints found", eps.Total())
-	return eps
 }

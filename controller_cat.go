@@ -25,14 +25,14 @@ func (c *controller) processPeers(peer *Peer, parcel *Parcel) []IP {
 		ip, err := NewIP(p.Address, p.Port)
 		if err != nil {
 			c.logger.WithError(err).Infof("Unable to register endpoint %s:%s from peer %s", p.Address, p.Port, peer)
-		} else if !c.endpoints.BannedEndpoint(ip) {
+		} else if !c.isBannedIP(ip) {
 			//c.endpoints.Register(ip, peer.IP.Address)
 			res = append(res, ip)
 		}
 	}
 
 	if c.net.prom != nil {
-		c.net.prom.KnownPeers.Set(float64(c.endpoints.Total()))
+		c.net.prom.KnownPeers.Set(float64(c.peers.Total()))
 	}
 
 	return res
@@ -80,10 +80,7 @@ func (c *controller) reseed() {
 
 func (c *controller) catRound() {
 	c.logger.Debug("Cat Round")
-	c.reseed()
-
 	c.rounds++
-
 	peers := c.peers.Slice()
 	toDrop := len(peers) - int(c.net.conf.Drop)
 
@@ -92,7 +89,7 @@ func (c *controller) catRound() {
 
 		dropped := 0
 		for _, i := range perm {
-			if c.endpoints.IsSpecial(peers[i].IP) {
+			if c.isSpecial(peers[i].IP) {
 				continue
 			}
 			peers[i].Stop()
@@ -102,17 +99,20 @@ func (c *controller) catRound() {
 			}
 		}
 	}
-
-	go c.catReplenish()
-
 }
 
+// catReplenish is the loop that brings the node up to the desired number of connections.
+// Does nothing if we have enough peers, otherwise it sends a peer request to a random peer.
 func (c *controller) catReplenish() {
-	if c.replenishing {
-		return
-	}
-	c.replenishing = true
-	for uint(c.peers.Total()) < c.net.conf.Target {
+	c.logger.Debug("Replenish loop started")
+	defer c.logger.Debug("Replenish loop ended")
+	for {
+
+		if uint(c.peers.Total()) >= c.net.conf.Target {
+			time.Sleep(time.Second * 5)
+			continue
+		}
+
 		p := c.selectRandomPeer()
 
 		if p == nil { // no peers connected
@@ -136,7 +136,6 @@ func (c *controller) catReplenish() {
 		}
 		p.peerShareDeliver = nil
 	}
-	c.replenishing = false
 }
 
 func (c *controller) selectRandomPeers(count uint) []*Peer {
@@ -151,7 +150,7 @@ func (c *controller) selectRandomPeers(count uint) []*Peer {
 	var regular []*Peer
 
 	for _, p := range peers {
-		if c.endpoints.IsSpecial(p.IP) {
+		if c.isSpecial(p.IP) {
 			special = append(special, p)
 		} else {
 			regular = append(regular, p)

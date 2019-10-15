@@ -321,7 +321,7 @@ func (p *Peer) GetMetrics() PeerMetrics {
 	p.metricsMtx.RLock()
 	defer p.metricsMtx.RUnlock()
 	pt := "regular"
-	if p.net.controller.endpoints.IsSpecial(p.IP) {
+	if p.net.controller.isSpecial(p.IP) {
 		pt = "special_config"
 	}
 	return PeerMetrics{
