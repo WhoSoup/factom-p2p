@@ -304,7 +304,7 @@ func (c *controller) Broadcast(parcel *Parcel, full bool) {
 		}
 		return
 	}
-	selection := c.selectRandomPeers(c.net.conf.Fanout)
+	selection := c.selectBroadcastPeers(c.net.conf.Fanout)
 	for _, p := range selection {
 		p.Send(parcel)
 	}
@@ -314,7 +314,7 @@ func (c *controller) Broadcast(parcel *Parcel, full bool) {
 // If the hash is empty, a random connected peer will be chosen
 func (c *controller) ToPeer(hash string, parcel *Parcel) {
 	if hash == "" {
-		if random := c.selectRandomPeer(); random != nil {
+		if random := c.randomPeer(); random != nil {
 			random.Send(parcel)
 		} else {
 			c.logger.Warnf("attempted to send parcel %s to a random peer but no peers are connected", parcel)
@@ -325,4 +325,26 @@ func (c *controller) ToPeer(hash string, parcel *Parcel) {
 			p.Send(parcel)
 		}
 	}
+}
+
+func (c *controller) randomPeers(count uint) []*Peer {
+	peers := c.peers.Slice()
+	// not enough to randomize
+	if uint(len(peers)) <= count {
+		return peers
+	}
+
+	c.net.rng.Shuffle(len(peers), func(i, j int) {
+		peers[i], peers[j] = peers[j], peers[i]
+	})
+
+	return peers[:count]
+}
+
+func (c *controller) randomPeer() *Peer {
+	peers := c.randomPeers(1)
+	if len(peers) == 1 {
+		return peers[0]
+	}
+	return nil
 }

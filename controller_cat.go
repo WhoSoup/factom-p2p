@@ -47,9 +47,6 @@ func (c *controller) sharePeers(peer *Peer) {
 	var list []IP
 	tmp := c.peers.Slice()
 	for _, i := range c.net.rng.Perm(len(tmp)) {
-		if tmp[i] == nil { // TODO investigate why this happens
-			continue
-		}
 		if tmp[i].Hash == peer.Hash {
 			continue
 		}
@@ -113,7 +110,7 @@ func (c *controller) catReplenish() {
 			continue
 		}
 
-		p := c.selectRandomPeer()
+		p := c.randomPeer()
 
 		if p == nil { // no peers connected
 			time.Sleep(time.Second)
@@ -138,7 +135,7 @@ func (c *controller) catReplenish() {
 	}
 }
 
-func (c *controller) selectRandomPeers(count uint) []*Peer {
+func (c *controller) selectBroadcastPeers(count uint) []*Peer {
 	peers := c.peers.Slice()
 
 	// not enough to randomize
@@ -166,16 +163,4 @@ func (c *controller) selectRandomPeers(count uint) []*Peer {
 	})
 
 	return append(special, peers[:count]...)
-}
-
-func (c *controller) selectRandomPeer() *Peer {
-	peers := c.peers.Slice()
-	if len(peers) == 0 {
-		return nil
-	}
-	if len(peers) == 1 {
-		return peers[0]
-	}
-
-	return peers[c.net.rng.Intn(len(peers))]
 }

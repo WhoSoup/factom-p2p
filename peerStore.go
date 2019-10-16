@@ -131,7 +131,7 @@ func (ps *PeerStore) Slice() []*Peer {
 	if ps.curSlice != nil {
 		return append(ps.curSlice[:0:0], ps.curSlice...)
 	}
-	r := make([]*Peer, 0)
+	r := make([]*Peer, 0, len(ps.peers))
 	for _, p := range ps.peers {
 		r = append(r, p)
 	}
