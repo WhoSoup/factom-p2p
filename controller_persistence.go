@@ -8,8 +8,8 @@ import (
 
 // Persist is the object that gets json-marshalled and written to disk
 type Persist struct {
-	Bans      map[string]time.Time `json:"bans"`
-	Bootstrap []IP                 `json:"bootstrap"`
+	Bans      map[string]time.Time `json:"bans"` // can be ip or ip:port
+	Bootstrap []Endpoint           `json:"bootstrap"`
 }
 
 // wrappers for reading and writing the peer file
@@ -33,19 +33,19 @@ func (c *controller) PersistData() ([]byte, error) {
 
 	c.banMtx.Lock()
 	now := time.Now()
-	for ip, end := range c.Bans {
+	for addr, end := range c.Bans {
 		if end.Before(now) {
-			delete(c.Bans, ip)
+			delete(c.Bans, addr)
 		} else {
-			pers.Bans[ip] = end
+			pers.Bans[addr] = end
 		}
 	}
 	c.banMtx.Unlock()
 
 	peers := c.peers.Slice()
-	pers.Bootstrap = make([]IP, len(peers))
+	pers.Bootstrap = make([]Endpoint, len(peers))
 	for i, p := range peers {
-		pers.Bootstrap[i] = p.IP
+		pers.Bootstrap[i] = p.Endpoint
 	}
 
 	return json.Marshal(pers)

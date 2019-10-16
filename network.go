@@ -55,9 +55,9 @@ func (n *Network) DebugMessage() (string, string, int) {
 			}
 		}
 		if p.IsIncoming {
-			hv += fmt.Sprintf("%s -> %s:%s%s\n", p.IP, n.conf.BindIP, n.conf.ListenPort, edge)
+			hv += fmt.Sprintf("%s -> %s:%s%s\n", p.Endpoint, n.conf.BindIP, n.conf.ListenPort, edge)
 		} else {
-			hv += fmt.Sprintf("%s:%s -> %s%s\n", n.conf.BindIP, n.conf.ListenPort, p.IP, edge)
+			hv += fmt.Sprintf("%s:%s -> %s%s\n", n.conf.BindIP, n.conf.ListenPort, p.Endpoint, edge)
 		}
 	}
 	known := ""
@@ -96,7 +96,7 @@ func DebugServer(n *Network) {
 		})
 
 		for _, p := range slice {
-			out += fmt.Sprintf("\t%s\n", p.IP)
+			out += fmt.Sprintf("\t%s\n", p.Endpoint)
 			out += fmt.Sprintf("\t\tsend: %d / %d\n", len(p.send), cap(p.send))
 			m := p.GetMetrics()
 			out += fmt.Sprintf("\t\tBytesReceived: %d\n", m.BytesReceived)

@@ -137,17 +137,17 @@ type V9Share struct {
 }
 
 // MakePeerShare serializes the given endpoints to a V9Share encoded in json
-func (v9 *ProtocolV9) MakePeerShare(ps []IP) ([]byte, error) {
+func (v9 *ProtocolV9) MakePeerShare(ps []Endpoint) ([]byte, error) {
 	var conv []V9Share
 	src := make(map[string]time.Time)
-	for _, ip := range ps {
-		loc := IP2LocationQuick(ip.Address)
+	for _, ep := range ps {
+		loc := IP2LocationQuick(ep.IP)
 		conv = append(conv, V9Share{
-			Address:      ip.Address,
-			Port:         ip.Port,
+			Address:      ep.IP,
+			Port:         ep.Port,
 			QualityScore: 20,
 			NodeID:       1,
-			Hash:         ip.Address,
+			Hash:         ep.IP,
 			Location:     loc,
 			Network:      v9.net.conf.Network,
 			Type:         0,
@@ -172,8 +172,8 @@ func (v9 *ProtocolV9) ParsePeerShare(payload []byte) ([]PeerShare, error) {
 	var conv []PeerShare
 	for _, s := range list {
 		conv = append(conv, PeerShare{
-			Address: s.Address,
-			Port:    s.Port,
+			IP:   s.Address,
+			Port: s.Port,
 		})
 	}
 	return conv, nil

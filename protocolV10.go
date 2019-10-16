@@ -77,12 +77,12 @@ func (v10 *ProtocolV10) Receive() (*Parcel, error) {
 type V10Share PeerShare
 
 // MakePeerShare serializes a list of ips via json
-func (v10 *ProtocolV10) MakePeerShare(ps []IP) ([]byte, error) {
-	var share []V10Share
-	for _, ip := range ps {
-		share = append(share, V10Share{Address: ip.Address, Port: ip.Port})
+func (v10 *ProtocolV10) MakePeerShare(share []Endpoint) ([]byte, error) {
+	var peershare []V10Share
+	for _, ep := range share {
+		peershare = append(peershare, V10Share{IP: ep.IP, Port: ep.Port})
 	}
-	return json.Marshal(share)
+	return json.Marshal(peershare)
 }
 
 // ParsePeerShare parses a peer share payload

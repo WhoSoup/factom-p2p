@@ -13,8 +13,8 @@ func testStore() *PeerStore {
 
 func testPeer(addr, port string, id uint32, incoming bool) *Peer {
 	p := new(Peer)
-	p.IP.Address = addr
-	p.IP.Port = port
+	p.Endpoint.IP = addr
+	p.Endpoint.Port = port
 	p.IsIncoming = incoming
 	p.Hash = fmt.Sprintf("%s:%s %08x", addr, port, id)
 	return p

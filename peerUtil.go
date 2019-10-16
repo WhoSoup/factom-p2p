@@ -36,19 +36,19 @@ type peerParcel struct {
 
 // PeerShare is the data being shared with other peers
 type PeerShare struct {
-	Address string // Must be in form of x.x.x.x
-	Port    string // Must be in form of xxxx
+	IP   string // Must be in form of x.x.x.x
+	Port string // Must be in form of xxxx
 }
 
 // String is the concatenation of address and port for easier searching
 func (ps PeerShare) String() string {
-	return fmt.Sprintf("%s:%s", ps.Address, ps.Port)
+	return fmt.Sprintf("%s:%s", ps.IP, ps.Port)
 }
 
 // Verify checks if the data sent is usable. Does not check if the remote address works
 func (ps PeerShare) Verify() bool {
 	if _, err := strconv.Atoi(ps.Port); err == nil {
-		return ps.Port != "0" && ps.Address != ""
+		return ps.Port != "0" && ps.IP != ""
 	}
 	return false
 }

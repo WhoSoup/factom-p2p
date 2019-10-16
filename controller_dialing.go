@@ -15,13 +15,13 @@ func (c *controller) dialLoop() {
 
 	for {
 		select {
-		case ip := <-c.dial:
+		case ep := <-c.dial:
 			total := c.peers.Total()
 			if uint(total) >= c.net.conf.Target { // this will clear c.dial if target reached
 				break
 			}
 
-			if c.peers.IsConnected(ip.Address) {
+			if c.peers.IsConnected(ep.IP) {
 
 			}
 		}
@@ -61,11 +61,11 @@ func (c *controller) manageOnline() {
 	}
 }
 func (c *controller) allowIncoming(addr string) error {
-	if c.isBannedAddress(addr) {
+	if c.isBannedIP(addr) {
 		return fmt.Errorf("Address %s is banned", addr)
 	}
 
-	if uint(c.peers.Total()) >= c.net.conf.Incoming && !c.isSpecialAddr(addr) {
+	if uint(c.peers.Total()) >= c.net.conf.Incoming && !c.isSpecialIP(addr) {
 		return fmt.Errorf("Refusing incoming connection from %s because we are maxed out (%d of %d)", addr, c.peers.Total(), c.net.conf.Incoming)
 	}
 
@@ -82,7 +82,7 @@ func (c *controller) handleIncoming(con net.Conn) {
 		defer c.net.prom.Connecting.Dec()
 	}
 
-	addr, _, err := net.SplitHostPort(con.RemoteAddr().String())
+	host, _, err := net.SplitHostPort(con.RemoteAddr().String())
 	if err != nil {
 		c.logger.WithError(err).Debugf("Unable to parse address %s", con.RemoteAddr().String())
 		con.Close()
@@ -90,63 +90,63 @@ func (c *controller) handleIncoming(con net.Conn) {
 	}
 
 	// port is overriden during handshake, use default port as temp port
-	ip, err := NewIP(addr, c.net.conf.ListenPort)
+	ep, err := NewEndpoint(host, c.net.conf.ListenPort)
 	if err != nil { // should never happen for incoming
-		c.logger.WithError(err).Debugf("Unable to decode address %s", addr)
+		c.logger.WithError(err).Debugf("Unable to decode address %s", host)
 		con.Close()
 		return
 	}
 
-	if err = c.allowIncoming(addr); err != nil {
+	if err = c.allowIncoming(host); err != nil {
 		c.logger.WithError(err).Infof("Rejecting connection")
 		con.Close()
 		return
 	}
 
 	peer := newPeer(c.net, c.peerStatus, c.peerData)
-	if ok, err := peer.StartWithHandshake(ip, con, true); ok {
+	if ok, err := peer.StartWithHandshake(ep, con, true); ok {
 		c.logger.Debugf("Incoming handshake success for peer %s, version %s", peer.Hash, peer.prot.Version())
 
-		if c.isBannedIP(peer.IP) {
+		if c.isBannedEndpoint(peer.Endpoint) {
 			c.logger.Debugf("Peer %s is banned, disconnecting", peer.Hash)
 			return
 		}
-		c.dialer.Reset(peer.IP)
+		c.dialer.Reset(peer.Endpoint)
 	} else {
-		c.logger.WithError(err).Debugf("Handshake failed for address %s, stopping", ip)
+		c.logger.WithError(err).Debugf("Handshake failed for address %s, stopping", ep)
 		peer.Stop()
 	}
 }
 
-func (c *controller) Dial(ip IP) {
+func (c *controller) Dial(ep Endpoint) {
 	if c.net.prom != nil {
 		c.net.prom.Connecting.Inc()
 		defer c.net.prom.Connecting.Dec()
 	}
 
-	if ip.Port == "" {
-		ip.Port = c.net.conf.ListenPort // TODO add a "default port"?
-		c.logger.Debugf("Dialing to %s (with no previously known port)", ip)
+	if ep.Port == "" {
+		ep.Port = c.net.conf.ListenPort // TODO add a "default port"?
+		c.logger.Debugf("Dialing to %s (with no previously known port)", ep)
 	} else {
-		c.logger.Debugf("Dialing to %s", ip)
+		c.logger.Debugf("Dialing to %s", ep)
 	}
 
-	con, err := c.dialer.Dial(ip)
+	con, err := c.dialer.Dial(ep)
 	if err != nil {
-		c.logger.WithError(err).Infof("Failed to dial to %s", ip)
+		c.logger.WithError(err).Infof("Failed to dial to %s", ep)
 		return
 	}
 
 	peer := newPeer(c.net, c.peerStatus, c.peerData)
-	if ok, err := peer.StartWithHandshake(ip, con, false); ok {
+	if ok, err := peer.StartWithHandshake(ep, con, false); ok {
 		c.logger.Debugf("Handshake success for peer %s, version %s", peer.Hash, peer.prot.Version())
-		c.dialer.Reset(peer.IP)
+		c.dialer.Reset(peer.Endpoint)
 	} else if err.Error() == "loopback" {
 		c.logger.Debugf("Banning ourselves for 50 years")
-		c.banIP(ip, time.Hour*24*365*50) // ban for 50 years
+		c.banEndpoint(ep, time.Hour*24*365*50) // ban for 50 years
 		peer.Stop()
 	} else {
-		c.logger.WithError(err).Debugf("Handshake fail with %s", ip)
+		c.logger.WithError(err).Debugf("Handshake fail with %s", ep)
 		peer.Stop()
 	}
 }

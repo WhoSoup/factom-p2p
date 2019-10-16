@@ -6,7 +6,7 @@ import (
 )
 
 func Test_controller_parseSpecial(t *testing.T) {
-	valid := []IP{
+	valid := []Endpoint{
 		{"127.0.0.1", "80"},
 		{"127.0.0.2", "8080"},
 		{"1.1.1.1", "8110"},
@@ -21,10 +21,10 @@ func Test_controller_parseSpecial(t *testing.T) {
 		name string
 		c    *controller
 		args args
-		want []IP
+		want []Endpoint
 	}{
 		{"bunch of addresses", c, args{"127.0.0.1:80,127.0.0.1,127.0.0.2,127.0.0.2:8080,1.1.1.1:8110,1.1.1.1:8089;127.0.0.1:4000"}, valid},
-		{"single address", c, args{"127.0.0.1:80"}, []IP{{"127.0.0.1", "80"}}},
+		{"single address", c, args{"127.0.0.1:80"}, []Endpoint{{"127.0.0.1", "80"}}},
 		{"single bad address", c, args{"0.0.0.256:50"}, nil},
 		{"single bad address 2", c, args{":50"}, nil},
 		{"blank", c, args{""}, nil},

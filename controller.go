@@ -17,7 +17,7 @@ type controller struct {
 	peerStatus chan peerStatus
 	peerData   chan peerParcel
 
-	dial chan IP
+	dial chan Endpoint
 
 	peers    *PeerStore
 	dialer   *Dialer
@@ -92,15 +92,15 @@ func (c *controller) ban(hash string, duration time.Duration) {
 		end := time.Now().Add(duration)
 
 		// there's a stronger ban in place already
-		if existing, ok := c.Bans[peer.IP.Address]; ok && end.Before(existing) {
+		if existing, ok := c.Bans[peer.Endpoint.IP]; ok && end.Before(existing) {
 			end = existing
 		}
 
-		c.Bans[peer.IP.Address] = end
-		c.Bans[peer.IP.String()] = end
+		c.Bans[peer.Endpoint.IP] = end
+		c.Bans[peer.Endpoint.String()] = end
 
 		for _, p := range c.peers.Slice() {
-			if p.IP.Address == peer.IP.Address {
+			if p.Endpoint.IP == peer.Endpoint.IP {
 				peer.Stop()
 			}
 		}
@@ -108,41 +108,41 @@ func (c *controller) ban(hash string, duration time.Duration) {
 	}
 }
 
-func (c *controller) banIP(ip IP, duration time.Duration) {
+func (c *controller) banEndpoint(ep Endpoint, duration time.Duration) {
 	c.banMtx.Lock()
-	c.Bans[ip.String()] = time.Now().Add(duration)
+	c.Bans[ep.String()] = time.Now().Add(duration)
 	c.banMtx.Unlock()
 
 	if duration > 0 {
 		for _, p := range c.peers.Slice() {
-			if p.IP == ip {
+			if p.Endpoint == ep {
 				p.Stop()
 			}
 		}
 	}
 }
 
-func (c *controller) isBannedIP(ip IP) bool {
+func (c *controller) isBannedEndpoint(ep Endpoint) bool {
 	c.banMtx.RLock()
 	defer c.banMtx.RUnlock()
-	return time.Now().Before(c.Bans[ip.Address]) || time.Now().Before(c.Bans[ip.String()])
+	return time.Now().Before(c.Bans[ep.IP]) || time.Now().Before(c.Bans[ep.String()])
 }
 
-func (c *controller) isBannedAddress(addr string) bool {
+func (c *controller) isBannedIP(ip string) bool {
 	c.banMtx.RLock()
 	defer c.banMtx.RUnlock()
-	return time.Now().Before(c.Bans[addr])
+	return time.Now().Before(c.Bans[ip])
 }
 
-func (c *controller) isSpecial(ip IP) bool {
+func (c *controller) isSpecial(ep Endpoint) bool {
 	c.specialMtx.RLock()
 	defer c.specialMtx.RUnlock()
-	return c.Special[ip.String()]
+	return c.Special[ep.String()]
 }
-func (c *controller) isSpecialAddr(addr string) bool {
+func (c *controller) isSpecialIP(ip string) bool {
 	c.specialMtx.RLock()
 	defer c.specialMtx.RUnlock()
-	return c.Special[addr]
+	return c.Special[ip]
 }
 
 func (c *controller) disconnect(hash string) {
@@ -156,29 +156,29 @@ func (c *controller) addSpecial(raw string) {
 	if len(raw) == 0 {
 		return
 	}
-	adds := c.parseSpecial(raw)
+	specialEndpoints := c.parseSpecial(raw)
 	c.specialMtx.Lock()
-	for _, add := range adds {
-		c.logger.Debugf("Registering special endpoint %s", add)
-		c.Special[add.String()] = true
-		c.Special[add.Address] = true
+	for _, ep := range specialEndpoints {
+		c.logger.Debugf("Registering special endpoint %s", ep)
+		c.Special[ep.String()] = true
+		c.Special[ep.IP] = true
 	}
 	c.specialCount = len(c.Special)
 	c.specialMtx.Unlock()
 }
 
-func (c *controller) parseSpecial(raw string) []IP {
-	var ips []IP
+func (c *controller) parseSpecial(raw string) []Endpoint {
+	var eps []Endpoint
 	split := strings.Split(raw, ",")
 	for _, item := range split {
-		ip, err := ParseAddress(item)
+		ep, err := ParseEndpoint(item)
 		if err != nil {
 			c.logger.Warnf("unable to determine host and port of special entry \"%s\"", item)
 			continue
 		}
-		ips = append(ips, ip)
+		eps = append(eps, ep)
 	}
-	return ips
+	return eps
 }
 
 // Start starts the controller

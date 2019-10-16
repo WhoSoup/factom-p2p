@@ -19,24 +19,24 @@ func newSeed(url string) *seed {
 	return s
 }
 
-func (s *seed) retrieve() []IP {
-	ips := make([]IP, 0)
+func (s *seed) retrieve() []Endpoint {
+	eps := make([]Endpoint, 0)
 
 	err := WebScanner(s.url, func(line string) {
-		address, port, err := net.SplitHostPort(line)
+		host, port, err := net.SplitHostPort(line)
 		if err != nil {
 			s.logger.Errorf("Badly formatted line [%s]", line)
 			return
 		}
-		if ip, err := NewIP(address, port); err != nil {
+		if ep, err := NewEndpoint(host, port); err != nil {
 			s.logger.WithError(err).Errorf("Bad peer [%s]", line)
 		} else {
-			ips = append(ips, ip)
+			eps = append(eps, ep)
 		}
 	})
 
 	if err != nil {
 		s.logger.WithError(err).Errorf("unable to retrieve data from seed")
 	}
-	return ips
+	return eps
 }

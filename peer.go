@@ -21,7 +21,7 @@ type Peer struct {
 
 	// current state, read only "constants" after the handshake
 	IsIncoming bool
-	IP         IP
+	Endpoint   Endpoint
 	NodeID     uint32 // a nonce to distinguish multiple nodes behind one endpoint
 	Hash       string // This is more of a connection ID than hash right now.
 
@@ -111,8 +111,8 @@ func (p *Peer) bootstrapProtocol(hs *Handshake, conn net.Conn, decoder *gob.Deco
 // The handshake ensures that ALL peers have a valid Port field to start with.
 // If there is no reply within the specified HandshakeTimeout config setting, the process
 // fails
-func (p *Peer) StartWithHandshake(ip IP, con net.Conn, incoming bool) (bool, error) {
-	tmplogger := p.logger.WithField("addr", ip.Address)
+func (p *Peer) StartWithHandshake(ep Endpoint, con net.Conn, incoming bool) (bool, error) {
+	tmplogger := p.logger.WithField("addr", ep.IP)
 	timeout := time.Now().Add(p.net.conf.HandshakeTimeout)
 
 	nonce := []byte(fmt.Sprintf("%x", p.net.instanceID))
@@ -156,18 +156,18 @@ func (p *Peer) StartWithHandshake(ip IP, con net.Conn, incoming bool) (bool, err
 	}
 
 	// initialize channels
-	ip.Port = reply.Header.PeerPort
-	p.IP = ip
+	ep.Port = reply.Header.PeerPort
+	p.Endpoint = ep
 	p.NodeID = uint32(reply.Header.NodeID)
-	p.Hash = fmt.Sprintf("%s:%s %08x", ip.Address, ip.Port, p.NodeID)
+	p.Hash = fmt.Sprintf("%s:%s %08x", ep.IP, ep.Port, p.NodeID)
 	p.send = newParcelChannel(p.net.conf.ChannelCapacity)
 	p.IsIncoming = incoming
 	p.conn = con
 	p.Connected = time.Now()
 	p.logger = p.logger.WithFields(log.Fields{
 		"hash":    p.Hash,
-		"address": p.IP.Address,
-		"Port":    p.IP.Port,
+		"address": p.Endpoint.IP,
+		"Port":    p.Endpoint.Port,
 		"Version": p.prot.Version(),
 	})
 
@@ -321,12 +321,12 @@ func (p *Peer) GetMetrics() PeerMetrics {
 	p.metricsMtx.RLock()
 	defer p.metricsMtx.RUnlock()
 	pt := "regular"
-	if p.net.controller.isSpecial(p.IP) {
+	if p.net.controller.isSpecial(p.Endpoint) {
 		pt = "special_config"
 	}
 	return PeerMetrics{
 		Hash:             p.Hash,
-		PeerAddress:      p.IP.Address,
+		PeerAddress:      p.Endpoint.IP,
 		MomentConnected:  p.Connected,
 		LastReceive:      p.LastReceive,
 		LastSend:         p.LastSend,

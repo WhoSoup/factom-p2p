@@ -16,7 +16,7 @@ package p2p
 type Protocol interface {
 	Send(p *Parcel) error
 	Receive() (*Parcel, error)
-	MakePeerShare(ps []IP) ([]byte, error)
-	ParsePeerShare(payload []byte) ([]PeerShare, error)
+	MakePeerShare([]Endpoint) ([]byte, error)
+	ParsePeerShare([]byte) ([]PeerShare, error)
 	Version() string
 }

@@ -3,7 +3,7 @@ package p2p
 import "time"
 
 // processPeers processes a peer share response
-func (c *controller) processPeers(peer *Peer, parcel *Parcel) []IP {
+func (c *controller) processPeers(peer *Peer, parcel *Parcel) []Endpoint {
 	list, err := peer.prot.ParsePeerShare(parcel.Payload)
 
 	if err != nil {
@@ -20,14 +20,14 @@ func (c *controller) processPeers(peer *Peer, parcel *Parcel) []IP {
 		}
 	}
 
-	var res []IP
+	var res []Endpoint
 	for _, p := range list {
-		ip, err := NewIP(p.Address, p.Port)
+		ep, err := NewEndpoint(p.IP, p.Port)
 		if err != nil {
-			c.logger.WithError(err).Infof("Unable to register endpoint %s:%s from peer %s", p.Address, p.Port, peer)
-		} else if !c.isBannedIP(ip) {
+			c.logger.WithError(err).Infof("Unable to register endpoint %s:%s from peer %s", p.IP, p.Port, peer)
+		} else if !c.isBannedEndpoint(ep) {
 			//c.endpoints.Register(ip, peer.IP.Address)
-			res = append(res, ip)
+			res = append(res, ep)
 		}
 	}
 
@@ -44,13 +44,13 @@ func (c *controller) sharePeers(peer *Peer) {
 		return
 	}
 	// CAT select n random active peers
-	var list []IP
+	var list []Endpoint
 	tmp := c.peers.Slice()
 	for _, i := range c.net.rng.Perm(len(tmp)) {
 		if tmp[i].Hash == peer.Hash {
 			continue
 		}
-		list = append(list, tmp[i].IP)
+		list = append(list, tmp[i].Endpoint)
 		if uint(len(tmp)) >= c.net.conf.PeerShareAmount {
 			break
 		}
@@ -86,7 +86,7 @@ func (c *controller) catRound() {
 
 		dropped := 0
 		for _, i := range perm {
-			if c.isSpecial(peers[i].IP) {
+			if c.isSpecial(peers[i].Endpoint) {
 				continue
 			}
 			peers[i].Stop()
@@ -147,7 +147,7 @@ func (c *controller) selectBroadcastPeers(count uint) []*Peer {
 	var regular []*Peer
 
 	for _, p := range peers {
-		if c.isSpecial(p.IP) {
+		if c.isSpecial(p.Endpoint) {
 			special = append(special, p)
 		} else {
 			regular = append(regular, p)
