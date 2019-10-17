@@ -1,6 +1,7 @@
 package p2p
 
 import (
+	"fmt"
 	"strings"
 	"sync"
 	"time"
@@ -48,7 +49,8 @@ type controller struct {
 
 // newController creates a new controller
 // configuration is shared between the two
-func newController(network *Network) *controller {
+func newController(network *Network) (*controller, error) {
+	var err error
 	c := &controller{}
 	c.net = network
 	conf := network.conf
@@ -59,7 +61,10 @@ func newController(network *Network) *controller {
 		"network": conf.Network})
 	c.logger.Debugf("Initializing Controller")
 
-	c.dialer = NewDialer(conf.BindIP, conf.RedialInterval, conf.RedialReset, conf.DialTimeout, conf.RedialAttempts)
+	c.dialer, err = NewDialer(conf.BindIP, conf.RedialInterval, conf.DialTimeout)
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialize dialer: %v", err)
+	}
 	c.lastPersist = time.Now()
 
 	c.peerStatus = make(chan peerStatus, 10) // TODO reconsider this value
@@ -79,7 +84,7 @@ func newController(network *Network) *controller {
 		c.net.prom.KnownPeers.Set(float64(c.peers.Total()))
 	}
 
-	return c
+	return c, nil
 }
 
 // ban bans the peer indicated by the hash as well as any other peer from that ip

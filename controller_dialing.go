@@ -111,7 +111,6 @@ func (c *controller) handleIncoming(con net.Conn) {
 			c.logger.Debugf("Peer %s is banned, disconnecting", peer.Hash)
 			return
 		}
-		c.dialer.Reset(peer.Endpoint)
 	} else {
 		c.logger.WithError(err).Debugf("Handshake failed for address %s, stopping", ep)
 		peer.Stop()
@@ -140,7 +139,6 @@ func (c *controller) Dial(ep Endpoint) {
 	peer := newPeer(c.net, c.peerStatus, c.peerData)
 	if ok, err := peer.StartWithHandshake(ep, con, false); ok {
 		c.logger.Debugf("Handshake success for peer %s, version %s", peer.Hash, peer.prot.Version())
-		c.dialer.Reset(peer.Endpoint)
 	} else if err.Error() == "loopback" {
 		c.logger.Debugf("Banning ourselves for 50 years")
 		c.banEndpoint(ep, time.Hour*24*365*50) // ban for 50 years

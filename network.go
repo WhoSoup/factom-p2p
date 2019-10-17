@@ -130,7 +130,8 @@ func DebugServer(n *Network) {
 // NewNetwork initializes a new network with the given configuration.
 // The passed Configuration is copied and cannot be modified afterwards.
 // Does not start the network automatically.
-func NewNetwork(conf Configuration) *Network {
+func NewNetwork(conf Configuration) (*Network, error) {
+	var err error
 	myconf := conf // copy
 	n := new(Network)
 
@@ -151,10 +152,13 @@ func NewNetwork(conf Configuration) *Network {
 	}
 
 	n.seed = newSeed(n.conf.SeedURL)
-	n.controller = newController(n)
+	n.controller, err = newController(n)
+	if err != nil {
+		return nil, err
+	}
 	n.ToNetwork = newParcelChannel(conf.ChannelCapacity)
 	n.FromNetwork = newParcelChannel(conf.ChannelCapacity)
-	return n
+	return n, nil
 }
 
 // SetMetricsHook allows you to read peer metrics.
