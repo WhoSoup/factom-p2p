@@ -38,6 +38,19 @@ func (c *controller) processPeers(peer *Peer, parcel *Parcel) []Endpoint {
 	return res
 }
 
+func (c *controller) trimShare(list []Endpoint, shuffle bool) []Endpoint {
+	if len(list) == 0 {
+		return nil
+	}
+	if shuffle {
+		c.net.rng.Shuffle(len(list), func(i, j int) { list[i], list[j] = list[j], list[i] })
+	}
+	if uint(len(list)) > c.net.conf.PeerShareAmount {
+		list = list[:c.net.conf.PeerShareAmount]
+	}
+	return list
+}
+
 // sharePeers creates a list of peers to share and sends it to peer
 func (c *controller) sharePeers(peer *Peer) {
 	if peer == nil {
@@ -69,8 +82,11 @@ func (c *controller) sharePeers(peer *Peer) {
 func (c *controller) reseed() {
 	if uint(c.peers.Total()) < c.net.conf.MinReseed {
 		seeds := c.seed.retrieve()
-		for _, ip := range seeds {
-			go c.Dial(ip)
+		for _, endpoint := range seeds {
+			select {
+			case c.dial <- endpoint:
+			default:
+			}
 		}
 	}
 }
@@ -110,6 +126,11 @@ func (c *controller) catReplenish() {
 			continue
 		}
 
+		if uint(c.peers.Total()) <= c.net.conf.MinReseed {
+			c.reseed()
+			time.Sleep(time.Second * 2)
+		}
+
 		p := c.randomPeer()
 
 		if p == nil { // no peers connected
@@ -125,11 +146,14 @@ func (c *controller) catReplenish() {
 
 		select {
 		case resp := <-async:
-			ips := c.processPeers(p, resp)
-			for _, ip := range ips {
-				c.Dial(ip) // NOT A GOROUTINE, wait for it to finish
+			eps := c.trimShare(c.processPeers(p, resp), true)
+			for _, ep := range eps {
+				select {
+				case c.dial <- ep:
+				default:
+				}
 			}
-		case <-time.After(time.Second * 10):
+		case <-time.After(time.Second * 5):
 		}
 		p.peerShareDeliver = nil
 	}

@@ -16,14 +16,21 @@ func (c *controller) dialLoop() {
 	for {
 		select {
 		case ep := <-c.dial:
+
 			total := c.peers.Total()
 			if uint(total) >= c.net.conf.Target { // this will clear c.dial if target reached
-				break
+				continue
 			}
 
-			if c.peers.IsConnected(ep.IP) {
-
+			if c.peers.Connected(ep) {
+				continue
 			}
+
+			if uint(c.peers.Connections(ep.IP)) > c.net.conf.PeerIPLimitOutgoing {
+				continue
+			}
+
+			c.Dial(ep)
 		}
 	}
 }
@@ -38,6 +45,7 @@ func (c *controller) manageOnline() {
 				old := c.peers.Get(pc.peer.Hash)
 				if old != nil {
 					old.Stop()
+					c.logger.Debugf("removing old peer %s", pc.peer.Hash)
 					c.peers.Remove(old)
 				}
 				err := c.peers.Add(pc.peer)
@@ -46,14 +54,10 @@ func (c *controller) manageOnline() {
 				}
 			} else {
 				c.peers.Remove(pc.peer)
-				if pc.peer.IsIncoming {
-					// lock this connection temporarily so we don't try to connect to it
-					// before they can reconnect
-				}
 			}
 			if c.net.prom != nil {
 				c.net.prom.Connections.Set(float64(c.peers.Total()))
-				c.net.prom.Unique.Set(float64(c.peers.Unique()))
+				//c.net.prom.Unique.Set(float64(c.peers.Unique()))
 				c.net.prom.Incoming.Set(float64(c.peers.Incoming()))
 				c.net.prom.Outgoing.Set(float64(c.peers.Outgoing()))
 			}
@@ -172,7 +176,6 @@ func (c *controller) listen() {
 			if ne, ok := err.(*net.OpError); ok && !ne.Timeout() {
 				if !ne.Temporary() {
 					tmpLogger.WithError(err).Warn("controller.acceptLoop() error accepting")
-					return
 				}
 			}
 			continue

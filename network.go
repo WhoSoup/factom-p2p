@@ -111,16 +111,6 @@ func DebugServer(n *Network) {
 
 		}
 
-		out += fmt.Sprintf("\nEndpoints\n")
-		/*		ips := n.controller.endpoints.IPs()
-				sort.Slice(ips, func(i, j int) bool {
-					return ips[i].Address < (ips[j].Address)
-				})
-				for _, ep := range n.controller.endpoints.IPs() {
-					c, d := n.controller.endpoints.Connections(ep)
-					out += fmt.Sprintf("\t%s: %d active, connected: %s\n", ep, c, d)
-				}*/
-
 		rw.Write([]byte(out))
 	})
 

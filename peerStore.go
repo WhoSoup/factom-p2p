@@ -10,7 +10,7 @@ import (
 type PeerStore struct {
 	mtx       sync.RWMutex
 	peers     map[string]*Peer // hash -> peer
-	connected map[string]int   // address -> count
+	connected map[string]int   // (ip|ip:port) -> count
 	curSlice  []*Peer          // temporary slice that gets reset when changes are made
 	incoming  int
 	outgoing  int
@@ -39,6 +39,7 @@ func (ps *PeerStore) Add(p *Peer) error {
 	ps.curSlice = nil
 	ps.peers[p.Hash] = p
 	ps.connected[p.Endpoint.IP]++
+	ps.connected[p.Endpoint.String()]++
 
 	if p.IsIncoming {
 		ps.incoming++
@@ -61,6 +62,10 @@ func (ps *PeerStore) Remove(p *Peer) {
 		ps.connected[p.Endpoint.IP]--
 		if ps.connected[p.Endpoint.IP] == 0 {
 			delete(ps.connected, p.Endpoint.IP)
+		}
+		ps.connected[p.Endpoint.String()]--
+		if ps.connected[p.Endpoint.String()] == 0 {
+			delete(ps.connected, p.Endpoint.String())
 		}
 		if old.IsIncoming {
 			ps.incoming--
@@ -93,13 +98,6 @@ func (ps *PeerStore) Incoming() int {
 	return ps.incoming
 }
 
-// Unique is the amount of unique ip addresses that are connected
-func (ps *PeerStore) Unique() int {
-	ps.mtx.RLock()
-	defer ps.mtx.RUnlock()
-	return len(ps.connected)
-}
-
 // Get retrieves a Peer with a specific hash, nil if it doesn't exist
 func (ps *PeerStore) Get(hash string) *Peer {
 	ps.mtx.RLock()
@@ -107,11 +105,18 @@ func (ps *PeerStore) Get(hash string) *Peer {
 	return ps.peers[hash]
 }
 
-// IsConnected tests whether there is a peer connected from a specified ip address
-func (ps *PeerStore) IsConnected(addr string) bool {
+// Connections tests whether there is a peer connected from a specified ip address
+func (ps *PeerStore) Connections(addr string) int {
 	ps.mtx.RLock()
 	defer ps.mtx.RUnlock()
-	return ps.connected[addr] > 0
+	return ps.connected[addr]
+}
+
+// Connected returns if there is a peer from that specific endpoint
+func (ps *PeerStore) Connected(ep Endpoint) bool {
+	ps.mtx.RLock()
+	defer ps.mtx.RUnlock()
+	return ps.connected[ep.String()] > 0
 }
 
 // Count returns the amount of peers connected from a specified ip address

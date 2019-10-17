@@ -22,6 +22,8 @@ const ( // iota is reset to 0
 	TypeMessagePart
 	// TypeHandshake is the first parcel sent after making a connection
 	TypeHandshake
+	// TypeRejectFull is sent instead of a handshake if the server is full
+	TypeRejectFull
 )
 
 var typeStrings = map[ParcelType]string{
@@ -34,6 +36,7 @@ var typeStrings = map[ParcelType]string{
 	TypeMessage:      "Message",
 	TypeMessagePart:  "MessagePart",
 	TypeHandshake:    "Handshake",
+	TypeRejectFull:   "Rejection-Full",
 }
 
 func (t ParcelType) String() string {

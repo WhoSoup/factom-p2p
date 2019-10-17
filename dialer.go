@@ -58,8 +58,11 @@ func (d *Dialer) CanDial(ep Endpoint) bool {
 
 // Dial an ip. Returns the active TCP connection or error if it failed to connect
 func (d *Dialer) Dial(ep Endpoint) (net.Conn, error) {
-
-	d.attemptsMtx.Lock()
+	d.attemptsMtx.Lock() // don't unlock with defer so we can dial concurrently
+	if t, ok := d.attempts[ep]; ok && time.Since(t) < d.interval {
+		d.attemptsMtx.Unlock()
+		return nil, fmt.Errorf("dialing too soon")
+	}
 	d.attempts[ep] = time.Now()
 	d.attemptsMtx.Unlock()
 

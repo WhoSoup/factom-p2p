@@ -61,6 +61,7 @@ func newController(network *Network) (*controller, error) {
 		"network": conf.Network})
 	c.logger.Debugf("Initializing Controller")
 
+	c.dial = make(chan Endpoint, 10)
 	c.dialer, err = NewDialer(conf.BindIP, conf.RedialInterval, conf.DialTimeout)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize dialer: %v", err)
@@ -191,61 +192,18 @@ func (c *controller) parseSpecial(raw string) []Endpoint {
 func (c *controller) Start() {
 	c.logger.Info("Starting the Controller")
 
-	go c.managePeers()
+	go c.run()
 	go c.manageData()
 	go c.manageOnline()
 	go c.listen()
-	//go c.fillLoop()
+	go c.catReplenish()
+	go c.dialLoop()
 }
 
 func (c *controller) bootStrapPeers() {
 	c.peers = NewPeerStore()
 	c.lastSeedRefresh = time.Now()
 	c.reseed()
-}
-
-// managePeers is responsible for everything that involves proactive management
-// not based on reactions. runs once a second
-func (c *controller) managePeers() {
-	c.logger.Debug("Start managePeers()")
-	defer c.logger.Debug("Stop managePeers()")
-
-	for {
-		if time.Since(c.lastPersist) > c.net.conf.PersistInterval {
-			c.lastPersist = time.Now()
-
-			// TODO persist peers instead
-			//err := c.endpoints.Persist(c.net.conf.PersistFile, c.net.conf.PersistLevel, c.net.conf.PersistMinimum, c.net.conf.PersistAgeLimit)
-			//if err != nil {
-			//	c.logger.WithError(err).Errorf("unable to persist peers")
-			//}
-		}
-
-		// CAT rounds
-		if time.Since(c.lastRound) > c.net.conf.RoundTime {
-			c.lastRound = time.Now()
-
-			c.catRound()
-		}
-
-		metrics := make(map[string]PeerMetrics)
-		for _, p := range c.peers.Slice() {
-			metrics[p.Hash] = p.GetMetrics()
-
-			if time.Since(p.LastSend) > c.net.conf.PingInterval {
-				ping := newParcel(TypePing, []byte("Ping"))
-				p.Send(ping)
-			}
-		}
-
-		if c.net.metricsHook != nil {
-			go c.net.metricsHook(metrics)
-		}
-
-		select {
-		case <-time.After(time.Second):
-		}
-	}
 }
 
 func (c *controller) manageData() {
@@ -290,7 +248,7 @@ func (c *controller) manageData() {
 					}
 					peer.peerShareDeliver = nil
 					//go c.processPeers(peer, parcel)
-				} else {
+				} else if peer.prot.Version() != "9" {
 					c.logger.Warnf("peer %s sent us an umprompted peer share", peer)
 				}
 			default:
