@@ -103,6 +103,11 @@ func (p *Peer) bootstrapProtocol(hs *Handshake, conn net.Conn, decoder *gob.Deco
 	return nil
 }
 
+func (p *Peer) RejectWithShare(ep Endpoint, con net.Conn, share []Endpoint) (bool, error) {
+
+	return true, nil
+}
+
 // StartWithHandshake performs a basic handshake maneouver to establish the validity
 // of the connection. Immediately sends a Peer Request upon connection and waits for the
 // response, which can be any parcel. The information in the header is verified, especially

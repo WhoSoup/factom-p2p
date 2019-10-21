@@ -18,8 +18,6 @@ type controller struct {
 	peerStatus chan peerStatus
 	peerData   chan peerParcel
 
-	dial chan Endpoint
-
 	peers    *PeerStore
 	dialer   *Dialer
 	listener *LimitedListener
@@ -31,9 +29,11 @@ type controller struct {
 	Bans    map[string]time.Time // (ip|ip:port) => time the ban ends
 	Special map[string]bool      // (ip|ip:port) => bool
 
-	lastPeerDial    time.Time
-	lastSeedRefresh time.Time
-	lastPersist     time.Time
+	shareListener map[*Peer]func(*Parcel)
+	shareMtx      sync.RWMutex
+
+	lastPeerDial time.Time
+	lastPersist  time.Time
 
 	counterMtx sync.RWMutex
 	online     int
@@ -61,7 +61,6 @@ func newController(network *Network) (*controller, error) {
 		"network": conf.Network})
 	c.logger.Debugf("Initializing Controller")
 
-	c.dial = make(chan Endpoint, 10)
 	c.dialer, err = NewDialer(conf.BindIP, conf.RedialInterval, conf.DialTimeout)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize dialer: %v", err)
@@ -73,10 +72,11 @@ func newController(network *Network) (*controller, error) {
 
 	c.Bans = make(map[string]time.Time)
 	c.Special = make(map[string]bool)
+	c.shareListener = make(map[*Peer]func(*Parcel))
 
 	// CAT
 	c.lastRound = time.Now()
-	c.seed = newSeed(c.net.conf.SeedURL)
+	c.seed = newSeed(c.net.conf.SeedURL, c.net.conf.PeerReseedInterval)
 
 	c.bootStrapPeers()
 	c.addSpecial(c.net.conf.Special)
@@ -197,13 +197,10 @@ func (c *controller) Start() {
 	go c.manageOnline()
 	go c.listen()
 	go c.catReplenish()
-	go c.dialLoop()
 }
 
 func (c *controller) bootStrapPeers() {
 	c.peers = NewPeerStore()
-	c.lastSeedRefresh = time.Now()
-	c.reseed()
 }
 
 func (c *controller) manageData() {
@@ -241,16 +238,11 @@ func (c *controller) manageData() {
 					c.logger.Warnf("peer %s sent a peer request too early", peer)
 				}
 			case TypePeerResponse:
-				if peer.peerShareDeliver != nil { // they have a special channel, aka we asked!!
-					select {
-					case peer.peerShareDeliver <- parcel: // nonblocking
-					default:
-					}
-					peer.peerShareDeliver = nil
-					//go c.processPeers(peer, parcel)
-				} else if peer.prot.Version() != "9" {
-					c.logger.Warnf("peer %s sent us an umprompted peer share", peer)
+				c.shareMtx.RLock()
+				if f, ok := c.shareListener[peer]; ok {
+					f(parcel)
 				}
+				c.shareMtx.RUnlock()
 			default:
 				//not handled
 			}

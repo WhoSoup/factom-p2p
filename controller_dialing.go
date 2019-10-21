@@ -8,33 +8,6 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-// CAT responsible for filling connections back up to conf.Target connections
-func (c *controller) dialLoop() {
-	c.logger.Debug("Start dialLoop()")
-	defer c.logger.Debug("Stop dialLoop()")
-
-	for {
-		select {
-		case ep := <-c.dial:
-
-			total := c.peers.Total()
-			if uint(total) >= c.net.conf.Target { // this will clear c.dial if target reached
-				continue
-			}
-
-			if c.peers.Connected(ep) {
-				continue
-			}
-
-			if uint(c.peers.Connections(ep.IP)) > c.net.conf.PeerIPLimitOutgoing {
-				continue
-			}
-
-			c.Dial(ep)
-		}
-	}
-}
-
 func (c *controller) manageOnline() {
 	c.logger.Debug("Start manageOnline()")
 	defer c.logger.Debug("Stop manageOnline()")
@@ -101,13 +74,17 @@ func (c *controller) handleIncoming(con net.Conn) {
 		return
 	}
 
+	peer := newPeer(c.net, c.peerStatus, c.peerData)
+
 	if err = c.allowIncoming(host); err != nil {
 		c.logger.WithError(err).Infof("Rejecting connection")
+
+		share := c.makePeerShare(ep)
+		peer.RejectWithShare(ep, con, share)
 		con.Close()
 		return
 	}
 
-	peer := newPeer(c.net, c.peerStatus, c.peerData)
 	if ok, err := peer.StartWithHandshake(ep, con, true); ok {
 		c.logger.Debugf("Incoming handshake success for peer %s, version %s", peer.Hash, peer.prot.Version())
 

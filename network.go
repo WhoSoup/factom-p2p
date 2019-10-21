@@ -141,7 +141,6 @@ func NewNetwork(conf Configuration) (*Network, error) {
 		n.conf.NodeID = StringToUint32(n.conf.NodeName)
 	}
 
-	n.seed = newSeed(n.conf.SeedURL)
 	n.controller, err = newController(n)
 	if err != nil {
 		return nil, err

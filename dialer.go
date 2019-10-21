@@ -53,7 +53,7 @@ func (d *Dialer) CanDial(ep Endpoint) bool {
 		return true
 	}
 
-	return true
+	return false
 }
 
 // Dial an ip. Returns the active TCP connection or error if it failed to connect

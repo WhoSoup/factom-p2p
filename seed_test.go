@@ -28,9 +28,9 @@ func Test_seed_retrieve(t *testing.T) {
 	testServer()
 
 	log.SetLevel(log.DebugLevel)
-	s := newSeed("http://localhost:8000/seed.txt")
-	s2 := newSeed("http://localhost:8000/seedBad.txt")
-	s3 := newSeed("http://localhost:8000/git.txt")
+	s := newSeed("http://localhost:8000/seed.txt", 0)
+	s2 := newSeed("http://localhost:8000/seedBad.txt", 0)
+	s3 := newSeed("http://localhost:8000/git.txt", 0)
 
 	tests := []struct {
 		name string

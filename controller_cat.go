@@ -1,6 +1,9 @@
 package p2p
 
-import "time"
+import (
+	"fmt"
+	"time"
+)
 
 // processPeers processes a peer share response
 func (c *controller) processPeers(peer *Peer, parcel *Parcel) []Endpoint {
@@ -51,16 +54,11 @@ func (c *controller) trimShare(list []Endpoint, shuffle bool) []Endpoint {
 	return list
 }
 
-// sharePeers creates a list of peers to share and sends it to peer
-func (c *controller) sharePeers(peer *Peer) {
-	if peer == nil {
-		return
-	}
-	// CAT select n random active peers
+func (c *controller) makePeerShare(ep Endpoint) []Endpoint {
 	var list []Endpoint
 	tmp := c.peers.Slice()
 	for _, i := range c.net.rng.Perm(len(tmp)) {
-		if tmp[i].Hash == peer.Hash {
+		if tmp[i].Endpoint == ep {
 			continue
 		}
 		list = append(list, tmp[i].Endpoint)
@@ -68,7 +66,16 @@ func (c *controller) sharePeers(peer *Peer) {
 			break
 		}
 	}
+	return list
+}
 
+// sharePeers creates a list of peers to share and sends it to peer
+func (c *controller) sharePeers(peer *Peer) {
+	if peer == nil {
+		return
+	}
+	// CAT select n random active peers
+	list := c.makePeerShare(peer.Endpoint)
 	payload, err := peer.prot.MakePeerShare(list)
 	if err != nil {
 		c.logger.WithError(err).Error("Failed to marshal peer list to json")
@@ -77,18 +84,6 @@ func (c *controller) sharePeers(peer *Peer) {
 	c.logger.Debugf("Sharing %d peers with %s", len(list), peer)
 	parcel := newParcel(TypePeerResponse, payload)
 	peer.Send(parcel)
-}
-
-func (c *controller) reseed() {
-	if uint(c.peers.Total()) < c.net.conf.MinReseed {
-		seeds := c.seed.retrieve()
-		for _, endpoint := range seeds {
-			select {
-			case c.dial <- endpoint:
-			default:
-			}
-		}
-	}
 }
 
 func (c *controller) catRound() {
@@ -114,48 +109,81 @@ func (c *controller) catRound() {
 	}
 }
 
+// this function is only intended to be run single-threaded inside the replenish loop
+func (c *controller) asyncPeerRequest(peer *Peer) ([]Endpoint, error) {
+	c.shareMtx.Lock()
+
+	var share []Endpoint
+	async := make(chan bool, 1)
+	f := func(parcel *Parcel) {
+		share = c.trimShare(c.processPeers(peer, parcel), true)
+		async <- true
+	}
+	c.shareListener[peer] = c.shareListener[peer]
+	c.shareMtx.Unlock()
+
+	req := newParcel(TypePeerRequest, []byte("Peer Request"))
+	defer func() {
+		c.shareMtx.Lock()
+		if ff, ok := c.shareListener[peer]; ok && &ff == &f {
+			delete(c.shareListener, peer)
+		} else {
+			fmt.Printf("DEBUG comparing f&ff: %v == %v\n", &f, &ff)
+		}
+		c.shareMtx.Unlock()
+	}()
+	peer.Send(req)
+
+	select {
+	case <-async:
+	case <-time.After(time.Second * 5):
+		return nil, fmt.Errorf("timeout")
+	}
+
+	return share, nil
+}
+
 // catReplenish is the loop that brings the node up to the desired number of connections.
 // Does nothing if we have enough peers, otherwise it sends a peer request to a random peer.
 func (c *controller) catReplenish() {
 	c.logger.Debug("Replenish loop started")
 	defer c.logger.Debug("Replenish loop ended")
 	for {
-
 		if uint(c.peers.Total()) >= c.net.conf.Target {
 			time.Sleep(time.Second * 5)
 			continue
 		}
 
+		var connect []Endpoint
+
 		if uint(c.peers.Total()) <= c.net.conf.MinReseed {
-			c.reseed()
+			seeds := c.seed.retrieve()
+			for _, s := range seeds {
+				if c.peers.Connected(s) {
+					continue
+				}
+				connect = append(connect, s)
+			}
 			time.Sleep(time.Second * 2)
 		}
 
-		p := c.randomPeer()
-
-		if p == nil { // no peers connected
-			time.Sleep(time.Second)
-			continue
-		}
-
-		async := make(chan *Parcel, 1)
-		p.peerShareDeliver = async
-
-		req := newParcel(TypePeerRequest, []byte("Peer Request"))
-		p.Send(req)
-
-		select {
-		case resp := <-async:
-			eps := c.trimShare(c.processPeers(p, resp), true)
-			for _, ep := range eps {
-				select {
-				case c.dial <- ep:
-				default:
+		if len(connect) == 0 {
+			if p := c.randomPeer(); p != nil {
+				eps, err := c.asyncPeerRequest(p)
+				if err == nil {
+					for _, ep := range eps {
+						if c.peers.Connected(ep) {
+							continue
+						}
+						connect = append(connect, ep)
+					}
 				}
 			}
-		case <-time.After(time.Second * 5):
 		}
-		p.peerShareDeliver = nil
+
+		for _, ep := range connect {
+			c.Dial(ep)
+		}
 	}
 }
 

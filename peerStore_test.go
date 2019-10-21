@@ -137,14 +137,6 @@ func TestPeerStore_Incoming(t *testing.T) {
 	}
 }
 
-func TestPeerStore_Unique(t *testing.T) {
-	ps, _ := testAll()
-
-	if ps.Unique() != unique {
-		t.Errorf("Unique reported the wrong count. is %d should be %d", ps.Unique(), unique)
-	}
-}
-
 func TestPeerStore_Get(t *testing.T) {
 	ps, peers := testAll()
 
@@ -192,7 +184,7 @@ func TestPeerStore_IsConnected(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := tt.ps.IsConnected(tt.args.addr); got != tt.want {
+			if got := tt.ps.Connections(tt.args.addr); (got > 0) != tt.want {
 				t.Errorf("PeerStore.IsConnected() = %v, want %v", got, tt.want)
 			}
 		})
