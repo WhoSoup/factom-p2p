@@ -6,7 +6,7 @@ import (
 )
 
 // processPeers processes a peer share response
-func (c *controller) processPeers(peer *Peer, parcel *Parcel) []Endpoint {
+func (c *controller) processPeerShare(peer *Peer, parcel *Parcel) []Endpoint {
 	list, err := peer.prot.ParsePeerShare(parcel.Payload)
 
 	if err != nil {
@@ -110,19 +110,21 @@ func (c *controller) catRound() {
 }
 
 // this function is only intended to be run single-threaded inside the replenish loop
+// it works by creating a closure that contains a channel specific for this call
+// the closure is called in controller.manageData
+// if there is no response from the peer after 5 seconds, it times out
 func (c *controller) asyncPeerRequest(peer *Peer) ([]Endpoint, error) {
 	c.shareMtx.Lock()
 
 	var share []Endpoint
 	async := make(chan bool, 1)
 	f := func(parcel *Parcel) {
-		share = c.trimShare(c.processPeers(peer, parcel), true)
+		share = c.trimShare(c.processPeerShare(peer, parcel), true)
 		async <- true
 	}
-	c.shareListener[peer] = c.shareListener[peer]
+	c.shareListener[peer] = f
 	c.shareMtx.Unlock()
 
-	req := newParcel(TypePeerRequest, []byte("Peer Request"))
 	defer func() {
 		c.shareMtx.Lock()
 		if ff, ok := c.shareListener[peer]; ok && &ff == &f {
@@ -132,6 +134,8 @@ func (c *controller) asyncPeerRequest(peer *Peer) ([]Endpoint, error) {
 		}
 		c.shareMtx.Unlock()
 	}()
+
+	req := newParcel(TypePeerRequest, []byte("Peer Request"))
 	peer.Send(req)
 
 	select {
@@ -150,7 +154,7 @@ func (c *controller) catReplenish() {
 	defer c.logger.Debug("Replenish loop ended")
 	for {
 		if uint(c.peers.Total()) >= c.net.conf.Target {
-			time.Sleep(time.Second * 5)
+			time.Sleep(time.Second)
 			continue
 		}
 
@@ -164,13 +168,12 @@ func (c *controller) catReplenish() {
 				}
 				connect = append(connect, s)
 			}
-			time.Sleep(time.Second * 2)
 		}
 
 		if len(connect) == 0 {
 			if p := c.randomPeer(); p != nil {
-				eps, err := c.asyncPeerRequest(p)
-				if err == nil {
+				// error just means timeout of async request
+				if eps, err := c.asyncPeerRequest(p); err == nil {
 					for _, ep := range eps {
 						if c.peers.Connected(ep) {
 							continue
