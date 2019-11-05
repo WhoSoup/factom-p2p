@@ -107,7 +107,11 @@ func (p *Peer) bootstrapProtocol(hs *Handshake, conn net.Conn, decoder *gob.Deco
 // them with alternative peers to connect to
 func (p *Peer) RejectWithShare(ep Endpoint, con net.Conn, share []Endpoint) error {
 	defer con.Close() // we're rejecting, so always close
-	payload, err := p.prot.MakePeerShare(share)
+
+	protV9 := new(ProtocolV9)
+	protV9.net = p.net
+
+	payload, err := protV9.MakePeerShare(share)
 	if err != nil {
 		return err
 	}
@@ -172,15 +176,6 @@ func (p *Peer) StartWithHandshake(ep Endpoint, con net.Conn, incoming bool) ([]E
 		return failfunc(err)
 	}
 
-	if reply.Header.Type == TypeRejectAlternative {
-		tmplogger.Debug("con rejected with alternatives")
-		share, err := p.prot.ParsePeerShare(reply.Payload)
-		if err != nil {
-			return nil, fmt.Errorf("unable to parse alternatives: %s", err.Error())
-		}
-		return share, fmt.Errorf("connection rejected")
-	}
-
 	// loopback detection
 	if string(reply.Payload) == string(nonce) {
 		return failfunc(fmt.Errorf("loopback"))
@@ -188,6 +183,15 @@ func (p *Peer) StartWithHandshake(ep Endpoint, con net.Conn, incoming bool) ([]E
 
 	if err = p.bootstrapProtocol(&reply, con, decoder, encoder); err != nil {
 		return failfunc(err)
+	}
+
+	if reply.Header.Type == TypeRejectAlternative {
+		tmplogger.Debug("con rejected with alternatives")
+		share, err := p.prot.ParsePeerShare(reply.Payload)
+		if err != nil {
+			return nil, fmt.Errorf("unable to parse alternatives: %s", err.Error())
+		}
+		return share, fmt.Errorf("connection rejected")
 	}
 
 	// initialize channels

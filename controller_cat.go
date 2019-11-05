@@ -127,11 +127,7 @@ func (c *controller) asyncPeerRequest(peer *Peer) ([]Endpoint, error) {
 
 	defer func() {
 		c.shareMtx.Lock()
-		if ff, ok := c.shareListener[peer]; ok && &ff == &f {
-			delete(c.shareListener, peer)
-		} else {
-			fmt.Printf("DEBUG comparing f&ff: %v == %v\n", &f, &ff)
-		}
+		delete(c.shareListener, peer)
 		c.shareMtx.Unlock()
 	}()
 
