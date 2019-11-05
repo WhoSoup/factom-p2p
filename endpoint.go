@@ -48,3 +48,11 @@ func ParseEndpoint(s string) (Endpoint, error) {
 func (ep Endpoint) String() string {
 	return fmt.Sprintf("%s:%s", ep.IP, ep.Port)
 }
+
+// Verify checks if the data is usable. Does not check if the remote address works
+func (ep Endpoint) Valid() bool {
+	if _, err := strconv.Atoi(ep.Port); err == nil {
+		return ep.Port != "0" && ep.IP != ""
+	}
+	return false
+}

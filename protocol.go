@@ -17,6 +17,6 @@ type Protocol interface {
 	Send(p *Parcel) error
 	Receive() (*Parcel, error)
 	MakePeerShare([]Endpoint) ([]byte, error)
-	ParsePeerShare([]byte) ([]PeerShare, error)
+	ParsePeerShare([]byte) ([]Endpoint, error)
 	Version() string
 }

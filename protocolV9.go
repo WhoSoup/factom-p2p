@@ -161,7 +161,7 @@ func (v9 *ProtocolV9) MakePeerShare(ps []Endpoint) ([]byte, error) {
 }
 
 // ParsePeerShare unserializes the json V9Share
-func (v9 *ProtocolV9) ParsePeerShare(payload []byte) ([]PeerShare, error) {
+func (v9 *ProtocolV9) ParsePeerShare(payload []byte) ([]Endpoint, error) {
 	var list []V9Share
 
 	err := json.Unmarshal(payload, &list)
@@ -169,9 +169,9 @@ func (v9 *ProtocolV9) ParsePeerShare(payload []byte) ([]PeerShare, error) {
 		return nil, err
 	}
 
-	var conv []PeerShare
+	var conv []Endpoint
 	for _, s := range list {
-		conv = append(conv, PeerShare{
+		conv = append(conv, Endpoint{
 			IP:   s.Address,
 			Port: s.Port,
 		})

@@ -1,8 +1,6 @@
 package p2p
 
 import (
-	"fmt"
-	"strconv"
 	"time"
 )
 
@@ -34,6 +32,7 @@ type peerParcel struct {
 	parcel *Parcel
 }
 
+/*
 // PeerShare is the data being shared with other peers
 type PeerShare struct {
 	IP   string // Must be in form of x.x.x.x
@@ -51,7 +50,7 @@ func (ps PeerShare) Verify() bool {
 		return ps.Port != "0" && ps.IP != ""
 	}
 	return false
-}
+}*/
 
 // PeerDistance is a sorting metric for sorting peers by location relative to a specific peer
 /*

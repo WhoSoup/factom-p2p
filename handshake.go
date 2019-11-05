@@ -43,7 +43,7 @@ func (h *Handshake) Valid(conf *Configuration) error {
 	return nil
 }
 
-func newHandshake(conf *Configuration, nonce []byte) *Handshake {
+func newHandshake(conf *Configuration, payload []byte) *Handshake {
 	hs := new(Handshake)
 	hs.Header = V9Header{
 		Network:  conf.Network,
@@ -54,7 +54,7 @@ func newHandshake(conf *Configuration, nonce []byte) *Handshake {
 		AppHash:  "NetworkMessage",
 		AppType:  "Network",
 	}
-	hs.SetPayload(nonce)
+	hs.SetPayload(payload)
 	return hs
 }
 

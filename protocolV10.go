@@ -74,7 +74,7 @@ func (v10 *ProtocolV10) Receive() (*Parcel, error) {
 }
 
 // V10Share is an alias of PeerShare
-type V10Share PeerShare
+type V10Share Endpoint
 
 // MakePeerShare serializes a list of ips via json
 func (v10 *ProtocolV10) MakePeerShare(share []Endpoint) ([]byte, error) {
@@ -86,8 +86,8 @@ func (v10 *ProtocolV10) MakePeerShare(share []Endpoint) ([]byte, error) {
 }
 
 // ParsePeerShare parses a peer share payload
-func (v10 *ProtocolV10) ParsePeerShare(payload []byte) ([]PeerShare, error) {
-	var share []PeerShare
+func (v10 *ProtocolV10) ParsePeerShare(payload []byte) ([]Endpoint, error) {
+	var share []Endpoint
 	err := json.Unmarshal(payload, &share)
 	return share, err
 }

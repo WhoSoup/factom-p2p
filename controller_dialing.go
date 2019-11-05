@@ -76,6 +76,7 @@ func (c *controller) handleIncoming(con net.Conn) {
 
 	peer := newPeer(c.net, c.peerStatus, c.peerData)
 
+	// if we're full, give them alternatives
 	if err = c.allowIncoming(host); err != nil {
 		c.logger.WithError(err).Infof("Rejecting connection")
 
@@ -85,20 +86,22 @@ func (c *controller) handleIncoming(con net.Conn) {
 		return
 	}
 
-	if ok, err := peer.StartWithHandshake(ep, con, true); ok {
-		c.logger.Debugf("Incoming handshake success for peer %s, version %s", peer.Hash, peer.prot.Version())
-
-		if c.isBannedEndpoint(peer.Endpoint) {
-			c.logger.Debugf("Peer %s is banned, disconnecting", peer.Hash)
-			return
-		}
-	} else {
+	// we are never expecting a reject-alternate for incoming connections
+	if _, err := peer.StartWithHandshake(ep, con, true); err != nil {
 		c.logger.WithError(err).Debugf("Handshake failed for address %s, stopping", ep)
+		peer.Stop()
+		return
+	}
+
+	c.logger.Debugf("Incoming handshake success for peer %s, version %s", peer.Hash, peer.prot.Version())
+
+	if c.isBannedEndpoint(peer.Endpoint) {
+		c.logger.Debugf("Peer %s is banned, disconnecting", peer.Hash)
 		peer.Stop()
 	}
 }
 
-func (c *controller) Dial(ep Endpoint) {
+func (c *controller) Dial(ep Endpoint) (bool, []Endpoint) {
 	if c.net.prom != nil {
 		c.net.prom.Connecting.Inc()
 		defer c.net.prom.Connecting.Dec()
@@ -114,20 +117,26 @@ func (c *controller) Dial(ep Endpoint) {
 	con, err := c.dialer.Dial(ep)
 	if err != nil {
 		c.logger.WithError(err).Infof("Failed to dial to %s", ep)
-		return
+		return false, nil
 	}
 
 	peer := newPeer(c.net, c.peerStatus, c.peerData)
-	if ok, err := peer.StartWithHandshake(ep, con, false); ok {
-		c.logger.Debugf("Handshake success for peer %s, version %s", peer.Hash, peer.prot.Version())
-	} else if err.Error() == "loopback" {
-		c.logger.Debugf("Banning ourselves for 50 years")
-		c.banEndpoint(ep, time.Hour*24*365*50) // ban for 50 years
+	if share, err := peer.StartWithHandshake(ep, con, false); err != nil {
+		if err.Error() == "loopback" {
+			c.logger.Debugf("Banning ourselves for 50 years")
+			c.banEndpoint(ep, time.Hour*24*365*50) // ban for 50 years
+		} else if len(share) > 0 {
+			c.logger.Debugf("Connection declined with alternatives from %s", ep)
+			return false, share
+		} else {
+			c.logger.WithError(err).Debugf("Handshake fail with %s", ep)
+		}
 		peer.Stop()
-	} else {
-		c.logger.WithError(err).Debugf("Handshake fail with %s", ep)
-		peer.Stop()
+		return false, nil
 	}
+
+	c.logger.Debugf("Handshake success for peer %s, version %s", peer.Hash, peer.prot.Version())
+	return true, nil
 }
 
 // listen listens for incoming TCP connections and passes them off to handshake maneuver

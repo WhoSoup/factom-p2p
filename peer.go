@@ -103,9 +103,27 @@ func (p *Peer) bootstrapProtocol(hs *Handshake, conn net.Conn, decoder *gob.Deco
 	return nil
 }
 
-func (p *Peer) RejectWithShare(ep Endpoint, con net.Conn, share []Endpoint) (bool, error) {
+// RejectWithShare rejects an incoming connection by sending them a handshake that provides
+// them with alternative peers to connect to
+func (p *Peer) RejectWithShare(ep Endpoint, con net.Conn, share []Endpoint) error {
+	defer con.Close() // we're rejecting, so always close
+	payload, err := p.prot.MakePeerShare(share)
+	if err != nil {
+		return err
+	}
 
-	return true, nil
+	handshake := newHandshake(p.net.conf, payload)
+	handshake.Header.Type = TypeRejectAlternative
+
+	// only push the handshake, don't care what they send us
+	encoder := gob.NewEncoder(con)
+	con.SetWriteDeadline(time.Now().Add(p.net.conf.HandshakeTimeout))
+	err = encoder.Encode(handshake)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
 // StartWithHandshake performs a basic handshake maneouver to establish the validity
@@ -116,7 +134,10 @@ func (p *Peer) RejectWithShare(ep Endpoint, con net.Conn, share []Endpoint) (boo
 // The handshake ensures that ALL peers have a valid Port field to start with.
 // If there is no reply within the specified HandshakeTimeout config setting, the process
 // fails
-func (p *Peer) StartWithHandshake(ep Endpoint, con net.Conn, incoming bool) (bool, error) {
+//
+// For outgoing connections, it is possible the endpoint will reject due to being full, in which
+// case this function returns an error AND a list of alternate endpoints
+func (p *Peer) StartWithHandshake(ep Endpoint, con net.Conn, incoming bool) ([]Endpoint, error) {
 	tmplogger := p.logger.WithField("addr", ep.IP)
 	timeout := time.Now().Add(p.net.conf.HandshakeTimeout)
 
@@ -130,10 +151,10 @@ func (p *Peer) StartWithHandshake(ep Endpoint, con net.Conn, incoming bool) (boo
 	//fmt.Printf("@@@ %+v %s\n", handshake.Header, con.RemoteAddr())
 	err := encoder.Encode(handshake)
 
-	failfunc := func(err error) (bool, error) {
+	failfunc := func(err error) ([]Endpoint, error) {
 		tmplogger.WithError(err).Debug("Handshake failed")
 		con.Close()
-		return false, err
+		return nil, err
 	}
 
 	if err != nil {
@@ -149,6 +170,15 @@ func (p *Peer) StartWithHandshake(ep Endpoint, con net.Conn, incoming bool) (boo
 	// check basic structure
 	if err = reply.Valid(p.net.conf); err != nil {
 		return failfunc(err)
+	}
+
+	if reply.Header.Type == TypeRejectAlternative {
+		tmplogger.Debug("con rejected with alternatives")
+		share, err := p.prot.ParsePeerShare(reply.Payload)
+		if err != nil {
+			return nil, fmt.Errorf("unable to parse alternatives: %s", err.Error())
+		}
+		return share, fmt.Errorf("connection rejected")
 	}
 
 	// loopback detection
@@ -182,7 +212,7 @@ func (p *Peer) StartWithHandshake(ep Endpoint, con net.Conn, incoming bool) (boo
 	go p.sendLoop()
 	go p.readLoop()
 
-	return true, nil
+	return nil, nil
 }
 
 // Stop disconnects the peer from its active connection

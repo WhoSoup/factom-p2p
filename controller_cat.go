@@ -17,7 +17,7 @@ func (c *controller) processPeerShare(peer *Peer, parcel *Parcel) []Endpoint {
 
 	// cycles through list twice but we don't want to add any if one of them is bad
 	for _, p := range list {
-		if !p.Verify() {
+		if !p.Valid() {
 			c.logger.Infof("Peer %s tried to send us peer share with bad data: %s", peer, p)
 			return nil
 		}
@@ -184,8 +184,22 @@ func (c *controller) catReplenish() {
 			}
 		}
 
-		for _, ep := range connect {
-			c.Dial(ep)
+		var ep Endpoint
+		var attempts int
+		for len(connect) > 0 && attempts < 16 {
+			attempts++
+			ep = connect[0]
+			connect = connect[1:]
+
+			if c.isBannedEndpoint(ep) || !c.dialer.CanDial(ep) {
+				continue
+			}
+
+			if ok, alts := c.Dial(ep); !ok {
+				for _, alt := range alts {
+					connect = append(connect, alt)
+				}
+			}
 		}
 	}
 }
