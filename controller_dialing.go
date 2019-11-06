@@ -79,8 +79,7 @@ func (c *controller) handleIncoming(con net.Conn) {
 	// if we're full, give them alternatives
 	if err = c.allowIncoming(host); err != nil {
 		c.logger.WithError(err).Infof("Rejecting connection")
-
-		share := c.makePeerShare(ep)
+		share := c.makePeerShare(Endpoint{}) // they're not connected to us, so we don't have them in our system
 		peer.RejectWithShare(ep, con, share)
 		con.Close()
 		return

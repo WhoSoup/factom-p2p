@@ -57,8 +57,10 @@ func (c *controller) trimShare(list []Endpoint, shuffle bool) []Endpoint {
 func (c *controller) makePeerShare(ep Endpoint) []Endpoint {
 	var list []Endpoint
 	tmp := c.peers.Slice()
-	for _, i := range c.net.rng.Perm(len(tmp)) {
-		if tmp[i].Endpoint == ep {
+	var i int
+
+	for _, i = range c.net.rng.Perm(len(tmp)) {
+		if tmp[i].Endpoint.String() == ep.String() {
 			continue
 		}
 		list = append(list, tmp[i].Endpoint)
@@ -90,7 +92,8 @@ func (c *controller) catRound() {
 	c.logger.Debug("Cat Round")
 	c.rounds++
 	peers := c.peers.Slice()
-	toDrop := len(peers) - int(c.net.conf.Drop)
+
+	toDrop := len(peers) - int(c.net.conf.Drop) // current - target amount
 
 	if toDrop > 0 {
 		perm := c.net.rng.Perm(len(peers))
@@ -122,12 +125,12 @@ func (c *controller) asyncPeerRequest(peer *Peer) ([]Endpoint, error) {
 		share = c.trimShare(c.processPeerShare(peer, parcel), true)
 		async <- true
 	}
-	c.shareListener[peer] = f
+	c.shareListener[peer.NodeID] = f
 	c.shareMtx.Unlock()
 
 	defer func() {
 		c.shareMtx.Lock()
-		delete(c.shareListener, peer)
+		delete(c.shareListener, peer.NodeID)
 		c.shareMtx.Unlock()
 	}()
 
@@ -167,8 +170,13 @@ func (c *controller) catReplenish() {
 		}
 
 		if len(connect) == 0 {
-			if p := c.randomPeer(); p != nil {
+			rand := c.randomPeersConditional(1, func(p *Peer) bool {
+				return time.Since(p.lastPeerSend) >= c.net.conf.PeerRequestInterval
+			})
+			if len(rand) > 0 {
+				p := rand[0]
 				// error just means timeout of async request
+				p.lastPeerSend = time.Now()
 				if eps, err := c.asyncPeerRequest(p); err == nil {
 					for _, ep := range eps {
 						if c.peers.Connected(ep) {
@@ -183,19 +191,22 @@ func (c *controller) catReplenish() {
 		var ep Endpoint
 		var attempts int
 		for len(connect) > 0 && attempts < 16 {
-			attempts++
 			ep = connect[0]
 			connect = connect[1:]
-
 			if c.isBannedEndpoint(ep) || !c.dialer.CanDial(ep) {
 				continue
 			}
 
+			attempts++
 			if ok, alts := c.Dial(ep); !ok {
 				for _, alt := range alts {
 					connect = append(connect, alt)
 				}
 			}
+		}
+
+		if attempts == 0 {
+			time.Sleep(time.Second)
 		}
 	}
 }

@@ -30,6 +30,9 @@ type Network struct {
 	rng        *rand.Rand
 	instanceID uint64
 	logger     *log.Entry
+
+	globalCloser chan interface{}
+	fatalError   chan error
 }
 
 var packageLogger = log.WithField("package", "p2p")
@@ -37,8 +40,8 @@ var packageLogger = log.WithField("package", "p2p")
 // DebugMessage is temporary
 func (n *Network) DebugMessage() (string, string, int) {
 	hv := ""
-	r := fmt.Sprintf("\nONLINE:\n")
 	s := n.controller.peers.Slice()
+	r := fmt.Sprintf("\nONLINE: (%d/%d/%d)\n", len(s), n.conf.Target, n.conf.Max)
 	count := len(s)
 	for _, p := range s {
 
@@ -124,6 +127,7 @@ func NewNetwork(conf Configuration) (*Network, error) {
 	var err error
 	myconf := conf // copy
 	n := new(Network)
+	n.fatalError = make(chan error)
 
 	n.logger = packageLogger.WithField("subpackage", "Network").WithField("node", conf.NodeName)
 	n.conf = &myconf
@@ -157,11 +161,12 @@ func (n *Network) SetMetricsHook(f func(pm map[string]PeerMetrics)) {
 	n.metricsHook = f
 }
 
-// Start starts the network.
+// Run starts the network.
 // Listens to incoming connections on the specified port
 // and connects to other peers
-func (n *Network) Start() {
-	n.logger.Infof("Starting the P2P Network with configuration %+v", n.conf)
+func (n *Network) Run() {
+	n.logger.Infof("Starting a P2P Network with configuration %+v", n.conf)
+
 	n.controller.Start() // this will get peer manager ready to handle incoming connections
 	DebugServer(n)
 	go n.route()
@@ -199,6 +204,7 @@ func (n *Network) Total() int {
 	return n.controller.peers.Total()
 }
 
+// Rounds returns the total number of CAT rounds that have occurred
 func (n *Network) Rounds() int {
 	return n.controller.rounds
 }

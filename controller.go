@@ -29,7 +29,7 @@ type controller struct {
 	Bans    map[string]time.Time // (ip|ip:port) => time the ban ends
 	Special map[string]bool      // (ip|ip:port) => bool
 
-	shareListener map[*Peer]func(*Parcel)
+	shareListener map[uint32]func(*Parcel)
 	shareMtx      sync.RWMutex
 
 	lastPeerDial time.Time
@@ -72,7 +72,7 @@ func newController(network *Network) (*controller, error) {
 
 	c.Bans = make(map[string]time.Time)
 	c.Special = make(map[string]bool)
-	c.shareListener = make(map[*Peer]func(*Parcel))
+	c.shareListener = make(map[uint32]func(*Parcel))
 
 	// CAT
 	c.lastRound = time.Now()
@@ -239,7 +239,7 @@ func (c *controller) manageData() {
 				}
 			case TypePeerResponse:
 				c.shareMtx.RLock()
-				if f, ok := c.shareListener[peer]; ok {
+				if f, ok := c.shareListener[peer.NodeID]; ok {
 					f(parcel)
 				}
 				c.shareMtx.RUnlock()
@@ -284,6 +284,9 @@ func (c *controller) ToPeer(hash string, parcel *Parcel) {
 
 func (c *controller) randomPeers(count uint) []*Peer {
 	peers := c.peers.Slice()
+	if len(peers) == 0 {
+		return nil
+	}
 	// not enough to randomize
 	if uint(len(peers)) <= count {
 		return peers
@@ -294,6 +297,34 @@ func (c *controller) randomPeers(count uint) []*Peer {
 	})
 
 	return peers[:count]
+}
+
+func (c *controller) randomPeersConditional(count uint, condition func(*Peer) bool) []*Peer {
+	peers := c.peers.Slice()
+	if len(peers) == 0 {
+		return nil
+	}
+
+	filtered := make([]*Peer, len(peers))
+	i := 0
+	for _, p := range peers {
+		if condition(p) {
+			filtered[i] = p
+			i++
+		}
+	}
+	filtered = filtered[:i]
+
+	// not enough to randomize
+	if uint(len(filtered)) <= count {
+		return filtered
+	}
+
+	c.net.rng.Shuffle(len(filtered), func(i, j int) {
+		filtered[i], filtered[j] = filtered[j], filtered[i]
+	})
+
+	return filtered[:count]
 }
 
 func (c *controller) randomPeer() *Peer {

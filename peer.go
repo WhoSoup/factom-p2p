@@ -153,7 +153,6 @@ func (p *Peer) StartWithHandshake(ep Endpoint, con net.Conn, incoming bool) ([]E
 	con.SetWriteDeadline(timeout)
 	con.SetReadDeadline(timeout)
 	//fmt.Printf("@@@ %+v %s\n", handshake.Header, con.RemoteAddr())
-	err := encoder.Encode(handshake)
 
 	failfunc := func(err error) ([]Endpoint, error) {
 		tmplogger.WithError(err).Debug("Handshake failed")
@@ -161,6 +160,7 @@ func (p *Peer) StartWithHandshake(ep Endpoint, con net.Conn, incoming bool) ([]E
 		return nil, err
 	}
 
+	err := encoder.Encode(handshake)
 	if err != nil {
 		return failfunc(fmt.Errorf("Failed to send handshake to incoming connection"))
 	}
@@ -186,6 +186,7 @@ func (p *Peer) StartWithHandshake(ep Endpoint, con net.Conn, incoming bool) ([]E
 	}
 
 	if reply.Header.Type == TypeRejectAlternative {
+		con.Close()
 		tmplogger.Debug("con rejected with alternatives")
 		share, err := p.prot.ParsePeerShare(reply.Payload)
 		if err != nil {
