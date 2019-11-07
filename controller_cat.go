@@ -151,13 +151,13 @@ func (c *controller) asyncPeerRequest(peer *Peer) ([]Endpoint, error) {
 func (c *controller) catReplenish() {
 	c.logger.Debug("Replenish loop started")
 	defer c.logger.Debug("Replenish loop ended")
+
 	for {
+		var connect []Endpoint
 		if uint(c.peers.Total()) >= c.net.conf.Target {
 			time.Sleep(time.Second)
 			continue
 		}
-
-		var connect []Endpoint
 
 		if uint(c.peers.Total()) <= c.net.conf.MinReseed {
 			seeds := c.seed.retrieve()
@@ -203,7 +203,13 @@ func (c *controller) catReplenish() {
 					connect = append(connect, alt)
 				}
 			}
+
+			if uint(c.peers.Total()) >= c.net.conf.Target {
+				break
+			}
 		}
+
+		connect = nil
 
 		if attempts == 0 {
 			time.Sleep(time.Second)

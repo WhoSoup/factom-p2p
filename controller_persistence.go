@@ -12,6 +12,19 @@ type Persist struct {
 	Bootstrap []Endpoint           `json:"bootstrap"`
 }
 
+func (c *controller) loadPersist() (*Persist, error) {
+	persistData, err := c.loadPersistFile()
+	if err != nil {
+		return nil, err
+	}
+
+	if len(persistData) > 0 {
+		return c.ParsePersist(persistData)
+	}
+
+	return nil, nil
+}
+
 // wrappers for reading and writing the peer file
 func (c *controller) writePersistFile(data []byte) error {
 	if c.net.conf.PersistFile == "" {

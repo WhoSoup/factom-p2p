@@ -25,9 +25,11 @@ type controller struct {
 	specialMtx   sync.RWMutex
 	specialCount int
 
-	banMtx  sync.RWMutex
-	Bans    map[string]time.Time // (ip|ip:port) => time the ban ends
-	Special map[string]bool      // (ip|ip:port) => bool
+	banMtx           sync.RWMutex
+	Bans             map[string]time.Time // (ip|ip:port) => time the ban ends
+	Special          map[string]bool      // (ip|ip:port) => bool
+	SpecialEndpoints []Endpoint
+	Bootstrap        []Endpoint
 
 	shareListener map[uint32]func(*Parcel)
 	shareMtx      sync.RWMutex
@@ -70,7 +72,6 @@ func newController(network *Network) (*controller, error) {
 	c.peerStatus = make(chan peerStatus, 10) // TODO reconsider this value
 	c.peerData = make(chan peerParcel, c.net.conf.ChannelCapacity)
 
-	c.Bans = make(map[string]time.Time)
 	c.Special = make(map[string]bool)
 	c.shareListener = make(map[uint32]func(*Parcel))
 
@@ -78,8 +79,17 @@ func newController(network *Network) (*controller, error) {
 	c.lastRound = time.Now()
 	c.seed = newSeed(c.net.conf.SeedURL, c.net.conf.PeerReseedInterval)
 
-	c.bootStrapPeers()
+	c.peers = NewPeerStore()
 	c.addSpecial(c.net.conf.Special)
+
+	if persist, err := c.loadPersist(); err != nil {
+		c.logger.Infof("no valid bootstrap file found")
+		c.Bans = make(map[string]time.Time)
+		c.Bootstrap = nil
+	} else {
+		c.Bans = persist.Bans
+		c.Bootstrap = persist.Bootstrap
+	}
 
 	if c.net.prom != nil {
 		c.net.prom.KnownPeers.Set(float64(c.peers.Total()))
@@ -197,10 +207,6 @@ func (c *controller) Start() {
 	go c.manageOnline()
 	go c.listen()
 	go c.catReplenish()
-}
-
-func (c *controller) bootStrapPeers() {
-	c.peers = NewPeerStore()
 }
 
 func (c *controller) manageData() {

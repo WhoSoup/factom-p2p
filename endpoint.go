@@ -45,7 +45,10 @@ func ParseEndpoint(s string) (Endpoint, error) {
 	return NewEndpoint(ip, port)
 }
 
-func (ep Endpoint) String() string {
+func (ep *Endpoint) String() string {
+	if ep == nil {
+		return ""
+	}
 	return fmt.Sprintf("%s:%s", ep.IP, ep.Port)
 }
 
