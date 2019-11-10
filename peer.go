@@ -91,9 +91,10 @@ func (p *Peer) bootstrapProtocol(hs *Handshake, conn net.Conn, decoder *gob.Deco
 		hsParcel.Address = hs.Header.TargetPeer
 		hsParcel.Payload = hs.Payload
 		hsParcel.Type = TypePeerRequest
-		if !p.deliver(hsParcel) {
-			return fmt.Errorf("unable to deliver peer request to controller")
-		}
+		/*	TODO at this point, peer is not fully initialized
+			if !p.deliver(hsParcel) {
+				return fmt.Errorf("unable to deliver peer request to controller")
+			}*/
 	case 10:
 		v10 := new(ProtocolV10)
 		v10.init(p, conn, decoder, encoder)
