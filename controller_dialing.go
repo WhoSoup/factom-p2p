@@ -1,6 +1,8 @@
 package p2p
 
 import (
+	"encoding/gob"
+	"encoding/json"
 	"fmt"
 	"net"
 	"time"
@@ -74,17 +76,15 @@ func (c *controller) handleIncoming(con net.Conn) {
 		return
 	}
 
-	peer := newPeer(c.net, c.peerStatus, c.peerData)
-
 	// if we're full, give them alternatives
 	if err = c.allowIncoming(host); err != nil {
 		c.logger.WithError(err).Infof("Rejecting connection")
-		share := c.makePeerShare(Endpoint{}) // they're not connected to us, so we don't have them in our system
-		peer.RejectWithShare(ep, con, share)
-		con.Close()
+		share := c.makePeerShare(ep)  // they're not connected to us, so we don't have them in our system
+		c.RejectWithShare(con, share) // closes con
 		return
 	}
 
+	peer := newPeer(c.net, c.peerStatus, c.peerData)
 	// we are never expecting a reject-alternate for incoming connections
 	if _, err := peer.StartWithHandshake(ep, con, true); err != nil {
 		c.logger.WithError(err).Debugf("Handshake failed for address %s, stopping", ep)
@@ -98,6 +98,30 @@ func (c *controller) handleIncoming(con net.Conn) {
 		c.logger.Debugf("Peer %s is banned, disconnecting", peer.Hash)
 		peer.Stop()
 	}
+}
+
+// RejectWithShare rejects an incoming connection by sending them a handshake that provides
+// them with alternative peers to connect to
+func (c *controller) RejectWithShare(con net.Conn, share []Endpoint) error {
+	defer con.Close() // we're rejecting, so always close
+
+	payload, err := json.Marshal(share)
+	if err != nil {
+		return err
+	}
+
+	handshake := newHandshake(c.net.conf, payload)
+	handshake.Header.Type = TypeRejectAlternative
+
+	// only push the handshake, don't care what they send us
+	encoder := gob.NewEncoder(con)
+	con.SetWriteDeadline(time.Now().Add(c.net.conf.HandshakeTimeout))
+	err = encoder.Encode(handshake)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func (c *controller) Dial(ep Endpoint) (bool, []Endpoint) {

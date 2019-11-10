@@ -239,7 +239,8 @@ func (c *controller) manageData() {
 			case TypePeerRequest:
 				if time.Since(peer.lastPeerSend) >= c.net.conf.PeerRequestInterval {
 					peer.lastPeerSend = time.Now()
-					go c.sharePeers(peer)
+					share := c.makePeerShare(peer.Endpoint)
+					go c.sharePeers(peer, share)
 				} else {
 					c.logger.Warnf("peer %s sent a peer request too early", peer)
 				}
@@ -311,18 +312,14 @@ func (c *controller) randomPeersConditional(count uint, condition func(*Peer) bo
 		return nil
 	}
 
-	filtered := make([]*Peer, len(peers))
-	i := 0
+	filtered := make([]*Peer, 0)
 	for _, p := range peers {
 		if condition(p) {
-			filtered[i] = p
-			i++
+			filtered = append(filtered, p)
 		}
 	}
-	filtered = filtered[:i]
-
 	// not enough to randomize
-	if uint(len(filtered)) <= count {
+	if len(filtered) <= int(count) {
 		return filtered
 	}
 

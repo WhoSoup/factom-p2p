@@ -2,6 +2,7 @@ package p2p
 
 import (
 	"encoding/gob"
+	"encoding/json"
 	"fmt"
 	"net"
 	"sync"
@@ -103,33 +104,6 @@ func (p *Peer) bootstrapProtocol(hs *Handshake, conn net.Conn, decoder *gob.Deco
 	return nil
 }
 
-// RejectWithShare rejects an incoming connection by sending them a handshake that provides
-// them with alternative peers to connect to
-func (p *Peer) RejectWithShare(ep Endpoint, con net.Conn, share []Endpoint) error {
-	defer con.Close() // we're rejecting, so always close
-
-	protV9 := new(ProtocolV9)
-	protV9.net = p.net
-
-	payload, err := protV9.MakePeerShare(share)
-	if err != nil {
-		return err
-	}
-
-	handshake := newHandshake(p.net.conf, payload)
-	handshake.Header.Type = TypeRejectAlternative
-
-	// only push the handshake, don't care what they send us
-	encoder := gob.NewEncoder(con)
-	con.SetWriteDeadline(time.Now().Add(p.net.conf.HandshakeTimeout))
-	err = encoder.Encode(handshake)
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
 // StartWithHandshake performs a basic handshake maneouver to establish the validity
 // of the connection. Immediately sends a Peer Request upon connection and waits for the
 // response, which can be any parcel. The information in the header is verified, especially
@@ -188,11 +162,19 @@ func (p *Peer) StartWithHandshake(ep Endpoint, con net.Conn, incoming bool) ([]E
 	if reply.Header.Type == TypeRejectAlternative {
 		con.Close()
 		tmplogger.Debug("con rejected with alternatives")
-		share, err := p.prot.ParsePeerShare(reply.Payload)
+		var rawShare []Endpoint
+		err := json.Unmarshal(reply.Payload, &rawShare)
 		if err != nil {
 			return nil, fmt.Errorf("unable to parse alternatives: %s", err.Error())
 		}
-		return share, fmt.Errorf("connection rejected")
+
+		filtered := make([]Endpoint, 0, len(rawShare))
+		for _, ep := range rawShare {
+			if ep.Valid() {
+				filtered = append(filtered, ep)
+			}
+		}
+		return filtered, fmt.Errorf("connection rejected")
 	}
 
 	// initialize channels

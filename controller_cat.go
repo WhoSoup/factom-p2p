@@ -2,6 +2,7 @@ package p2p
 
 import (
 	"fmt"
+	"os"
 	"time"
 )
 
@@ -59,8 +60,9 @@ func (c *controller) makePeerShare(ep Endpoint) []Endpoint {
 	tmp := c.peers.Slice()
 	var i int
 
+	cmp := ep.String()
 	for _, i = range c.net.rng.Perm(len(tmp)) {
-		if tmp[i].Endpoint.String() == ep.String() {
+		if tmp[i].Endpoint.String() == cmp {
 			continue
 		}
 		list = append(list, tmp[i].Endpoint)
@@ -72,12 +74,11 @@ func (c *controller) makePeerShare(ep Endpoint) []Endpoint {
 }
 
 // sharePeers creates a list of peers to share and sends it to peer
-func (c *controller) sharePeers(peer *Peer) {
+func (c *controller) sharePeers(peer *Peer, list []Endpoint) {
 	if peer == nil {
 		return
 	}
 	// CAT select n random active peers
-	list := c.makePeerShare(peer.Endpoint)
 	payload, err := peer.prot.MakePeerShare(list)
 	if err != nil {
 		c.logger.WithError(err).Error("Failed to marshal peer list to json")
@@ -193,6 +194,12 @@ func (c *controller) catReplenish() {
 		for len(connect) > 0 && attempts < 16 {
 			ep = connect[0]
 			connect = connect[1:]
+
+			if !ep.Valid() {
+				fmt.Println("invalid endpoint", ep)
+				os.Exit(0)
+			}
+
 			if c.isBannedEndpoint(ep) || !c.dialer.CanDial(ep) {
 				continue
 			}
