@@ -153,6 +153,10 @@ func (c *controller) catReplenish() {
 	c.logger.Debug("Replenish loop started")
 	defer c.logger.Debug("Replenish loop ended")
 
+	deny := func(ep Endpoint) bool {
+		return c.peers.Connected(ep) || c.isBannedEndpoint(ep) || !c.dialer.CanDial(ep)
+	}
+
 	for {
 		var connect []Endpoint
 		if uint(c.peers.Total()) >= c.net.conf.Target {
@@ -163,7 +167,7 @@ func (c *controller) catReplenish() {
 		if uint(c.peers.Total()) <= c.net.conf.MinReseed {
 			seeds := c.seed.retrieve()
 			for _, s := range seeds {
-				if c.peers.Connected(s) {
+				if deny(s) {
 					continue
 				}
 				connect = append(connect, s)
@@ -179,11 +183,13 @@ func (c *controller) catReplenish() {
 				// error just means timeout of async request
 				p.lastPeerSend = time.Now()
 				if eps, err := c.asyncPeerRequest(p); err == nil {
-					for _, ep := range eps {
-						if c.peers.Connected(ep) {
-							continue
+					// pick random share from peer
+					if len(eps) > 0 {
+						el := c.net.rng.Intn(len(eps))
+						ep := eps[el]
+						if !deny(ep) {
+							connect = append(connect, ep)
 						}
-						connect = append(connect, ep)
 					}
 				}
 			}
@@ -200,7 +206,7 @@ func (c *controller) catReplenish() {
 				os.Exit(0)
 			}
 
-			if c.isBannedEndpoint(ep) || !c.dialer.CanDial(ep) {
+			if deny(ep) {
 				continue
 			}
 

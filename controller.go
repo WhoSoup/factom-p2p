@@ -237,7 +237,7 @@ func (c *controller) manageData() {
 				parcel.Type = TypeMessage
 				c.net.FromNetwork.Send(parcel)
 			case TypePeerRequest:
-				if time.Since(peer.lastPeerRequest) >= c.net.conf.PeerRequestInterval+time.Second*2 {
+				if time.Since(peer.lastPeerRequest) >= c.net.conf.PeerRequestInterval {
 					peer.lastPeerRequest = time.Now()
 					share := c.makePeerShare(peer.Endpoint)
 					go c.sharePeers(peer, share)
