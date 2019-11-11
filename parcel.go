@@ -44,9 +44,9 @@ func (p *Parcel) String() string {
 	return fmt.Sprintf("[%s] %dB", p.Type, len(p.Payload))
 }
 
-// NewMessage creates a new application message. The target should be either an identifier
+// NewParcel creates a new application message. The target should be either an identifier
 // from a previous message, or one of the custom flags: Broadcast, BroadcastFull, RandomPeer
-func NewMessage(target string, payload []byte) *Parcel {
+func NewParcel(target string, payload []byte) *Parcel {
 	p := newParcel(TypeMessage, payload)
 	p.Address = target
 	return p

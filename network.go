@@ -26,6 +26,7 @@ type Network struct {
 	prom *Prometheus
 
 	metricsHook func(pm map[string]PeerMetrics)
+	measure     *Measure
 
 	rng        *rand.Rand
 	instanceID uint64
@@ -126,16 +127,19 @@ func DebugServer(n *Network) {
 func NewNetwork(conf Configuration) (*Network, error) {
 	var err error
 	myconf := conf // copy
+	myconf.Sanitize()
+
 	n := new(Network)
 	n.fatalError = make(chan error)
 
 	n.logger = packageLogger.WithField("subpackage", "Network").WithField("node", conf.NodeName)
+
 	n.conf = &myconf
 	if n.conf.EnablePrometheus {
 		n.prom = new(Prometheus)
 		n.prom.Setup()
 	}
-
+	n.measure = NewMeasure(time.Second * 15)
 	n.rng = rand.New(rand.NewSource(time.Now().UnixNano()))
 	// generate random instanceid for loopback detection
 	n.instanceID = n.rng.Uint64()
@@ -152,6 +156,17 @@ func NewNetwork(conf Configuration) (*Network, error) {
 	n.ToNetwork = newParcelChannel(conf.ChannelCapacity)
 	n.FromNetwork = newParcelChannel(conf.ChannelCapacity)
 	return n, nil
+}
+
+func (n *Network) GetInfo() Info {
+	pDown, pUp, rDown, rUp := n.measure.GetRate()
+	return Info{
+		Peers:     n.controller.peers.Total(),
+		Receiving: pDown,
+		Sending:   pUp,
+		Download:  rDown,
+		Upload:    rUp,
+	}
 }
 
 // SetMetricsHook allows you to read peer metrics.

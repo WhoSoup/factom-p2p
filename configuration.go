@@ -44,17 +44,10 @@ type Configuration struct {
 	PersistFile string
 	// how often to save these
 	PersistInterval time.Duration
-	PersistLevel    uint // 0 persist all peers
-	// 1 persist peers we have had a connection with
-	// 2 persist only peers we have been able to dial to
-	PersistMinimum time.Duration // the minimum amount of time a connection has to last to last
-	// PersistAgeLimit dictates how long a peer can be offline before being considered dead
-	PersistAgeLimit time.Duration
 
 	// to count as being connected
 	// PeerShareAmount is the number of peers we share
-	PeerShareAmount     uint
-	MinimumQualityScore int32
+	PeerShareAmount uint
 
 	// CAT Settings
 	RoundTime time.Duration
@@ -62,12 +55,9 @@ type Configuration struct {
 	Max       uint
 	Drop      uint
 	MinReseed uint
+	Incoming  uint // maximum inbound connections, 0 <= Incoming <= Max
 
 	// === Gossip Behavior ===
-	// Outgoing is the number of peers this node attempts to connect to
-	Outgoing uint
-	// Incoming is the number of incoming connections this node is willing to accept
-	Incoming uint
 
 	// Fanout controls how many random peers are selected for propagating messages
 	// Higher values increase fault tolerance but also increase network congestion
@@ -94,19 +84,9 @@ type Configuration struct {
 
 	// RedialInterval dictates how long to wait between connection attempts
 	RedialInterval time.Duration
-	// RedialReset dictates after how long we should try to reconnect again
-	RedialReset time.Duration
-	// RedialAttempts is the number of redial attempts to make before considering
-	// a connection unreachable
-	RedialAttempts uint
-	// DisconnectLock dictates how long the peer manager should wait for an incoming peer
-	// to reconnect before considering dialing to them
-	DisconnectLock time.Duration
 
 	// ManualBan is the duration to ban an address for when banned manually
 	ManualBan time.Duration
-	// AutoBan is the duration to ban an address for when their qualityscore drops too low
-	AutoBan time.Duration
 
 	// HandshakeDeadline is the maximum acceptable time for an incoming conneciton
 	// to send the first parcel after connecting
@@ -121,21 +101,11 @@ type Configuration struct {
 	// if a connection takes longer, it is disconnected
 	WriteDeadline time.Duration
 
-	// DuplicateFilter is how long message hashes are cashed to filter out duplicates.
-	// Zero to disable
-	DuplicateFilter time.Duration
-	// DuplicateFilterCleanup is how frequently the cleanup mechanism is run to trim
-	// memory of the duplicate filter
-	DuplicateFilterCleanup time.Duration
-
 	ProtocolVersion uint16
 	// ProtocolVersionMinimum is the earliest version this package supports
 	ProtocolVersionMinimum uint16
 
 	ChannelCapacity uint
-
-	LogPath  string // Path for logs
-	LogLevel string // Logging level
 
 	EnablePrometheus bool // Enable prometheus logging. Disable if you run multiple instances
 }
@@ -152,42 +122,29 @@ func DefaultP2PConfiguration() (c Configuration) {
 	c.PeerIPLimitIncoming = 0
 	c.PeerIPLimitOutgoing = 0
 	c.ManualBan = time.Hour * 24 * 7 // a week
-	c.AutoBan = time.Hour * 24 * 7   // a week
 
 	c.PersistFile = ""
 	c.PersistInterval = time.Minute * 15
 
-	c.Outgoing = 32
-	c.Incoming = 150
+	c.Incoming = 36
 	c.Fanout = 8
-	c.PeerShareAmount = 2 // CAT share
-	c.RoundTime = time.Minute * 30
+	c.PeerShareAmount = 3 // CAT share
+	c.RoundTime = time.Minute * 15
 	c.Target = 32
-	c.Max = 48
+	c.Max = 36
 	c.Drop = 30
 	c.MinReseed = 10
-
-	c.MinimumQualityScore = 20
-	c.PersistLevel = 2
-	c.PersistMinimum = time.Minute
 
 	c.BindIP = "" // bind to all
 	c.ListenPort = "8108"
 	c.ListenLimit = time.Second
 	c.PingInterval = time.Second * 15
-	c.PersistAgeLimit = time.Hour * 48 // 2 days
 	c.RedialInterval = time.Second * 20
-	c.RedialReset = time.Hour * 12
-	c.RedialAttempts = 5
-	c.DisconnectLock = time.Minute * 3 // RedialInterval * RedialAttempts + 80 seconds
 
 	c.ReadDeadline = time.Minute * 5      // high enough to accomodate large packets
 	c.WriteDeadline = time.Minute * 5     // but fail eventually
 	c.HandshakeTimeout = time.Second * 10 // can be quite low
 	c.DialTimeout = time.Second * 10      // can be quite low
-
-	c.DuplicateFilter = time.Hour
-	c.DuplicateFilterCleanup = time.Minute
 
 	c.ProtocolVersion = 10
 	c.ProtocolVersionMinimum = 9
@@ -195,6 +152,11 @@ func DefaultP2PConfiguration() (c Configuration) {
 	c.ChannelCapacity = 5000
 
 	c.EnablePrometheus = true
-
 	return
+}
+
+func (c *Configuration) Sanitize() {
+	if c.Incoming > c.Max {
+		c.Incoming = c.Max
+	}
 }

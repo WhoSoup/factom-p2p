@@ -22,6 +22,10 @@ func (c *controller) run() {
 }
 
 func (c *controller) runPersist() {
+	if c.net.conf.PersistFile == "" {
+		return
+	}
+
 	if time.Since(c.lastPersist) > c.net.conf.PersistInterval {
 		c.lastPersist = time.Now()
 

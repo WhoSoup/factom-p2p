@@ -234,6 +234,7 @@ func (p *Peer) String() string {
 
 func (p *Peer) Send(parcel *Parcel) {
 	p.send.Send(parcel)
+	p.net.measure.Send(uint64(len(parcel.Payload)))
 }
 
 func (p *Peer) readLoop() {
@@ -285,6 +286,7 @@ func (p *Peer) readLoop() {
 
 // deliver is a blocking delivery of this peer's messages to the peer manager.
 func (p *Peer) deliver(parcel *Parcel) bool {
+	p.net.measure.Receive(uint64(len(parcel.Payload)))
 	select {
 	case p.data <- peerParcel{peer: p, parcel: parcel}:
 	case <-p.stopDelivery:
