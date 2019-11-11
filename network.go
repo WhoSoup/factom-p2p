@@ -183,7 +183,7 @@ func (n *Network) Run() {
 	n.logger.Infof("Starting a P2P Network with configuration %+v", n.conf)
 
 	n.controller.Start() // this will get peer manager ready to handle incoming connections
-	DebugServer(n)
+	//DebugServer(n)
 	go n.route()
 }
 
