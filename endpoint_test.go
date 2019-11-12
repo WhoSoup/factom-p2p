@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-func TestNewIP(t *testing.T) {
+func TestNewEndpoint(t *testing.T) {
 	type args struct {
 		addr string
 		port string
@@ -38,7 +38,7 @@ func TestNewIP(t *testing.T) {
 	}
 }
 
-func TestParseAddress(t *testing.T) {
+func TestParseEndpoint(t *testing.T) {
 	type args struct {
 		s string
 	}
@@ -64,11 +64,53 @@ func TestParseAddress(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			got, err := ParseEndpoint(tt.args.s)
 			if (err != nil) != tt.wantErr {
-				t.Errorf("ParseAddress() error = %v, wantErr %v", err, tt.wantErr)
+				t.Errorf("ParseEndpoint() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
 			if !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("ParseAddress() = %v, want %v", got, tt.want)
+				t.Errorf("ParseEndpoint() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestEndpoint_String(t *testing.T) {
+	tests := []struct {
+		name string
+		ps   Endpoint
+		want string
+	}{
+		{"normal", Endpoint{IP: "127.0.0.1", Port: "8088"}, "127.0.0.1:8088"},
+		{"no addr", Endpoint{IP: "", Port: "8088"}, ":8088"},
+		{"no port", Endpoint{IP: "127.0.0.1", Port: ""}, "127.0.0.1:"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.ps.String(); got != tt.want {
+				t.Errorf("Endpoint.ConnectAddress() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestEndpoint_Valid(t *testing.T) {
+	tests := []struct {
+		name string
+		ps   Endpoint
+		want bool
+	}{
+		{"valid address", Endpoint{IP: "127.0.0.1", Port: "80"}, true},
+		{"no addr", Endpoint{IP: "", Port: "8088"}, false},
+		{"no port", Endpoint{IP: "127.0.0.1", Port: ""}, false},
+		{"zero port", Endpoint{IP: "127.0.0.1", Port: "0"}, false},
+		{"nonnumeric port", Endpoint{IP: "127.0.0.1", Port: "eighty"}, false},
+		{"nonnumeric port", Endpoint{IP: "127.0.0.1", Port: "80th"}, false},
+		{"hostname", Endpoint{IP: "factom.fct", Port: "8088"}, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.ps.Valid(); got != tt.want {
+				t.Errorf("Endpoint.Valid() = %v, want %v", got, tt.want)
 			}
 		})
 	}

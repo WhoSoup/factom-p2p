@@ -19,7 +19,7 @@ func (c *controller) loadPersist() (*Persist, error) {
 	}
 
 	if len(persistData) > 0 {
-		return c.ParsePersist(persistData)
+		return c.parsePersist(persistData)
 	}
 
 	return nil, nil
@@ -40,15 +40,15 @@ func (c *controller) loadPersistFile() ([]byte, error) {
 	return ioutil.ReadFile(c.net.conf.PersistFile)
 }
 
-func (c *controller) PersistData() ([]byte, error) {
+func (c *controller) persistData() ([]byte, error) {
 	var pers Persist
 	pers.Bans = make(map[string]time.Time)
 
 	c.banMtx.Lock()
 	now := time.Now()
-	for addr, end := range c.Bans {
+	for addr, end := range c.bans {
 		if end.Before(now) {
-			delete(c.Bans, addr)
+			delete(c.bans, addr)
 		} else {
 			pers.Bans[addr] = end
 		}
@@ -64,7 +64,7 @@ func (c *controller) PersistData() ([]byte, error) {
 	return json.Marshal(pers)
 }
 
-func (c *controller) ParsePersist(data []byte) (*Persist, error) {
+func (c *controller) parsePersist(data []byte) (*Persist, error) {
 	var pers Persist
 	err := json.Unmarshal(data, &pers)
 	if err != nil {

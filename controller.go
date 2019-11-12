@@ -26,10 +26,10 @@ type controller struct {
 	specialCount int
 
 	banMtx           sync.RWMutex
-	Bans             map[string]time.Time // (ip|ip:port) => time the ban ends
-	Special          map[string]bool      // (ip|ip:port) => bool
-	SpecialEndpoints []Endpoint
-	Bootstrap        []Endpoint
+	bans             map[string]time.Time // (ip|ip:port) => time the ban ends
+	special          map[string]bool      // (ip|ip:port) => bool
+	specialEndpoints []Endpoint
+	bootstrap        []Endpoint
 
 	shareListener map[uint32]func(*Parcel)
 	shareMtx      sync.RWMutex
@@ -55,7 +55,7 @@ func newController(network *Network) (*controller, error) {
 	var err error
 	c := &controller{}
 	c.net = network
-	conf := network.conf
+	conf := network.conf // local var to reduce amount to type
 
 	c.logger = controllerLogger.WithFields(log.Fields{
 		"node":    conf.NodeName,
@@ -70,25 +70,25 @@ func newController(network *Network) (*controller, error) {
 	c.lastPersist = time.Now()
 
 	c.peerStatus = make(chan peerStatus, 10) // TODO reconsider this value
-	c.peerData = make(chan peerParcel, c.net.conf.ChannelCapacity)
+	c.peerData = make(chan peerParcel, conf.ChannelCapacity)
 
-	c.Special = make(map[string]bool)
+	c.special = make(map[string]bool)
 	c.shareListener = make(map[uint32]func(*Parcel))
 
 	// CAT
 	c.lastRound = time.Now()
-	c.seed = newSeed(c.net.conf.SeedURL, c.net.conf.PeerReseedInterval)
+	c.seed = newSeed(conf.SeedURL, conf.PeerReseedInterval)
 
 	c.peers = NewPeerStore()
-	c.addSpecial(c.net.conf.Special)
+	c.addSpecial(conf.Special)
 
 	if persist, err := c.loadPersist(); err != nil || persist == nil {
 		c.logger.Infof("no valid bootstrap file found")
-		c.Bans = make(map[string]time.Time)
-		c.Bootstrap = nil
+		c.bans = make(map[string]time.Time)
+		c.bootstrap = nil
 	} else if persist != nil {
-		c.Bans = persist.Bans
-		c.Bootstrap = persist.Bootstrap
+		c.bans = persist.Bans
+		c.bootstrap = persist.Bootstrap
 	}
 
 	if c.net.prom != nil {
@@ -108,12 +108,13 @@ func (c *controller) ban(hash string, duration time.Duration) {
 		end := time.Now().Add(duration)
 
 		// there's a stronger ban in place already
-		if existing, ok := c.Bans[peer.Endpoint.IP]; ok && end.Before(existing) {
+		if existing, ok := c.bans[peer.Endpoint.IP]; ok && end.Before(existing) {
 			end = existing
 		}
 
-		c.Bans[peer.Endpoint.IP] = end
-		c.Bans[peer.Endpoint.String()] = end
+		// ban both ip and ip:port
+		c.bans[peer.Endpoint.IP] = end
+		c.bans[peer.Endpoint.String()] = end
 
 		for _, p := range c.peers.Slice() {
 			if p.Endpoint.IP == peer.Endpoint.IP {
@@ -126,7 +127,7 @@ func (c *controller) ban(hash string, duration time.Duration) {
 
 func (c *controller) banEndpoint(ep Endpoint, duration time.Duration) {
 	c.banMtx.Lock()
-	c.Bans[ep.String()] = time.Now().Add(duration)
+	c.bans[ep.String()] = time.Now().Add(duration)
 	c.banMtx.Unlock()
 
 	if duration > 0 {
@@ -141,24 +142,24 @@ func (c *controller) banEndpoint(ep Endpoint, duration time.Duration) {
 func (c *controller) isBannedEndpoint(ep Endpoint) bool {
 	c.banMtx.RLock()
 	defer c.banMtx.RUnlock()
-	return time.Now().Before(c.Bans[ep.IP]) || time.Now().Before(c.Bans[ep.String()])
+	return time.Now().Before(c.bans[ep.IP]) || time.Now().Before(c.bans[ep.String()])
 }
 
 func (c *controller) isBannedIP(ip string) bool {
 	c.banMtx.RLock()
 	defer c.banMtx.RUnlock()
-	return time.Now().Before(c.Bans[ip])
+	return time.Now().Before(c.bans[ip])
 }
 
 func (c *controller) isSpecial(ep Endpoint) bool {
 	c.specialMtx.RLock()
 	defer c.specialMtx.RUnlock()
-	return c.Special[ep.String()]
+	return c.special[ep.String()]
 }
 func (c *controller) isSpecialIP(ip string) bool {
 	c.specialMtx.RLock()
 	defer c.specialMtx.RUnlock()
-	return c.Special[ip]
+	return c.special[ip]
 }
 
 func (c *controller) disconnect(hash string) {
@@ -176,10 +177,10 @@ func (c *controller) addSpecial(raw string) {
 	c.specialMtx.Lock()
 	for _, ep := range specialEndpoints {
 		c.logger.Debugf("Registering special endpoint %s", ep)
-		c.Special[ep.String()] = true
-		c.Special[ep.IP] = true
+		c.special[ep.String()] = true
+		c.special[ep.IP] = true
 	}
-	c.specialCount = len(c.Special)
+	c.specialCount = len(c.special)
 	c.specialMtx.Unlock()
 }
 
@@ -202,11 +203,11 @@ func (c *controller) parseSpecial(raw string) []Endpoint {
 func (c *controller) Start() {
 	c.logger.Info("Starting the Controller")
 
-	go c.run()
-	go c.manageData()
-	go c.manageOnline()
-	go c.listen()
-	go c.catReplenish()
+	go c.run()          // cycle every 1s
+	go c.manageData()   // blocking on data
+	go c.manageOnline() // blocking on peer status changes
+	go c.listen()       // blocking on tcp connections
+	go c.catReplenish() // cycle every 1s
 }
 
 func (c *controller) manageData() {

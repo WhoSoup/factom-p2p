@@ -12,7 +12,7 @@ func (c *controller) run() {
 
 	for {
 		c.runPersist()
-		c.runCat()
+		c.runCatRound()
 		c.runMetrics()
 
 		select {
@@ -29,7 +29,7 @@ func (c *controller) runPersist() {
 	if time.Since(c.lastPersist) > c.net.conf.PersistInterval {
 		c.lastPersist = time.Now()
 
-		data, err := c.PersistData()
+		data, err := c.persistData()
 		if err != nil {
 			c.logger.WithError(err).Warn("unable to create peer persist data")
 		} else {
@@ -38,13 +38,6 @@ func (c *controller) runPersist() {
 				c.logger.WithError(err).Warn("unable to persist peer data")
 			}
 		}
-	}
-}
-
-func (c *controller) runCat() {
-	if time.Since(c.lastRound) > c.net.conf.RoundTime {
-		c.lastRound = time.Now()
-		c.catRound()
 	}
 }
 

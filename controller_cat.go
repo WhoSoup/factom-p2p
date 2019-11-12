@@ -2,7 +2,6 @@ package p2p
 
 import (
 	"fmt"
-	"os"
 	"time"
 )
 
@@ -89,7 +88,12 @@ func (c *controller) sharePeers(peer *Peer, list []Endpoint) {
 	peer.Send(parcel)
 }
 
-func (c *controller) catRound() {
+func (c *controller) runCatRound() {
+	if time.Since(c.lastRound) < c.net.conf.RoundTime {
+		return
+	}
+	c.lastRound = time.Now()
+
 	c.logger.Debug("Cat Round")
 	c.rounds++
 	peers := c.peers.Slice()
@@ -197,14 +201,9 @@ func (c *controller) catReplenish() {
 
 		var ep Endpoint
 		var attempts int
-		for len(connect) > 0 && attempts < 16 {
+		for len(connect) > 0 && attempts < 4 {
 			ep = connect[0]
 			connect = connect[1:]
-
-			if !ep.Valid() {
-				fmt.Println("invalid endpoint", ep)
-				os.Exit(0)
-			}
 
 			if deny(ep) {
 				continue

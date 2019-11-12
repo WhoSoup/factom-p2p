@@ -1,9 +1,10 @@
 package p2p
 
+// Info holds the data that can be queried from the Network
 type Info struct {
-	Peers     int
-	Download  float64
-	Upload    float64
-	Sending   float64
-	Receiving float64
+	Peers     int     // number of peers connected
+	Receiving float64 // download rate in Messages/s
+	Sending   float64 // upload rate in Messages/s
+	Download  float64 // download rate in Bytes/s
+	Upload    float64 // upload rate in Bytes/s
 }
