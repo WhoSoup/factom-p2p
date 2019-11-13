@@ -14,6 +14,7 @@ func (c *controller) run() {
 		c.runPersist()
 		c.runCatRound()
 		c.runMetrics()
+		c.runPing()
 
 		select {
 		case <-time.After(time.Second):
@@ -41,18 +42,25 @@ func (c *controller) runPersist() {
 	}
 }
 
-func (c *controller) runMetrics() {
-	metrics := make(map[string]PeerMetrics)
+func (c *controller) runPing() {
 	for _, p := range c.peers.Slice() {
-		metrics[p.Hash] = p.GetMetrics()
-
-		if time.Since(p.LastSend) > c.net.conf.PingInterval {
+		if time.Since(p.lastSend) > c.net.conf.PingInterval {
 			ping := newParcel(TypePing, []byte("Ping"))
 			p.Send(ping)
 		}
 	}
+}
 
+func (c *controller) makeMetrics() map[string]PeerMetrics {
+	metrics := make(map[string]PeerMetrics)
+	for _, p := range c.peers.Slice() {
+		metrics[p.Hash] = p.GetMetrics()
+	}
+	return metrics
+}
+
+func (c *controller) runMetrics() {
 	if c.net.metricsHook != nil {
-		go c.net.metricsHook(metrics)
+		go c.net.metricsHook(c.makeMetrics())
 	}
 }

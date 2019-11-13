@@ -22,7 +22,7 @@ func TestParcel_Test(t *testing.T) {
 		{"messagepart", &Parcel{Type: TypeMessagePart, Address: "", Payload: []byte{0}}, false, true},
 		{"handshake", &Parcel{Type: TypeHandshake, Address: "", Payload: []byte{0}}, false, false},
 		{"reject alternative", &Parcel{Type: TypeRejectAlternative, Address: "", Payload: []byte{0}}, false, false},
-		{"out of range", &Parcel{Type: TypeCount, Address: "", Payload: []byte{0}}, true, false},
+		{"out of range", &Parcel{Type: ParcelType(len(typeStrings)), Address: "", Payload: []byte{0}}, true, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

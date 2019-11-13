@@ -1,7 +1,5 @@
 package p2p
 
-import "runtime"
-
 var pcLogger = packageLogger.WithField("subpack", "protocol")
 
 // ParcelChannel is a channel that supports non-blocking sends
@@ -11,13 +9,24 @@ func newParcelChannel(capacity uint) ParcelChannel {
 	return make(ParcelChannel, capacity)
 }
 
-// Send a parcel along this channel. Non-blocking. If full, newer messages are dropped.
-func (pc ParcelChannel) Send(parcel *Parcel) {
+// Send a parcel along this channel. Non-blocking. If full, half of messages are dropped.
+func (pc ParcelChannel) Send(parcel *Parcel) bool {
 	select {
 	case pc <- parcel:
+		return true
 	default:
-		_, f, l, _ := runtime.Caller(1)
-		pcLogger.Warnf("ParcelChannel.Send() - Channel is full! Unable to deliver %s (%s:%d)", parcel, f, l)
+		dropped := 0
+		for len(pc) > cap(pc)/2 {
+			<-pc
+			dropped++
+		}
+		pcLogger.Warnf("ParcelChannel.Send() - Channel is full! Dropped %d old messages", dropped)
+		select {
+		case pc <- parcel:
+			return true
+		default:
+			return false
+		}
 	}
 }
 

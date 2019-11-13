@@ -46,7 +46,8 @@ func (n *Network) DebugMessage() (string, string, int) {
 	count := len(s)
 	for _, p := range s {
 
-		r += fmt.Sprintf("\tPeer %s\n", p.String())
+		metrics := p.GetMetrics()
+		r += fmt.Sprintf("\tPeer %s (MPS %.2f/%.2f) (BPS %.2f/%.2f) (Cap %.2f)\n", p.String(), metrics.MPSDown, metrics.MPSUp, metrics.BPSDown, metrics.BPSUp, metrics.Capacity)
 		edge := ""
 		if n.conf.NodeID < 4 || p.NodeID < 4 {
 			min := n.conf.NodeID
@@ -96,7 +97,7 @@ func DebugServer(n *Network) {
 
 		slice := n.controller.peers.Slice()
 		sort.Slice(slice, func(i, j int) bool {
-			return slice[i].Connected.Before(slice[j].Connected)
+			return slice[i].connected.Before(slice[j].connected)
 		})
 
 		for _, p := range slice {
@@ -112,7 +113,11 @@ func DebugServer(n *Network) {
 			out += fmt.Sprintf("\t\tIncoming: %v\n", m.Incoming)
 			out += fmt.Sprintf("\t\tLastReceive: %s\n", m.LastReceive)
 			out += fmt.Sprintf("\t\tLastSend: %s\n", m.LastSend)
-
+			out += fmt.Sprintf("\t\tMPS Down: %.2f\n", m.MPSDown)
+			out += fmt.Sprintf("\t\tMPS Up: %.2f\n", m.MPSUp)
+			out += fmt.Sprintf("\t\tBPS Down: %.2f\n", m.BPSDown)
+			out += fmt.Sprintf("\t\tBPS Up: %.2f\n", m.BPSUp)
+			out += fmt.Sprintf("\t\tCapacity: %.2f\n", m.Capacity)
 		}
 
 		rw.Write([]byte(out))
@@ -159,7 +164,15 @@ func NewNetwork(conf Configuration) (*Network, error) {
 }
 
 func (n *Network) GetInfo() Info {
-	pDown, pUp, rDown, rUp := n.measure.GetRate()
+	peers := n.controller.peers.Slice()
+	pDown, pUp, rDown, rUp := 0.0, 0.0, 0.0, 0.0
+	for _, p := range peers {
+		metrics := p.GetMetrics()
+		pDown += metrics.MPSDown
+		pUp += metrics.MPSUp
+		rDown += metrics.BPSDown
+		rUp += metrics.BPSUp
+	}
 	return Info{
 		Peers:     n.controller.peers.Total(),
 		Receiving: pDown,
@@ -167,6 +180,10 @@ func (n *Network) GetInfo() Info {
 		Download:  rDown,
 		Upload:    rUp,
 	}
+}
+
+func (n *Network) GetPeerMetrics() map[string]PeerMetrics {
+	return n.controller.makeMetrics()
 }
 
 // SetMetricsHook allows you to read peer metrics.

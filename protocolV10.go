@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"hash/crc32"
-	"net"
 )
 
 var _ Protocol = (*ProtocolV10)(nil)
@@ -14,7 +13,6 @@ var _ Protocol = (*ProtocolV10)(nil)
 // It is a slimmed down version of V9, reducing overhead
 type ProtocolV10 struct {
 	net     *Network
-	conn    net.Conn
 	decoder *gob.Decoder
 	encoder *gob.Encoder
 	peer    *Peer
@@ -27,10 +25,9 @@ type V10Msg struct {
 	Payload []byte
 }
 
-func (v10 *ProtocolV10) init(peer *Peer, conn net.Conn, decoder *gob.Decoder, encoder *gob.Encoder) {
+func (v10 *ProtocolV10) init(peer *Peer, decoder *gob.Decoder, encoder *gob.Encoder) {
 	v10.peer = peer
 	v10.net = peer.net
-	v10.conn = conn
 	v10.decoder = decoder
 	v10.encoder = encoder
 }
@@ -67,9 +64,6 @@ func (v10 *ProtocolV10) Receive() (*Parcel, error) {
 	}
 
 	p := newParcel(msg.Type, msg.Payload)
-	// temporary identification for logging, gets overwritten with hash by peer
-	p.Address = v10.conn.RemoteAddr().String()
-
 	return p, nil
 }
 

@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"hash/crc32"
-	"net"
 	"time"
 )
 
@@ -16,16 +15,14 @@ var _ Protocol = (*ProtocolV9)(nil)
 // "Parcel" and "ParcelHeader" structure
 type ProtocolV9 struct {
 	net     *Network
-	conn    net.Conn
 	decoder *gob.Decoder
 	encoder *gob.Encoder
 	peer    *Peer
 }
 
-func (v9 *ProtocolV9) init(peer *Peer, conn net.Conn, decoder *gob.Decoder, encoder *gob.Encoder) {
+func (v9 *ProtocolV9) init(peer *Peer, decoder *gob.Decoder, encoder *gob.Encoder) {
 	v9.peer = peer
 	v9.net = peer.net
-	v9.conn = conn
 	v9.decoder = decoder
 	v9.encoder = encoder
 }

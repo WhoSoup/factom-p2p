@@ -16,9 +16,10 @@ var peerLogger = packageLogger.WithField("subpack", "peer")
 // Peer is an active connection to an endpoint in the network.
 // Represents one lifetime of a connection and should not be restarted
 type Peer struct {
-	net  *Network
-	conn net.Conn
-	prot Protocol
+	net     *Network
+	conn    net.Conn
+	metrics ReadWriteCollector
+	prot    Protocol
 
 	// current state, read only "constants" after the handshake
 	IsIncoming bool
@@ -26,9 +27,8 @@ type Peer struct {
 	NodeID     uint32 // a nonce to distinguish multiple nodes behind one endpoint
 	Hash       string // This is more of a connection ID than hash right now.
 
-	stopper      sync.Once
-	stop         chan bool
-	stopDelivery chan bool
+	stopper sync.Once
+	stop    chan bool
 
 	lastPeerRequest  time.Time
 	peerShareAsk     bool
@@ -42,14 +42,16 @@ type Peer struct {
 	registered bool
 
 	// Metrics
-	metricsMtx      sync.RWMutex
-	Connected       time.Time
-	LastReceive     time.Time // Keep track of how long ago we talked to the peer.
-	LastSend        time.Time // Keep track of how long ago we talked to the peer.
-	ParcelsSent     uint64
-	ParcelsReceived uint64
-	BytesSent       uint64
-	BytesReceived   uint64
+	metricsMtx           sync.RWMutex
+	connected            time.Time
+	lastReceive          time.Time // Keep track of how long ago we talked to the peer.
+	lastSend             time.Time // Keep track of how long ago we talked to the peer.
+	totalParcelsSent     uint64
+	totalParcelsReceived uint64
+	totalBytesSent       uint64
+	totalBytesReceived   uint64
+	bpsDown, bpsUp       float64
+	mpsDown, mpsUp       float64
 
 	// logging
 	logger *log.Entry
@@ -65,7 +67,6 @@ func newPeer(net *Network, status chan peerStatus, data chan peerParcel) *Peer {
 		"node": net.conf.NodeName,
 	})
 	p.stop = make(chan bool, 1)
-	p.stopDelivery = make(chan bool, 1)
 
 	p.peerShareDeliver = nil
 
@@ -83,7 +84,7 @@ func (p *Peer) bootstrapProtocol(hs *Handshake, conn net.Conn, decoder *gob.Deco
 	switch v {
 	case 9:
 		v9 := new(ProtocolV9)
-		v9.init(p, conn, decoder, encoder)
+		v9.init(p, decoder, encoder)
 		p.prot = v9
 
 		// v9 starts with a peer request
@@ -97,7 +98,7 @@ func (p *Peer) bootstrapProtocol(hs *Handshake, conn net.Conn, decoder *gob.Deco
 			}*/
 	case 10:
 		v10 := new(ProtocolV10)
-		v10.init(p, conn, decoder, encoder)
+		v10.init(p, decoder, encoder)
 		p.prot = v10
 	default:
 		return fmt.Errorf("unknown protocol version %d", v)
@@ -122,16 +123,20 @@ func (p *Peer) StartWithHandshake(ep Endpoint, con net.Conn, incoming bool) ([]E
 
 	nonce := []byte(fmt.Sprintf("%x", p.net.instanceID))
 
+	// upgrade connection to a metrics connection
+	p.metrics = NewMetricsReadWriter(con)
+	p.conn = con
+
 	handshake := newHandshake(p.net.conf, nonce)
-	decoder := gob.NewDecoder(con)
-	encoder := gob.NewEncoder(con)
+	decoder := gob.NewDecoder(p.metrics) // pipe gob through the metrics writer
+	encoder := gob.NewEncoder(p.metrics)
 	con.SetWriteDeadline(timeout)
 	con.SetReadDeadline(timeout)
 	//fmt.Printf("@@@ %+v %s\n", handshake.Header, con.RemoteAddr())
 
 	failfunc := func(err error) ([]Endpoint, error) {
 		tmplogger.WithError(err).Debug("Handshake failed")
-		con.Close()
+		p.conn.Close()
 		return nil, err
 	}
 
@@ -185,8 +190,7 @@ func (p *Peer) StartWithHandshake(ep Endpoint, con net.Conn, incoming bool) ([]E
 	p.Hash = fmt.Sprintf("%s:%s %08x", ep.IP, ep.Port, p.NodeID)
 	p.send = newParcelChannel(p.net.conf.ChannelCapacity)
 	p.IsIncoming = incoming
-	p.conn = con
-	p.Connected = time.Now()
+	p.connected = time.Now()
 	p.logger = p.logger.WithFields(log.Fields{
 		"hash":    p.Hash,
 		"address": p.Endpoint.IP,
@@ -199,6 +203,7 @@ func (p *Peer) StartWithHandshake(ep Endpoint, con net.Conn, incoming bool) ([]E
 
 	go p.sendLoop()
 	go p.readLoop()
+	go p.statLoop()
 
 	return nil, nil
 }
@@ -211,8 +216,7 @@ func (p *Peer) Stop() {
 
 		p.send = nil
 
-		p.stop <- true
-		p.stopDelivery <- true
+		close(p.stop)
 
 		if p.conn != nil {
 			p.conn.Close()
@@ -234,7 +238,30 @@ func (p *Peer) String() string {
 
 func (p *Peer) Send(parcel *Parcel) {
 	p.send.Send(parcel)
-	p.net.measure.Send(uint64(len(parcel.Payload)))
+}
+
+func (p *Peer) statLoop() {
+	ticker := time.NewTicker(time.Second * 5)
+	for {
+		select {
+		case <-ticker.C:
+			p.metricsMtx.Lock()
+			mr, ms, br, bs := p.metrics.Collect()
+			p.bpsDown = float64(br) / 5
+			p.bpsUp = float64(bs) / 5
+			p.totalBytesReceived += br
+			p.totalBytesSent += bs
+
+			p.mpsDown = float64(mr) / 5
+			p.mpsUp = float64(ms) / 5
+			p.totalParcelsReceived += mr
+			p.totalParcelsSent += ms
+
+			p.metricsMtx.Unlock()
+		case <-p.stop:
+			return
+		}
+	}
 }
 
 func (p *Peer) readLoop() {
@@ -263,9 +290,7 @@ func (p *Peer) readLoop() {
 
 		// metrics
 		p.metricsMtx.Lock()
-		p.LastReceive = time.Now()
-		p.ParcelsReceived++
-		p.BytesReceived += uint64(len(msg.Payload))
+		p.lastReceive = time.Now()
 		p.metricsMtx.Unlock()
 
 		// stats
@@ -286,10 +311,9 @@ func (p *Peer) readLoop() {
 
 // deliver is a blocking delivery of this peer's messages to the peer manager.
 func (p *Peer) deliver(parcel *Parcel) bool {
-	p.net.measure.Receive(uint64(len(parcel.Payload)))
 	select {
 	case p.data <- peerParcel{peer: p, parcel: parcel}:
-	case <-p.stopDelivery:
+	case <-p.stop:
 		return false
 	}
 	return true
@@ -324,9 +348,7 @@ func (p *Peer) sendLoop() {
 
 			// metrics
 			p.metricsMtx.Lock()
-			p.ParcelsSent++
-			p.BytesSent += uint64(len(parcel.Payload))
-			p.LastSend = time.Now()
+			p.lastSend = time.Now()
 			p.metricsMtx.Unlock()
 
 			// stats
@@ -352,15 +374,20 @@ func (p *Peer) GetMetrics() PeerMetrics {
 	return PeerMetrics{
 		Hash:             p.Hash,
 		PeerAddress:      p.Endpoint.IP,
-		MomentConnected:  p.Connected,
-		LastReceive:      p.LastReceive,
-		LastSend:         p.LastSend,
-		BytesReceived:    p.BytesReceived,
-		BytesSent:        p.BytesSent,
-		MessagesReceived: p.ParcelsReceived,
-		MessagesSent:     p.ParcelsSent,
+		MomentConnected:  p.connected,
+		LastReceive:      p.lastReceive,
+		LastSend:         p.lastSend,
+		BytesReceived:    p.totalBytesReceived,
+		BytesSent:        p.totalBytesSent,
+		MessagesReceived: p.totalParcelsReceived,
+		MessagesSent:     p.totalParcelsSent,
 		Incoming:         p.IsIncoming,
 		PeerType:         pt,
+		MPSDown:          p.mpsDown,
+		MPSUp:            p.mpsUp,
+		BPSDown:          p.bpsDown,
+		BPSUp:            p.bpsUp,
 		ConnectionState:  fmt.Sprintf("v%s", p.prot.Version()),
+		Capacity:         float64(len(p.send)) / float64(cap(p.send)),
 	}
 }

@@ -19,6 +19,11 @@ type PeerMetrics struct {
 	Incoming         bool
 	PeerType         string
 	ConnectionState  string
+	MPSDown          float64
+	MPSUp            float64
+	BPSDown          float64
+	BPSUp            float64
+	Capacity         float64
 }
 
 // peerStatus is an indicator for peer manager whether the associated peer is going online or offline
