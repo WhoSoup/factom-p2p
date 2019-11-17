@@ -29,7 +29,6 @@ func (c *controller) processPeerShare(peer *Peer, parcel *Parcel) []Endpoint {
 		if err != nil {
 			c.logger.WithError(err).Infof("Unable to register endpoint %s:%s from peer %s", p.IP, p.Port, peer)
 		} else if !c.isBannedEndpoint(ep) {
-			//c.endpoints.Register(ip, peer.IP.Address)
 			res = append(res, ep)
 		}
 	}

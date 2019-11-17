@@ -34,3 +34,8 @@ func (pc ParcelChannel) Send(parcel *Parcel) bool {
 func (pc ParcelChannel) Reader() <-chan *Parcel {
 	return pc
 }
+
+// Capacity returns a percentage [0.0,1.0] of how full the channel is
+func (pc ParcelChannel) Capacity() float64 {
+	return float64(len(pc)) / float64(cap(pc))
+}
