@@ -52,6 +52,7 @@ type Peer struct {
 	totalBytesReceived   uint64
 	bpsDown, bpsUp       float64
 	mpsDown, mpsUp       float64
+	dropped              uint64
 
 	// logging
 	logger *log.Entry
@@ -237,7 +238,8 @@ func (p *Peer) String() string {
 }
 
 func (p *Peer) Send(parcel *Parcel) {
-	p.send.Send(parcel)
+	_, dropped := p.send.Send(parcel)
+	p.dropped += uint64(dropped)
 }
 
 func (p *Peer) statLoop() {
@@ -246,16 +248,16 @@ func (p *Peer) statLoop() {
 		select {
 		case <-ticker.C:
 			p.metricsMtx.Lock()
-			mr, ms, br, bs := p.metrics.Collect()
+			mw, mr, bw, br := p.metrics.Collect()
 			p.bpsDown = float64(br) / 5
-			p.bpsUp = float64(bs) / 5
+			p.bpsUp = float64(bw) / 5
 			p.totalBytesReceived += br
-			p.totalBytesSent += bs
+			p.totalBytesSent += bw
 
 			p.mpsDown = float64(mr) / 5
-			p.mpsUp = float64(ms) / 5
+			p.mpsUp = float64(mw) / 5
 			p.totalParcelsReceived += mr
-			p.totalParcelsSent += ms
+			p.totalParcelsSent += mw
 
 			p.metricsMtx.Unlock()
 		case <-p.stop:
@@ -389,6 +391,7 @@ func (p *Peer) GetMetrics() PeerMetrics {
 		BPSUp:            p.bpsUp,
 		ConnectionState:  fmt.Sprintf("v%s", p.prot.Version()),
 		Capacity:         p.Capacity(),
+		Dropped:          p.dropped,
 	}
 }
 

@@ -116,6 +116,7 @@ func DefaultP2PConfiguration() (c Configuration) {
 	c.Network = MainNet
 	c.NodeID = 0
 	c.NodeName = "FNode0"
+	c.ListenPort = "8108"
 
 	c.PeerRequestInterval = time.Second
 	c.PeerReseedInterval = time.Hour * 4
@@ -149,7 +150,7 @@ func DefaultP2PConfiguration() (c Configuration) {
 	c.ProtocolVersion = 10
 	c.ProtocolVersionMinimum = 9
 
-	c.ChannelCapacity = 100
+	c.ChannelCapacity = 1000
 
 	c.EnablePrometheus = true
 	return

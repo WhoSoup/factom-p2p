@@ -118,6 +118,7 @@ func DebugServer(n *Network) {
 			out += fmt.Sprintf("\t\tBPS Down: %.2f\n", m.BPSDown)
 			out += fmt.Sprintf("\t\tBPS Up: %.2f\n", m.BPSUp)
 			out += fmt.Sprintf("\t\tCapacity: %.2f\n", m.Capacity)
+			out += fmt.Sprintf("\t\tDropped: %d\n", m.Dropped)
 		}
 
 		rw.Write([]byte(out))
@@ -202,6 +203,12 @@ func (n *Network) Run() {
 	n.controller.Start() // this will get peer manager ready to handle incoming connections
 	//DebugServer(n)
 	go n.route()
+}
+
+func (n *Network) Stop() {
+	// TODO implement
+	// close stop channel
+	// stop all peers
 }
 
 // Ban removes a peer as well as any other peer from that address

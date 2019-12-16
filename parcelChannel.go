@@ -10,10 +10,10 @@ func newParcelChannel(capacity uint) ParcelChannel {
 }
 
 // Send a parcel along this channel. Non-blocking. If full, half of messages are dropped.
-func (pc ParcelChannel) Send(parcel *Parcel) bool {
+func (pc ParcelChannel) Send(parcel *Parcel) (bool, int) {
 	select {
 	case pc <- parcel:
-		return true
+		return true, 0
 	default:
 		dropped := 0
 		for len(pc) > cap(pc)/2 {
@@ -23,9 +23,9 @@ func (pc ParcelChannel) Send(parcel *Parcel) bool {
 		pcLogger.Warnf("ParcelChannel.Send() - Channel is full! Dropped %d old messages", dropped)
 		select {
 		case pc <- parcel:
-			return true
+			return true, dropped
 		default:
-			return false
+			return false, dropped
 		}
 	}
 }

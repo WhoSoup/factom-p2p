@@ -7,4 +7,5 @@ type Info struct {
 	Sending   float64 // upload rate in Messages/s
 	Download  float64 // download rate in Bytes/s
 	Upload    float64 // upload rate in Bytes/s
+	Dropped   uint64  // number of parcels dropped due to low speed
 }

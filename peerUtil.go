@@ -24,6 +24,7 @@ type PeerMetrics struct {
 	BPSDown          float64
 	BPSUp            float64
 	Capacity         float64
+	Dropped          uint64
 }
 
 // peerStatus is an indicator for peer manager whether the associated peer is going online or offline
