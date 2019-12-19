@@ -167,7 +167,11 @@ func (c *controller) catReplenish() {
 			continue
 		}
 
-		if uint(c.peers.Total()) <= c.net.conf.MinReseed {
+		min := c.net.conf.MinReseed
+		if uint(c.seed.size()) < min {
+			min = uint(c.seed.size()) - 1
+		}
+		if uint(c.peers.Total()) <= min {
 			seeds := c.seed.retrieve()
 			for _, s := range seeds {
 				if deny(s) {

@@ -52,3 +52,8 @@ func (s *seed) retrieve() []Endpoint {
 	s.cache = eps
 	return eps
 }
+
+func (s *seed) size() int {
+	s.retrieve()
+	return len(s.cache)
+}
