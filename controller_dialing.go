@@ -42,6 +42,8 @@ func (c *controller) manageOnline() {
 		}
 	}
 }
+
+// preliminary check to see if we should accept an unknown connection
 func (c *controller) allowIncoming(addr string) error {
 	if c.isBannedIP(addr) {
 		return fmt.Errorf("Address %s is banned", addr)
@@ -58,6 +60,7 @@ func (c *controller) allowIncoming(addr string) error {
 	return nil
 }
 
+// what to do with a new tcp connection
 func (c *controller) handleIncoming(con net.Conn) {
 	if c.net.prom != nil {
 		c.net.prom.Connecting.Inc()
@@ -127,6 +130,9 @@ func (c *controller) RejectWithShare(con net.Conn, share []Endpoint) error {
 	return nil
 }
 
+// Dial attempts to connect to a remote endpoint.
+// If the dial was not successful, it may return a list of alternate endpoints
+// given by the remote host.
 func (c *controller) Dial(ep Endpoint) (bool, []Endpoint) {
 	if c.net.prom != nil {
 		c.net.prom.Connecting.Inc()
@@ -134,7 +140,7 @@ func (c *controller) Dial(ep Endpoint) (bool, []Endpoint) {
 	}
 
 	if ep.Port == "" {
-		ep.Port = c.net.conf.ListenPort // TODO add a "default port"?
+		ep.Port = c.net.conf.ListenPort
 		c.logger.Debugf("Dialing to %s (with no previously known port)", ep)
 	} else {
 		c.logger.Debugf("Dialing to %s", ep)

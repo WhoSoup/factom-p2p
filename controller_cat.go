@@ -169,7 +169,7 @@ func (c *controller) catReplenish() {
 	}
 
 	lastReseed := time.Now()
-	seeded := false
+	seeded := false // don't seed twice in a row
 
 	for {
 		var connect []Endpoint
