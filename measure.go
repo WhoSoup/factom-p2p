@@ -28,7 +28,7 @@ type Measure struct {
 func NewMeasure(rate time.Duration) *Measure {
 	m := new(Measure)
 	m.rate = rate
-	go m.calculate()
+	go m.calculator()
 	return m
 }
 
@@ -40,26 +40,33 @@ func (m *Measure) GetRate() (float64, float64, float64, float64) {
 	return m.rateParcelIn, m.rateParcelOut, m.rateBytesIn, m.rateBytesOut
 }
 
-func (m *Measure) calculate() {
+func (m *Measure) calculator() {
 	ticker := time.NewTicker(m.rate)
-	sec := m.rate.Seconds()
 	for range ticker.C {
-		m.dataMtx.Lock()
-		m.rateMtx.Lock()
-
-		m.rateParcelOut = float64(m.parcelsOut) / sec
-		m.rateBytesOut = float64(m.bytesOut) / sec
-		m.rateParcelIn = float64(m.parcelsIn) / sec
-		m.rateBytesIn = float64(m.bytesIn) / sec
-
-		m.parcelsIn = 0
-		m.parcelsOut = 0
-		m.bytesIn = 0
-		m.bytesOut = 0
-
-		m.dataMtx.Unlock()
-		m.rateMtx.Unlock()
+		m.calculate()
 	}
+}
+
+func (m *Measure) calculate() {
+	sec := m.rate.Seconds()
+	if sec == 0 {
+		return
+	}
+	m.dataMtx.Lock()
+	m.rateMtx.Lock()
+
+	m.rateParcelOut = float64(m.parcelsOut) / sec
+	m.rateBytesOut = float64(m.bytesOut) / sec
+	m.rateParcelIn = float64(m.parcelsIn) / sec
+	m.rateBytesIn = float64(m.bytesIn) / sec
+
+	m.parcelsIn = 0
+	m.parcelsOut = 0
+	m.bytesIn = 0
+	m.bytesOut = 0
+
+	m.dataMtx.Unlock()
+	m.rateMtx.Unlock()
 }
 
 // Send signals that we sent a parcel of the given size
