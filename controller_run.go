@@ -11,33 +11,12 @@ func (c *controller) run() {
 	defer c.logger.Error("Stop run()")
 
 	for {
-		c.runPersist()
 		c.runCatRound()
 		c.runMetrics()
 		c.runPing()
 
 		select {
 		case <-time.After(time.Second):
-		}
-	}
-}
-
-func (c *controller) runPersist() {
-	if c.net.conf.PersistFile == "" {
-		return
-	}
-
-	if time.Since(c.lastPersist) > c.net.conf.PersistInterval {
-		c.lastPersist = time.Now()
-
-		data, err := c.persistData()
-		if err != nil {
-			c.logger.WithError(err).Warn("unable to create peer persist data")
-		} else {
-			err = c.writePersistFile(data)
-			if err != nil {
-				c.logger.WithError(err).Warn("unable to persist peer data")
-			}
 		}
 	}
 }

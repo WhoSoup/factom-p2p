@@ -51,7 +51,6 @@ If there are fewer than 10 (config: `MinReseed`) connections, replenish retrieve
 
 The second step is to dial the peers in the list. If a peer in the list rejects the connection with alternatives, the alternatives are added to the list. It dials to the list sequentially until either 32 connections are reached, the list is empty, or 4 connection attempts (working or failed) have been made.
 
-
 ### Listen
 
 When a new TCP connection arrives, the node checks if the IP is banned, if there are more than 36 (config: `Incoming`) connections, or (if `conf.PeerIPLimitIncoming` > 0) there are more than conf.PeerIPLimitIncoming connections from that specific IP. If any of those are true, the connection is **rejected**. Otherwise, it continues with a **Handshake**.
@@ -64,7 +63,7 @@ The handshake starts with an already established TCP connection.
 
 1. A deadline of 10 seconds (conf: `HandshakeTimeout`) is set for both reading and writing
 2. Generate a Handshake containing our preferred version (conf: `ProtocolVersion`), listen port (conf: `ListenPort`), network id (conf: `Network`), and node id (conf: `NodeID`) and send it across the wire
-3. Blocking read the first message
+3. Blocking read of the first message
 4. Verify that we are in the same network
 5. Calculate the minimum of both our and their version
 6. Check if we can handle that version (conf: `ProtocolVersionMinimum`) and initialize the protocol adapter
@@ -76,7 +75,7 @@ For backward compatibility, the Handshake message is in the same format as proto
 
 ### 9
 
-Protocol 9 is the legacy (Factomd v6.4 and lower) protocol with the ability to split messages into parts disabled. V9 has the disadvantage of sending unwanted overhead with every message, namely Network, Version, Length, Address, Part info, NodeID, Address, Port. In the old p2p system this was used to post-load information but now has been shifted to the handshake.
+Protocol 9 is the legacy (Factomd v6.5 and lower) protocol with the ability to split messages into parts disabled. V9 has the disadvantage of sending unwanted overhead with every message, namely Network, Version, Length, Address, Part info, NodeID, Address, Port. In the old p2p system this was used to post-load information but now has been shifted to the handshake.
 
 Data is serialized via Golang's gob.
 

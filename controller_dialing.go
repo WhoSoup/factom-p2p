@@ -10,6 +10,9 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
+// manageOnline listens to peerStatus updates sent out by peers
+// if a peer notifies it's going offline, it will be removed
+// if a peer notifies it's coming online, existing peers with the same hash are removed
 func (c *controller) manageOnline() {
 	c.logger.Debug("Start manageOnline()")
 	defer c.logger.Debug("Stop manageOnline()")

@@ -40,10 +40,8 @@ type Configuration struct {
 	// ip is considered special
 	Special string
 
-	// PersistFile is the filepath to the file to save peers
+	// PersistFile is the filepath to the file to save peers. It is persisted in every CAT round
 	PersistFile string
-	// how often to save these
-	PersistInterval time.Duration
 
 	// to count as being connected
 	// PeerShareAmount is the number of peers we share
@@ -125,7 +123,6 @@ func DefaultP2PConfiguration() (c Configuration) {
 	c.ManualBan = time.Hour * 24 * 7 // a week
 
 	c.PersistFile = ""
-	c.PersistInterval = time.Minute * 15
 
 	c.Incoming = 36
 	c.Fanout = 8
@@ -140,12 +137,12 @@ func DefaultP2PConfiguration() (c Configuration) {
 	c.ListenPort = "8108"
 	c.ListenLimit = time.Second
 	c.PingInterval = time.Second * 15
-	c.RedialInterval = time.Minute
+	c.RedialInterval = time.Minute * 2
 
-	c.ReadDeadline = time.Minute * 5      // high enough to accomodate large packets
-	c.WriteDeadline = time.Minute * 5     // but fail eventually
-	c.HandshakeTimeout = time.Second * 10 // can be quite low
-	c.DialTimeout = time.Second * 10      // can be quite low
+	c.ReadDeadline = time.Minute * 5     // high enough to accomodate large packets
+	c.WriteDeadline = time.Minute * 5    // but fail eventually
+	c.HandshakeTimeout = time.Second * 5 // can be quite low
+	c.DialTimeout = time.Second * 5      // can be quite low
 
 	c.ProtocolVersion = 10
 	c.ProtocolVersionMinimum = 9

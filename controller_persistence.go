@@ -79,3 +79,19 @@ func (c *controller) parsePersist(data []byte) (*Persist, error) {
 	c.logger.Debugf("bootstrapping with %d ips and %d bans", len(pers.Bootstrap), len(pers.Bans))
 	return &pers, nil
 }
+
+func (c *controller) persistPeerFile() {
+	if c.net.conf.PersistFile == "" {
+		return
+	}
+
+	data, err := c.persistData()
+	if err != nil {
+		c.logger.WithError(err).Warn("unable to create peer persist data")
+	} else {
+		err = c.writePersistFile(data)
+		if err != nil {
+			c.logger.WithError(err).Warn("unable to persist peer data")
+		}
+	}
+}

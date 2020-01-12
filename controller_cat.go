@@ -15,16 +15,12 @@ func (c *controller) processPeerShare(peer *Peer, parcel *Parcel) []Endpoint {
 
 	c.logger.Debugf("Received peer share from %s: %+v", peer, list)
 
-	// cycles through list twice but we don't want to add any if one of them is bad
+	var res []Endpoint
 	for _, p := range list {
 		if !p.Valid() {
 			c.logger.Infof("Peer %s tried to send us peer share with bad data: %s", peer, p)
 			return nil
 		}
-	}
-
-	var res []Endpoint
-	for _, p := range list {
 		ep, err := NewEndpoint(p.IP, p.Port)
 		if err != nil {
 			c.logger.WithError(err).Infof("Unable to register endpoint %s:%s from peer %s", p.IP, p.Port, peer)
@@ -92,9 +88,11 @@ func (c *controller) runCatRound() {
 		return
 	}
 	c.lastRound = time.Now()
-
 	c.logger.Debug("Cat Round")
 	c.rounds++
+
+	c.persistPeerFile()
+
 	peers := c.peers.Slice()
 
 	toDrop := len(peers) - int(c.net.conf.Drop) // current - target amount
@@ -160,6 +158,19 @@ func (c *controller) catReplenish() {
 		return c.peers.Connected(ep) || c.isBannedEndpoint(ep) || !c.dialer.CanDial(ep)
 	}
 
+	// bootstrap
+	if len(c.bootstrap) > 0 {
+		c.logger.Infof("Attempting to connect to %d peers from bootstrap", len(c.bootstrap))
+		for _, e := range c.bootstrap {
+			if !deny(e) {
+				_, _ = c.Dial(e)
+			}
+		}
+	}
+
+	lastReseed := time.Now()
+	seeded := false
+
 	for {
 		var connect []Endpoint
 		if uint(c.peers.Total()) >= c.net.conf.Target {
@@ -167,18 +178,28 @@ func (c *controller) catReplenish() {
 			continue
 		}
 
+		// reseed if necessary
 		min := c.net.conf.MinReseed
 		if uint(c.seed.size()) < min {
 			min = uint(c.seed.size()) - 1
 		}
-		if uint(c.peers.Total()) <= min {
+
+		if !seeded && (uint(c.peers.Total()) <= min || time.Since(lastReseed) > c.net.conf.PeerReseedInterval) {
 			seeds := c.seed.retrieve()
+			// shuffle to hit different seeds
+			c.net.rng.Shuffle(len(seeds), func(i, j int) {
+				seeds[i], seeds[j] = seeds[j], seeds[i]
+			})
 			for _, s := range seeds {
 				if deny(s) {
 					continue
 				}
 				connect = append(connect, s)
 			}
+			lastReseed = time.Now()
+			seeded = true
+		} else if seeded {
+			seeded = false
 		}
 
 		if len(connect) == 0 {
