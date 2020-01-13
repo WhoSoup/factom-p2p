@@ -23,7 +23,6 @@ type Network struct {
 	prom *Prometheus
 
 	metricsHook func(pm map[string]PeerMetrics)
-	measure     *Measure
 
 	rng        *rand.Rand
 	instanceID uint64
@@ -53,7 +52,6 @@ func NewNetwork(conf Configuration) (*Network, error) {
 		n.prom = new(Prometheus)
 		n.prom.Setup()
 	}
-	n.measure = NewMeasure(time.Second * 15)
 	n.rng = rand.New(rand.NewSource(time.Now().UnixNano()))
 	// generate random instanceid for loopback detection
 	n.instanceID = n.rng.Uint64()
