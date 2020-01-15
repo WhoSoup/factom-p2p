@@ -125,6 +125,8 @@ func (c *controller) ban(hash string, duration time.Duration) {
 	}
 }
 
+// ban a specific endpoint for a duration.
+// to nullify a ban, use a duration of zero.
 func (c *controller) banEndpoint(ep Endpoint, duration time.Duration) {
 	c.banMtx.Lock()
 	c.bans[ep.String()] = time.Now().Add(duration)
@@ -210,6 +212,8 @@ func (c *controller) Start() {
 	go c.catReplenish() // cycle every 1s
 }
 
+// manageData processes parcels arriving from peers and responds appropriately.
+// application messages are forwarded to the network channel.
 func (c *controller) manageData() {
 	c.logger.Debug("Start manageData()")
 	defer c.logger.Debug("Stop manageData()")

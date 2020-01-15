@@ -166,6 +166,7 @@ func (c *controller) catReplenish() {
 				_, _ = c.Dial(e)
 			}
 		}
+		c.bootstrap = nil
 	}
 
 	lastReseed := time.Now()

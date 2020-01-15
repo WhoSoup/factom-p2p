@@ -32,6 +32,10 @@ Tackling some of these would require significant overhaul of the existing code t
 * **Peer Hash**: Each peer receives a unique peer hash using the format `[ip]:[port] [hex nodeid]`, where `[ip]` is taken from the TCP connection itself, and `[port]` and `[hex nodeid]` are determined from the peer's handshake.
 * **Parcel**: A parcel is a container for network messages that has a type and a payload. Parcels of the application type are delivered to the application, others are used internally.
 
+## Package Structure
+
+
+
 ## Protocol
 
 ### CAT Peering
@@ -40,11 +44,16 @@ The CAT (Cyclic Auto Truncate) is a cyclic peering strategy to prevent a rigid n
 
 ### Round
 
-Rounds run once every 15 minutes (config: `RoundTime`). It gets a list of peers and if there are more than 30 peers (config: `Drop`), it randomly selects non-special peers to drop to reach 30 peers.
+Rounds run once every 15 minutes (config: `RoundTime`) and does the following:
+
+1. Persist current peer endpoints and bans in the peer file (config: `PersistFile`)
+2. If there are more than 30 peers (config: `Drop`), it randomly selects non-special peers to drop to reach 30 peers.
 
 ### Replenish
 
 The goal of Replenish is to reach 32 (config: `Target`) active connections. If there are 32 or more connections, Replenish waits. Otherwise, it runs once a second.
+
+Once on startup, if the peer file is less than an hour old (config: `PersistAge`) Replenish will try to re-establish those connections first. This improves reconnection speeds after rebooting a node.
 
 The first step is to pick a list of peers to connect to:
 If there are fewer than 10 (config: `MinReseed`) connections, replenish retrieves the peers from the seed file to connect to. Otherwise, it sends a Peer-Request message to a *random* peer in the connection pool. If it receives a response within 5 seconds, it will select **one** random peer from the provided list.

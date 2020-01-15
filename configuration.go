@@ -42,6 +42,8 @@ type Configuration struct {
 
 	// PersistFile is the filepath to the file to save peers. It is persisted in every CAT round
 	PersistFile string
+	// PersistAge is the maximum age of the peer file to try and bootstrap peers from
+	PersistAge time.Duration
 
 	// to count as being connected
 	// PeerShareAmount is the number of peers we share
@@ -123,6 +125,7 @@ func DefaultP2PConfiguration() (c Configuration) {
 	c.ManualBan = time.Hour * 24 * 7 // a week
 
 	c.PersistFile = ""
+	c.PersistAge = time.Hour //
 
 	c.Incoming = 36
 	c.Fanout = 8
