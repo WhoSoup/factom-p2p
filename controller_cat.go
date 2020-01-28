@@ -5,6 +5,39 @@ import (
 	"time"
 )
 
+// runs a single CAT round that persists peers and drops random connections.
+// this function is triggered once a second by the controller.run function
+func (c *controller) runCatRound() {
+	if time.Since(c.lastRound) < c.net.conf.RoundTime {
+		return
+	}
+	c.lastRound = time.Now()
+	c.logger.Debug("Cat Round")
+	c.rounds++
+
+	c.persistPeerFile()
+
+	peers := c.peers.Slice()
+
+	toDrop := len(peers) - int(c.net.conf.Drop) // current - target amount
+
+	if toDrop > 0 {
+		perm := c.net.rng.Perm(len(peers))
+
+		dropped := 0
+		for _, i := range perm {
+			if c.isSpecial(peers[i].Endpoint) {
+				continue
+			}
+			peers[i].Stop()
+			dropped++
+			if dropped >= toDrop {
+				break
+			}
+		}
+	}
+}
+
 // processPeers processes a peer share response
 func (c *controller) processPeerShare(peer *Peer, parcel *Parcel) []Endpoint {
 	list, err := peer.prot.ParsePeerShare(parcel.Payload)
@@ -81,37 +114,6 @@ func (c *controller) sharePeers(peer *Peer, list []Endpoint) {
 	c.logger.Debugf("Sharing %d peers with %s", len(list), peer)
 	parcel := newParcel(TypePeerResponse, payload)
 	peer.Send(parcel)
-}
-
-func (c *controller) runCatRound() {
-	if time.Since(c.lastRound) < c.net.conf.RoundTime {
-		return
-	}
-	c.lastRound = time.Now()
-	c.logger.Debug("Cat Round")
-	c.rounds++
-
-	c.persistPeerFile()
-
-	peers := c.peers.Slice()
-
-	toDrop := len(peers) - int(c.net.conf.Drop) // current - target amount
-
-	if toDrop > 0 {
-		perm := c.net.rng.Perm(len(peers))
-
-		dropped := 0
-		for _, i := range perm {
-			if c.isSpecial(peers[i].Endpoint) {
-				continue
-			}
-			peers[i].Stop()
-			dropped++
-			if dropped >= toDrop {
-				break
-			}
-		}
-	}
 }
 
 // this function is only intended to be run single-threaded inside the replenish loop
@@ -252,34 +254,4 @@ func (c *controller) catReplenish() {
 			time.Sleep(time.Second)
 		}
 	}
-}
-
-func (c *controller) selectBroadcastPeers(count uint) []*Peer {
-	peers := c.peers.Slice()
-
-	// not enough to randomize
-	if uint(len(peers)) <= count {
-		return peers
-	}
-
-	var special []*Peer
-	var regular []*Peer
-
-	for _, p := range peers {
-		if c.isSpecial(p.Endpoint) {
-			special = append(special, p)
-		} else {
-			regular = append(regular, p)
-		}
-	}
-
-	if uint(len(regular)) < count {
-		return append(special, regular...)
-	}
-
-	c.net.rng.Shuffle(len(regular), func(i, j int) {
-		regular[i], regular[j] = regular[j], regular[i]
-	})
-
-	return append(special, regular[:count]...)
 }

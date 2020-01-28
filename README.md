@@ -34,6 +34,39 @@ Tackling some of these would require significant overhaul of the existing code t
 
 ## Package Structure
 
+The P2P package consists of these major components:
+
+1. **Network** is the publicly visible interface that applications use to interact with the p2p network. It's initialized with an immutable **Configuration** object and other components all have a back reference to the network so they can interact with each other.
+2. **Controller** is the heart of the p2p package. It's split over several files, separated by area of responsibility. The controller handles accepting/creating new connections, peer management, and data routing.
+3. **Peer**s are connections to another node. Each peer has an active TCP connection and a **Protocol**, which translates **Parcel**s into a format the peer can understand.
+
+### Lifecycles
+
+#### Peer
+
+The foundation of a peer is a TCP connection, which are created either through an incoming connection, or a dial attempt. The peer object is initialized and the TCP connection is given to the handshake process (see below for more info). If the handshake process is *unsuccessful*, the tcp connection is torn down and the peer object is destroyed. If the handshake process is sucessful, the peer's read/send loops are started and it sends an *online notification* to the *controller's status channel*.
+
+Upon receiving the online notification, the controller will include that peer in the *PeerStore* and make it available for routing. The read loop reads data from the connection and sends it to the controller. The send loops takes data from the controller and sends it to the connection. If an error occurs during the read/write process or the peer's **Stop()** function is called, the peer stops its internal loops and also sends an *offline notification* to the *controller's status channel*.
+
+Upon receiving the offline notification, the controller will remove that peer from the *PeerStore* and destroy the object.
+
+If the controller dials the same node, a new Peer object will be created rather than recycling the old one. If an error during read or write occurs, the Peer will call its own **Stop()** function.
+
+#### Parcel (Application -> Remote Node)
+
+The application creates a new parcel with the *application type*, a *payload*, and a *target*, which may either be a peer's hash, or one of the predefined flags: *Broadcast*, *Full Broadcast*, or *Random Peer*. The parcel is given to the **ToNetwork** channel. 
+
+The controller *routes* all parcels from the ToNetwork channel to individual Peer's *send channels* based on their target:
+1. Peer's Hash: parcel is given directly to that peer
+2. Random Peer: a random peer is given the parcel
+3. Broadcast: 16 peers (config: `Fanout`) are randomly selected from the list of non-special peers. Those 16 peers and all the special peers are given the parcel
+4. Full Broadcast: all peers are given the parcel
+
+Each Peer monitors their send channel. If a parcel arrives, it is given to the *Protocol*. The *Protocol* reads the parcel and creates a corresponding *protocol message*, which is then written to the connection in a manner dictated by the protocol. For more information on the protocols, see below.
+
+#### Parcel (Remote Node -> Application)
+
+A Peer's *Protocol* reads a *protocol message* from the connection and turns it into a *Parcel*. The parcel is then given to the controller's *peerData channel*. The controller separates *p2p parcels* from *application parcels*. Application parcels are given to the **FromNetwork** channel without any further processing.
 
 
 ## Protocol

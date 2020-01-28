@@ -108,7 +108,6 @@ func (n *Network) Run() {
 
 	n.controller.Start() // this will get peer manager ready to handle incoming connections
 	//DebugServer(n)
-	go n.route()
 }
 
 func (n *Network) Stop() {
@@ -152,25 +151,4 @@ func (n *Network) Total() int {
 // Rounds returns the total number of CAT rounds that have occurred
 func (n *Network) Rounds() int {
 	return n.controller.rounds
-}
-
-// route Takes messages from the network's ToNetwork channel and routes it
-// to the controller via the appropriate function
-func (n *Network) route() {
-	for {
-		// blocking read on ToNetwork, and c.stopRoute
-		select {
-		case message := <-n.ToNetwork:
-			switch message.Address {
-			case FullBroadcast:
-				n.controller.Broadcast(message, true)
-			case Broadcast:
-				n.controller.Broadcast(message, false)
-			case RandomPeer:
-				n.controller.ToPeer("", message)
-			default:
-				n.controller.ToPeer(message.Address, message)
-			}
-		}
-	}
 }
