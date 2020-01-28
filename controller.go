@@ -80,7 +80,7 @@ func newController(network *Network) (*controller, error) {
 	c.seed = newSeed(conf.SeedURL, conf.PeerReseedInterval)
 
 	c.peers = NewPeerStore()
-	c.addSpecial(conf.Special)
+	c.setSpecial(conf.Special)
 
 	if persist, err := c.loadPersist(); err != nil || persist == nil {
 		c.logger.Infof("no valid bootstrap file found")
@@ -158,6 +158,7 @@ func (c *controller) isSpecial(ep Endpoint) bool {
 	defer c.specialMtx.RUnlock()
 	return c.special[ep.String()]
 }
+
 func (c *controller) isSpecialIP(ip string) bool {
 	c.specialMtx.RLock()
 	defer c.specialMtx.RUnlock()
@@ -171,13 +172,14 @@ func (c *controller) disconnect(hash string) {
 	}
 }
 
-func (c *controller) addSpecial(raw string) {
+func (c *controller) setSpecial(raw string) {
 	if len(raw) == 0 {
+		c.specialEndpoints = nil
 		return
 	}
-	specialEndpoints := c.parseSpecial(raw)
+	c.specialEndpoints = c.parseSpecial(raw)
 	c.specialMtx.Lock()
-	for _, ep := range specialEndpoints {
+	for _, ep := range c.specialEndpoints {
 		c.logger.Debugf("Registering special endpoint %s", ep)
 		c.special[ep.String()] = true
 		c.special[ep.IP] = true

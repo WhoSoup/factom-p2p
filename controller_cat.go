@@ -172,7 +172,6 @@ func (c *controller) catReplenish() {
 	}
 
 	lastReseed := time.Now()
-	seeded := false // don't seed twice in a row
 
 	for {
 		var connect []Endpoint
@@ -187,7 +186,15 @@ func (c *controller) catReplenish() {
 			min = uint(c.seed.size()) - 1
 		}
 
-		if !seeded && (uint(c.peers.Total()) <= min || time.Since(lastReseed) > c.net.conf.PeerReseedInterval) {
+		// try special first
+		for _, sp := range c.specialEndpoints {
+			if deny(sp) {
+				continue
+			}
+			connect = append(connect, sp)
+		}
+
+		if uint(c.peers.Total()) <= min || time.Since(lastReseed) > c.net.conf.PeerReseedInterval {
 			seeds := c.seed.retrieve()
 			// shuffle to hit different seeds
 			c.net.rng.Shuffle(len(seeds), func(i, j int) {
@@ -200,12 +207,14 @@ func (c *controller) catReplenish() {
 				connect = append(connect, s)
 			}
 			lastReseed = time.Now()
-			seeded = true
-		} else if seeded {
-			seeded = false
 		}
 
-		if len(connect) == 0 {
+		// if we connect to a peer that's full it gives us some alternatives
+		// left unchecked, this can be a very long loop, therefore we are limiting it
+		// sum(special, seeds) + 5 more
+		var attemptsLimit = len(connect) + 5
+
+		if c.peers.Total() > 0 {
 			rand := c.randomPeersConditional(1, func(p *Peer) bool {
 				return time.Since(p.lastPeerSend) >= c.net.conf.PeerRequestInterval
 			})
@@ -228,7 +237,7 @@ func (c *controller) catReplenish() {
 
 		var ep Endpoint
 		var attempts int
-		for len(connect) > 0 && attempts < 4 {
+		for len(connect) > 0 && attempts < attemptsLimit {
 			ep = connect[0]
 			connect = connect[1:]
 
@@ -250,7 +259,7 @@ func (c *controller) catReplenish() {
 
 		connect = nil
 
-		if attempts == 0 {
+		if attempts == 0 { // no peers and we exhausted special and seeds
 			time.Sleep(time.Second)
 		}
 	}
