@@ -6,6 +6,8 @@ import (
 	"sort"
 )
 
+// this file is for debugging only and not included in the factom repo
+
 // DebugMessage is temporary
 func (n *Network) DebugMessage() (string, string, int) {
 	hv := ""

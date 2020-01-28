@@ -105,6 +105,8 @@ type Configuration struct {
 	// ProtocolVersionMinimum is the earliest version this package supports
 	ProtocolVersionMinimum uint16
 
+	// ChannelCapacity dictates how large each peer's send channel is.
+	// Should be large enough to accomodate bursts of traffic.
 	ChannelCapacity uint
 
 	EnablePrometheus bool // Enable prometheus logging. Disable if you run multiple instances
@@ -156,6 +158,7 @@ func DefaultP2PConfiguration() (c Configuration) {
 	return
 }
 
+// Sanitize automatically adjusts some variables that are dependent on others
 func (c *Configuration) Sanitize() {
 	if c.Incoming > c.Max {
 		c.Incoming = c.Max

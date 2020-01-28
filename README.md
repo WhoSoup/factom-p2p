@@ -36,8 +36,8 @@ Tackling some of these would require significant overhaul of the existing code t
 
 The P2P package consists of these major components:
 
-1. **Network** is the publicly visible interface that applications use to interact with the p2p network. It's initialized with an immutable **Configuration** object and other components all have a back reference to the network so they can interact with each other.
-2. **Controller** is the heart of the p2p package. It's split over several files, separated by area of responsibility. The controller handles accepting/creating new connections, peer management, and data routing.
+1. **Network** is the publicly visible interface that applications use to interact with the p2p network. It's initialized with a **Configuration** object and other components all have a back reference to the network so they can interact with each other.
+2. **Controller** is the heart of the p2p package. It's split over several files, separated by area of responsibility. The controller handles accepting/creating new connections, peer management, and data routing. The controller has a **PeerStore** that holds all active peer connections.
 3. **Peer**s are connections to another node. Each peer has an active TCP connection and a **Protocol**, which translates **Parcel**s into a format the peer can understand.
 
 ### Lifecycles
