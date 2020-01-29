@@ -18,7 +18,6 @@ type Network struct {
 
 	conf       *Configuration
 	controller *controller
-	seed       *seed
 
 	prom *Prometheus
 

@@ -40,6 +40,10 @@ The P2P package consists of these major components:
 2. **Controller** is the heart of the p2p package. It's split over several files, separated by area of responsibility. The controller handles accepting/creating new connections, peer management, and data routing. The controller has a **PeerStore** that holds all active peer connections.
 3. **Peer**s are connections to another node. Each peer has an active TCP connection and a **Protocol**, which translates **Parcel**s into a format the peer can understand.
 
+## Overview
+
+![Quick Overview](https://camo.githubusercontent.com/070ef686795dbc8650ba5a29a8237e196047e4e6/68747470733a2f2f692e696d6775722e636f6d2f665137675855712e706e67)
+
 ### Lifecycles
 
 #### Peer
