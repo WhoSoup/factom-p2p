@@ -157,10 +157,10 @@ The bootstrap seed file contains the addresses of your seed nodes, the ones that
 First, you need to create the configuration:
 
 ```go
-	config := p2p.DefaultP2PConfiguration()
-	config.Network = p2p.NewNetworkID("myNetwork")
-    config.SeedURL = "http://url/of/seed/file.txt"
-    config.PersistFile = "/path/to/peerfile.json"
+config := p2p.DefaultP2PConfiguration()
+config.Network = p2p.NewNetworkID("myNetwork")
+config.SeedURL = "http://url/of/seed/file.txt"
+config.PersistFile = "/path/to/peerfile.json"
 ```
 
 The default values are derived from Factom's network and described in the [Configuration file](configuration.go). The `config.NodeID` is a unique number tied to a node's ip and port. The same node should use the same NodeID between restarts, but two nodes running at the same time and using the same ip and listen port should have different NodeIDs. The latter is the case if you have multiple nodes behind a NAT connecting to a public network.
@@ -172,12 +172,12 @@ The `config.PersistFile` setting can be blank to not save peers and bans to disk
 Once you have the config, the rest is easy.
 
 ```go
-	network, err := p2p.NewNetwork(config)
-	if err != nil {
-		// handle err, typically related to the peer file or unable to bind to a listen port
-	}
+network, err := p2p.NewNetwork(config)
+if err != nil {
+    // handle err, typically related to the peer file or unable to bind to a listen port
+}
 
-    network.Run() // nonblocking, starts its own goroutines
+network.Run() // nonblocking, starts its own goroutines
 ```
 
 You can start reading and writing to the network immediately, though no peers may be connected at first. You can check how many connections are established via `network.Total()`.
@@ -187,8 +187,8 @@ You can start reading and writing to the network immediately, though no peers ma
 To send an application message to the network, you need to create a Parcel with a **target** and a **payload**:
 
 ```go
-	parcel := p2p.NewParcel(p2p.Broadcast, byteSequence)
-	network.ToNetwork.Send(parcel)
+parcel := p2p.NewParcel(p2p.Broadcast, byteSequence)
+network.ToNetwork.Send(parcel)
 ```
 
 The target can be either a peer's hash, or one of the predefined flags of `p2p.RandomPeer`, `p2p.Broadcast`, or `p2p.FullBroadcast`. The functions of these are described in detail in the Lifecycle section "Parcel (Application -> Remote Node)". The p2p package is data agnostic and any interpretation of the byte sequence is left up to the application.
@@ -196,10 +196,10 @@ The target can be either a peer's hash, or one of the predefined flags of `p2p.R
 To read incoming Parcels:
 
 ```go
-	for parcel := range network.FromNetwork.Reader() {
-		// parcel.Address is the sender's peer hash
-		// parcel.Payload is the application data
-	}
+for parcel := range network.FromNetwork.Reader() {
+    // parcel.Address is the sender's peer hash
+    // parcel.Payload is the application data
+}
 ```
 
 If you want to return a message to the sender, use the parcel's Address as the **target** of a new parcel.
