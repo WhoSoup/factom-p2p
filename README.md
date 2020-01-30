@@ -128,3 +128,79 @@ Data is serialized via Golang's gob.
 ### 10
 
 Protocol 10 is the slimmed down version of V9, containing only the Type, CRC32 of the payload, and the payload itself. Data is also serialized via Golang's gob.
+
+## Usage
+
+### Setting up a Network
+
+In order to set up a network, you need two things: a network id, and a bootstrap file.
+
+The network ID can be generated with `p2p.NewNetworkID(string)`, with your preferred name as input. For example, "myNetwork" results in `0x29cb7175`. There are also predefined networks, like `p2p.MainNet` that are used for Factom specific networks.
+
+The bootstrap seed file contains the addresses of your seed nodes, the ones that every new node will attempt to connect to. Plaintext, one `ip:port` address per line. An example is [Factom's mainnet seed file](https://raw.githubusercontent.com/FactomProject/factomproject.github.io/master/seed/mainseed.txt):
+```
+52.17.183.121:8108
+52.17.153.126:8108
+52.19.117.149:8108
+52.18.72.212:8108
+52.19.44.249:8108
+52.214.189.110:8108
+34.249.228.82:8108
+34.248.202.6:8108
+52.19.181.120:8108
+34.248.6.133:8108
+```
+
+
+### Connecting to a Network
+
+First, you need to create the configuration:
+
+```go
+	config := p2p.DefaultP2PConfiguration()
+	config.Network = p2p.NewNetworkID("myNetwork")
+    config.SeedURL = "http://url/of/seed/file.txt"
+    config.PersistFile = "/path/to/peerfile.json"
+```
+
+The default values are derived from Factom's network and described in the [Configuration file](configuration.go). The `config.NodeID` is a unique number tied to a node's ip and port. The same node should use the same NodeID between restarts, but two nodes running at the same time and using the same ip and listen port should have different NodeIDs. The latter is the case if you have multiple nodes behind a NAT connecting to a public network.
+
+The `config.PersistFile` setting can be blank to not save peers and bans to disk. Enabling this makes a node able to restart the network faster and re-establish old connections.
+
+### Starting the Network
+
+Once you have the config, the rest is easy.
+
+```go
+	network, err := p2p.NewNetwork(config)
+	if err != nil {
+		// handle err, typically related to the peer file or unable to bind to a listen port
+	}
+
+    network.Run() // nonblocking, starts its own goroutines
+```
+
+You can start reading and writing to the network immediately, though no peers may be connected at first. You can check how many connections are established via `network.Total()`.
+
+### Reading and Writing
+
+To send an application message to the network, you need to create a Parcel with a **target** and a **payload**:
+
+```go
+	parcel := p2p.NewParcel(p2p.Broadcast, byteSequence)
+	network.ToNetwork.Send(parcel)
+```
+
+The target can be either a peer's hash, or one of the predefined flags of `p2p.RandomPeer`, `p2p.Broadcast`, or `p2p.FullBroadcast`. The functions of these are described in detail in the Lifecycle section "Parcel (Application -> Remote Node)". The p2p package is data agnostic and any interpretation of the byte sequence is left up to the application.
+
+To read incoming Parcels:
+
+```go
+	for parcel := range network.FromNetwork.Reader() {
+		// parcel.Address is the sender's peer hash
+		// parcel.Payload is the application data
+	}
+```
+
+If you want to return a message to the sender, use the parcel's Address as the **target** of a new parcel.
+
