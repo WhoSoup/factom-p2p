@@ -1,3 +1,6 @@
+// Copyright 2019-2020 Factomize LLC
+// More information in the LICENSE file
+
 package p2p
 
 // ParcelType is a list of parcel types that this node understands
