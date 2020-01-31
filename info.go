@@ -1,3 +1,6 @@
+// Copyright 2019-2020 Factomize LLC
+// More information in the LICENSE file
+
 package p2p
 
 // Info holds the data that can be queried from the Network
