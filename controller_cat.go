@@ -123,15 +123,11 @@ func (c *controller) sharePeers(peer *Peer, list []Endpoint) {
 // the closure is called in controller.manageData
 // if there is no response from the peer after 5 seconds, it times out
 func (c *controller) asyncPeerRequest(peer *Peer) ([]Endpoint, error) {
-	c.shareMtx.Lock()
 
-	var share []Endpoint
-	async := make(chan bool, 1)
-	f := func(parcel *Parcel) {
-		share = c.shuffleTrimShare(c.processPeerShare(peer, parcel))
-		async <- true
-	}
-	c.shareListener[peer.NodeID] = f
+	async := make(chan *Parcel, 1)
+
+	c.shareMtx.Lock()
+	c.shareListener[peer.NodeID] = async
 	c.shareMtx.Unlock()
 
 	defer func() {
@@ -144,12 +140,12 @@ func (c *controller) asyncPeerRequest(peer *Peer) ([]Endpoint, error) {
 	peer.Send(req)
 
 	select {
-	case <-async:
+	case parcel := <-async:
+		share := c.shuffleTrimShare(c.processPeerShare(peer, parcel))
+		return share, nil
 	case <-time.After(time.Second * 5):
 		return nil, fmt.Errorf("timeout")
 	}
-
-	return share, nil
 }
 
 // catReplenish is the loop that brings the node up to the desired number of connections.
