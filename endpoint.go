@@ -56,3 +56,8 @@ func (ep Endpoint) Valid() bool {
 	}
 	return false
 }
+
+// Equals returns true if both endpoints are the same
+func (ep Endpoint) Equal(o Endpoint) bool {
+	return ep.IP == o.IP && ep.Port == o.Port
+}

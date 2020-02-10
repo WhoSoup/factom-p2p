@@ -115,3 +115,35 @@ func TestEndpoint_Valid(t *testing.T) {
 		})
 	}
 }
+
+func TestEndpoint_Equal(t *testing.T) {
+	ep := func(ip, port string) Endpoint {
+		return Endpoint{IP: ip, Port: port}
+	}
+
+	type args struct {
+		o Endpoint
+	}
+	tests := []struct {
+		name string
+		ep   Endpoint
+		args args
+		want bool
+	}{
+		{"both empty", Endpoint{}, args{Endpoint{}}, true},
+		{"both empty strings", ep("", ""), args{ep("", "")}, true},
+		{"localhost, no port", ep("localhost", ""), args{ep("localhost", "")}, true},
+		{"no ip, same port", ep("", "80"), args{ep("", "80")}, true},
+		{"both set", ep("127.0.0.1", "8108"), args{ep("127.0.0.1", "8108")}, true},
+		{"port wrong", ep("127.0.0.1", "51"), args{ep("127.0.0.1", "50")}, false},
+		{"ip wrong", ep("127.0.0.1", "80"), args{ep("127.0.0.2", "80")}, false},
+		{"both wrong", ep("127.0.0.1", "80"), args{ep("127.0.0.2", "81")}, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.ep.Equal(tt.args.o); got != tt.want {
+				t.Errorf("Endpoint.Equal() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
