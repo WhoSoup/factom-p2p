@@ -109,6 +109,12 @@ func (c *controller) sharePeers(peer *Peer, list []Endpoint) {
 		c.logger.WithError(err).Error("Failed to marshal peer list to json")
 		return
 	}
+
+	if len(payload) == 0 {
+		c.logger.Debugf("No peers to share with %s", peer)
+		return
+	}
+
 	c.logger.Debugf("Sharing %d peers with %s", len(list), peer)
 	parcel := newParcel(TypePeerResponse, payload)
 	peer.Send(parcel)
