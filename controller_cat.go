@@ -69,13 +69,11 @@ func (c *controller) processPeerShare(peer *Peer, parcel *Parcel) []Endpoint {
 	return res
 }
 
-func (c *controller) trimShare(list []Endpoint, shuffle bool) []Endpoint {
+func (c *controller) shuffleTrimShare(list []Endpoint) []Endpoint {
 	if len(list) == 0 {
 		return nil
 	}
-	if shuffle {
-		c.net.rng.Shuffle(len(list), func(i, j int) { list[i], list[j] = list[j], list[i] })
-	}
+	c.net.rng.Shuffle(len(list), func(i, j int) { list[i], list[j] = list[j], list[i] })
 	if uint(len(list)) > c.net.conf.PeerShareAmount {
 		list = list[:c.net.conf.PeerShareAmount]
 	}
@@ -130,7 +128,7 @@ func (c *controller) asyncPeerRequest(peer *Peer) ([]Endpoint, error) {
 	var share []Endpoint
 	async := make(chan bool, 1)
 	f := func(parcel *Parcel) {
-		share = c.trimShare(c.processPeerShare(peer, parcel), true)
+		share = c.shuffleTrimShare(c.processPeerShare(peer, parcel))
 		async <- true
 	}
 	c.shareListener[peer.NodeID] = f
