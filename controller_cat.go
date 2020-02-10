@@ -86,7 +86,7 @@ func (c *controller) makePeerShare(exclude Endpoint) []Endpoint {
 	var list []Endpoint
 	peers := c.peers.Slice()
 
-	for i := range c.net.rng.Perm(len(peers)) {
+	for _, i := range c.net.rng.Perm(len(peers)) {
 		if exclude.Equal(peers[i].Endpoint) {
 			continue
 		}
