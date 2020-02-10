@@ -1,6 +1,8 @@
 package p2p
 
 import (
+	"bytes"
+	"encoding/binary"
 	"encoding/gob"
 	"encoding/json"
 	"fmt"
@@ -122,7 +124,8 @@ func (p *Peer) StartWithHandshake(ep Endpoint, con net.Conn, incoming bool) ([]E
 	tmplogger := p.logger.WithField("addr", ep.IP)
 	timeout := time.Now().Add(p.net.conf.HandshakeTimeout)
 
-	nonce := []byte(fmt.Sprintf("%x", p.net.instanceID))
+	nonce := make([]byte, 8)
+	binary.LittleEndian.PutUint64(nonce, p.net.instanceID)
 
 	// upgrade connection to a metrics connection
 	p.metrics = NewMetricsReadWriter(con)
@@ -158,7 +161,7 @@ func (p *Peer) StartWithHandshake(ep Endpoint, con net.Conn, incoming bool) ([]E
 	}
 
 	// loopback detection
-	if string(reply.Payload) == string(nonce) {
+	if bytes.Equal(reply.Payload, nonce) {
 		return failfunc(fmt.Errorf("loopback"))
 	}
 
