@@ -82,18 +82,16 @@ func (c *controller) trimShare(list []Endpoint, shuffle bool) []Endpoint {
 	return list
 }
 
-func (c *controller) makePeerShare(ep Endpoint) []Endpoint {
+func (c *controller) makePeerShare(exclude Endpoint) []Endpoint {
 	var list []Endpoint
-	tmp := c.peers.Slice()
-	var i int
+	peers := c.peers.Slice()
 
-	cmp := ep.String()
-	for _, i = range c.net.rng.Perm(len(tmp)) {
-		if tmp[i].Endpoint.String() == cmp {
+	for i := range c.net.rng.Perm(len(peers)) {
+		if exclude.Equal(peers[i].Endpoint) {
 			continue
 		}
-		list = append(list, tmp[i].Endpoint)
-		if uint(len(tmp)) >= c.net.conf.PeerShareAmount {
+		list = append(list, peers[i].Endpoint)
+		if uint(len(list)) >= c.net.conf.PeerShareAmount {
 			break
 		}
 	}
