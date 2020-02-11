@@ -50,10 +50,15 @@ type Configuration struct {
 	PeerShareAmount uint
 
 	// CAT Settings
+	// How often to do cat rounds
 	RoundTime time.Duration
-	Target    uint
-	Max       uint
-	Drop      uint
+	// Desired amount of peers
+	TargetPeers uint
+	// Hard cap of connections
+	MaxPeers uint
+	// Amount of peers to drop down to
+	DropTo uint
+	// Reseed if there are fewer than this peers
 	MinReseed uint
 	Incoming  uint // maximum inbound connections, 0 <= Incoming <= Max
 
@@ -133,9 +138,9 @@ func DefaultP2PConfiguration() (c Configuration) {
 	c.Fanout = 8
 	c.PeerShareAmount = 3 // CAT share
 	c.RoundTime = time.Minute * 15
-	c.Target = 32
-	c.Max = 36
-	c.Drop = 30
+	c.TargetPeers = 32
+	c.MaxPeers = 36
+	c.DropTo = 30
 	c.MinReseed = 10
 
 	c.BindIP = "" // bind to all
@@ -160,7 +165,7 @@ func DefaultP2PConfiguration() (c Configuration) {
 
 // Sanitize automatically adjusts some variables that are dependent on others
 func (c *Configuration) Sanitize() {
-	if c.Incoming > c.Max {
-		c.Incoming = c.Max
+	if c.Incoming > c.MaxPeers {
+		c.Incoming = c.MaxPeers
 	}
 }

@@ -19,7 +19,7 @@ func (c *controller) runCatRound() {
 
 	peers := c.peers.Slice()
 
-	toDrop := len(peers) - int(c.net.conf.Drop) // current - target amount
+	toDrop := len(peers) - int(c.net.conf.DropTo) // current - target amount
 
 	if toDrop > 0 {
 		perm := c.net.rng.Perm(len(peers))
@@ -169,7 +169,7 @@ func (c *controller) catReplenish() {
 
 	for {
 		var connect []Endpoint
-		if uint(c.peers.Total()) >= c.net.conf.Target {
+		if uint(c.peers.Total()) >= c.net.conf.TargetPeers {
 			time.Sleep(time.Second)
 			continue
 		}
@@ -246,7 +246,7 @@ func (c *controller) catReplenish() {
 				}
 			}
 
-			if uint(c.peers.Total()) >= c.net.conf.Target {
+			if uint(c.peers.Total()) >= c.net.conf.TargetPeers {
 				break
 			}
 		}
