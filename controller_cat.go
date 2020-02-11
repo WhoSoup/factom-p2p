@@ -19,7 +19,7 @@ func (c *controller) runCatRound() {
 
 	peers := c.peers.Slice()
 
-	toDrop := len(peers) - int(c.net.conf.Drop) // current - target amount
+	toDrop := len(peers) - int(c.net.conf.DropTo) // current - target amount
 
 	if toDrop > 0 {
 		perm := c.net.rng.Perm(len(peers))
@@ -44,26 +44,21 @@ func (c *controller) processPeerShare(peer *Peer, parcel *Parcel) []Endpoint {
 
 	if err != nil {
 		c.logger.WithError(err).Warnf("Failed to unmarshal peer share from peer %s", peer)
+		return nil
 	}
 
 	c.logger.Debugf("Received peer share from %s: %+v", peer, list)
 
 	var res []Endpoint
-	for _, p := range list {
-		if !p.Valid() {
-			c.logger.Infof("Peer %s tried to send us peer share with bad data: %s", peer, p)
+	for _, ep := range list {
+		if !ep.Valid() {
+			c.logger.Infof("Peer %s tried to send us peer share with bad data: %s", peer, ep)
 			return nil
 		}
-		ep, err := NewEndpoint(p.IP, p.Port)
-		if err != nil {
-			c.logger.WithError(err).Infof("Unable to register endpoint %s:%s from peer %s", p.IP, p.Port, peer)
-		} else if !c.isBannedEndpoint(ep) {
+
+		if !c.isBannedEndpoint(ep) {
 			res = append(res, ep)
 		}
-	}
-
-	if c.net.prom != nil {
-		c.net.prom.KnownPeers.Set(float64(c.peers.Total()))
 	}
 
 	return res
@@ -96,12 +91,9 @@ func (c *controller) makePeerShare(exclude Endpoint) []Endpoint {
 	return list
 }
 
-// sharePeers creates a list of peers to share and sends it to peer
+// sharePeers shares the list of endpoints with a peer
 func (c *controller) sharePeers(peer *Peer, list []Endpoint) {
-	if peer == nil {
-		return
-	}
-	// CAT select n random active peers
+	// convert to protocol
 	payload, err := peer.prot.MakePeerShare(list)
 	if err != nil {
 		c.logger.WithError(err).Error("Failed to marshal peer list to json")
@@ -123,15 +115,11 @@ func (c *controller) sharePeers(peer *Peer, list []Endpoint) {
 // the closure is called in controller.manageData
 // if there is no response from the peer after 5 seconds, it times out
 func (c *controller) asyncPeerRequest(peer *Peer) ([]Endpoint, error) {
-	c.shareMtx.Lock()
 
-	var share []Endpoint
-	async := make(chan bool, 1)
-	f := func(parcel *Parcel) {
-		share = c.shuffleTrimShare(c.processPeerShare(peer, parcel))
-		async <- true
-	}
-	c.shareListener[peer.NodeID] = f
+	async := make(chan *Parcel, 1)
+
+	c.shareMtx.Lock()
+	c.shareListener[peer.NodeID] = async
 	c.shareMtx.Unlock()
 
 	defer func() {
@@ -145,12 +133,12 @@ func (c *controller) asyncPeerRequest(peer *Peer) ([]Endpoint, error) {
 	peer.Send(req)
 
 	select {
-	case <-async:
+	case parcel := <-async:
+		share := c.shuffleTrimShare(c.processPeerShare(peer, parcel))
+		return share, nil
 	case <-time.After(time.Second * 5):
 		return nil, fmt.Errorf("timeout")
 	}
-
-	return share, nil
 }
 
 // catReplenish is the loop that brings the node up to the desired number of connections.
@@ -184,7 +172,7 @@ func (c *controller) catReplenish() {
 
 	for {
 		var connect []Endpoint
-		if uint(c.peers.Total()) >= c.net.conf.Target {
+		if uint(c.peers.Total()) >= c.net.conf.TargetPeers {
 			time.Sleep(time.Second)
 			continue
 		}
@@ -244,7 +232,7 @@ func (c *controller) catReplenish() {
 
 		for len(connect) > 0 &&
 			attempts < attemptsLimit &&
-			uint(c.peers.Total()) < c.net.conf.Target {
+			uint(c.peers.Total()) < c.net.conf.TargetPeers {
 
 			ep := connect[0]
 			connect = connect[1:]
@@ -260,8 +248,6 @@ func (c *controller) catReplenish() {
 				}
 			}
 		}
-
-		connect = nil
 
 		if attempts == 0 { // no peers and we exhausted special and seeds
 			time.Sleep(time.Second)
