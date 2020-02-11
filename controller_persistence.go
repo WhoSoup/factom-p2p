@@ -6,42 +6,42 @@ import (
 	"time"
 )
 
-// Persist is the object that gets json-marshalled and written to disk
-type Persist struct {
-	Bans      map[string]time.Time `json:"bans"` // can be ip or ip:port
-	Bootstrap []Endpoint           `json:"bootstrap"`
+// PeerCache is the object that gets json-marshalled and written to disk
+type PeerCache struct {
+	Bans  map[string]time.Time `json:"bans"` // can be ip or ip:port
+	Peers []Endpoint           `json:"peers"`
 }
 
-func (c *controller) loadPersist() (*Persist, error) {
-	persistData, err := c.loadPersistFile()
+func (c *controller) loadPeerCache() (*PeerCache, error) {
+	cache, err := c.loadPeerCacheFile()
 	if err != nil {
 		return nil, err
 	}
 
-	if len(persistData) > 0 {
-		return c.parsePersist(persistData)
+	if len(cache) > 0 {
+		return c.parsePeerCache(cache)
 	}
 
 	return nil, nil
 }
 
 // wrappers for reading and writing the peer file
-func (c *controller) writePersistFile(data []byte) error {
-	if c.net.conf.PersistFile == "" {
+func (c *controller) writePeerCacheFile(data []byte) error {
+	if c.net.conf.PeerCacheFile == "" {
 		return nil
 	}
-	return ioutil.WriteFile(c.net.conf.PersistFile, data, 0644) // rw r r
+	return ioutil.WriteFile(c.net.conf.PeerCacheFile, data, 0644) // rw r r
 }
 
-func (c *controller) loadPersistFile() ([]byte, error) {
-	if c.net.conf.PersistFile == "" {
+func (c *controller) loadPeerCacheFile() ([]byte, error) {
+	if c.net.conf.PeerCacheFile == "" {
 		return nil, nil
 	}
-	return ioutil.ReadFile(c.net.conf.PersistFile)
+	return ioutil.ReadFile(c.net.conf.PeerCacheFile)
 }
 
 func (c *controller) persistData() ([]byte, error) {
-	var pers Persist
+	var pers PeerCache
 	pers.Bans = make(map[string]time.Time)
 
 	c.banMtx.Lock()
@@ -56,16 +56,16 @@ func (c *controller) persistData() ([]byte, error) {
 	c.banMtx.Unlock()
 
 	peers := c.peers.Slice()
-	pers.Bootstrap = make([]Endpoint, len(peers))
+	pers.Peers = make([]Endpoint, len(peers))
 	for i, p := range peers {
-		pers.Bootstrap[i] = p.Endpoint
+		pers.Peers[i] = p.Endpoint
 	}
 
 	return json.Marshal(pers)
 }
 
-func (c *controller) parsePersist(data []byte) (*Persist, error) {
-	var pers Persist
+func (c *controller) parsePeerCache(data []byte) (*PeerCache, error) {
+	var pers PeerCache
 	err := json.Unmarshal(data, &pers)
 	if err != nil {
 		return nil, err
@@ -76,12 +76,12 @@ func (c *controller) parsePersist(data []byte) (*Persist, error) {
 		pers.Bans = make(map[string]time.Time)
 	}
 
-	c.logger.Debugf("bootstrapping with %d ips and %d bans", len(pers.Bootstrap), len(pers.Bans))
+	c.logger.Debugf("bootstrapping with %d ips and %d bans", len(pers.Peers), len(pers.Bans))
 	return &pers, nil
 }
 
 func (c *controller) persistPeerFile() {
-	if c.net.conf.PersistFile == "" {
+	if c.net.conf.PeerCacheFile == "" {
 		return
 	}
 
@@ -89,7 +89,7 @@ func (c *controller) persistPeerFile() {
 	if err != nil {
 		c.logger.WithError(err).Warn("unable to create peer persist data")
 	} else {
-		err = c.writePersistFile(data)
+		err = c.writePeerCacheFile(data)
 		if err != nil {
 			c.logger.WithError(err).Warn("unable to persist peer data")
 		}

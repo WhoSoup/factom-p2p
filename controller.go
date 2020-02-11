@@ -82,13 +82,13 @@ func newController(network *Network) (*controller, error) {
 	c.peers = NewPeerStore()
 	c.setSpecial(conf.Special)
 
-	if persist, err := c.loadPersist(); err != nil || persist == nil {
+	if cache, err := c.loadPeerCache(); err != nil || cache == nil {
 		c.logger.Infof("no valid bootstrap file found")
 		c.bans = make(map[string]time.Time)
 		c.bootstrap = nil
-	} else if persist != nil {
-		c.bans = persist.Bans
-		c.bootstrap = persist.Bootstrap
+	} else if cache != nil {
+		c.bans = cache.Bans
+		c.bootstrap = cache.Peers
 	}
 
 	return c, nil
