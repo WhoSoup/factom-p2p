@@ -3,8 +3,17 @@ package p2p
 import (
 	"fmt"
 	"net"
+	"regexp"
 	"strconv"
 )
+
+// built after https://en.wikipedia.org/wiki/Hostname#Restrictions_on_valid_hostnames
+//                     (      optional labels        )    (    required label            )
+var hostnameRegex *regexp.Regexp
+
+func init() {
+	hostnameRegex = regexp.MustCompile(`^([0-9A-Za-z][0-9A-Za-z\-]{0,62}\.)*[0-9A-Za-z][0-9A-Za-z\-]{0,62}$`)
+}
 
 type Endpoint struct {
 	IP   string `json:"ip"`
@@ -45,12 +54,17 @@ func (ep Endpoint) String() string {
 
 // Verify checks if the data is usable. Does not check if the remote address works
 func (ep Endpoint) Valid() bool {
-	if ep.IP == "" || ep.Port == "" {
+	if ep.IP == "" || ep.Port == "" || len(ep.IP) > 253 { // 253 is max according to rfc 952
 		return false
 	}
 
 	if p, err := strconv.Atoi(ep.Port); err != nil || p == 0 {
 		return false
+	}
+
+	if parse := net.ParseIP(ep.IP); parse == nil {
+		// check hostname
+		return hostnameRegex.MatchString(ep.IP)
 	}
 
 	return true
