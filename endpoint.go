@@ -53,10 +53,6 @@ func (ep Endpoint) Valid() bool {
 		return false
 	}
 
-	if parse := net.ParseIP(ep.IP); parse == nil {
-		return false
-	}
-
 	return true
 }
 
