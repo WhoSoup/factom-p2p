@@ -12,7 +12,7 @@ import (
 func (n *Network) DebugMessage() (string, string, int) {
 	hv := ""
 	s := n.controller.peers.Slice()
-	r := fmt.Sprintf("\nONLINE: (%d/%d/%d)\n", len(s), n.conf.Target, n.conf.Max)
+	r := fmt.Sprintf("\nONLINE: (%d/%d/%d)\n", len(s), n.conf.TargetPeers, n.conf.MaxPeers)
 	count := len(s)
 	for _, p := range s {
 

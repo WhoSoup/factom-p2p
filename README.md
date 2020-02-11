@@ -84,11 +84,11 @@ The CAT (Cyclic Auto Truncate) is a cyclic peering strategy to prevent a rigid n
 Rounds run once every 15 minutes (config: `RoundTime`) and does the following:
 
 1. Persist current peer endpoints and bans in the peer file (config: `PersistFile`)
-2. If there are more than 30 peers (config: `Drop`), it randomly selects non-special peers to drop to reach 30 peers.
+2. If there are more than 30 peers (config: `DropTo`), it randomly selects non-special peers to drop to reach 30 peers.
 
 ### Replenish
 
-The goal of Replenish is to reach 32 (config: `Target`) active connections. If there are 32 or more connections, Replenish waits. Otherwise, it runs once a second.
+The goal of Replenish is to reach 32 (config: `TargetPeers`) active connections. If there are 32 or more connections, Replenish waits. Otherwise, it runs once a second.
 
 Once on startup, if the peer file is less than an hour old (config: `PersistAge`) Replenish will try to re-establish those connections first. This improves reconnection speeds after rebooting a node.
 
