@@ -22,7 +22,7 @@ func TestNewEndpoint(t *testing.T) {
 		{"no port", args{"127.0.0.1", ""}, Endpoint{}, true},
 		{"no ip", args{"", "8088"}, Endpoint{}, true},
 		{"invalid ip", args{"127.0.0.256", "8088"}, Endpoint{}, true},
-		{"domain lookup", args{"localhost", "8088"}, Endpoint{}, true}, // likely uses ::1 ipv6 address
+		{"hostname", args{"localhost", "8088"}, Endpoint{}, true}, // likely uses ::1 ipv6 address
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -105,7 +105,7 @@ func TestEndpoint_Valid(t *testing.T) {
 		{"zero port", Endpoint{IP: "127.0.0.1", Port: "0"}, false},
 		{"nonnumeric port", Endpoint{IP: "127.0.0.1", Port: "eighty"}, false},
 		{"nonnumeric port", Endpoint{IP: "127.0.0.1", Port: "80th"}, false},
-		{"hostname", Endpoint{IP: "factom.fct", Port: "8088"}, true},
+		{"hostname", Endpoint{IP: "factom.fct", Port: "8088"}, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

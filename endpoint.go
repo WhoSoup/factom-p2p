@@ -13,16 +13,10 @@ type Endpoint struct {
 
 // NewEndpoint creates an Endpoint struct from a given ip and port, throws error if ip could not be resolved
 func NewEndpoint(ip, port string) (Endpoint, error) {
-	if len(ip) == 0 || len(port) == 0 {
-		return Endpoint{}, fmt.Errorf("no ip or port given (%s:%s)", ip, port)
-	}
-
-	parse := net.ParseIP(ip)
-	if parse == nil {
-		return Endpoint{}, fmt.Errorf("unable to parse ip: %s", ip)
-	}
-
 	ep := Endpoint{ip, port}
+	if !ep.Valid() {
+		return Endpoint{}, fmt.Errorf("(%s:%s) is not a valid endpoint", ip, port)
+	}
 	return ep, nil
 }
 
@@ -51,10 +45,19 @@ func (ep Endpoint) String() string {
 
 // Verify checks if the data is usable. Does not check if the remote address works
 func (ep Endpoint) Valid() bool {
-	if _, err := strconv.Atoi(ep.Port); err == nil {
-		return ep.Port != "0" && ep.IP != ""
+	if ep.IP == "" || ep.Port == "" {
+		return false
 	}
-	return false
+
+	if p, err := strconv.Atoi(ep.Port); err != nil || p == 0 {
+		return false
+	}
+
+	if parse := net.ParseIP(ep.IP); parse == nil {
+		return false
+	}
+
+	return true
 }
 
 // Equals returns true if both endpoints are the same

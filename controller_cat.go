@@ -44,26 +44,21 @@ func (c *controller) processPeerShare(peer *Peer, parcel *Parcel) []Endpoint {
 
 	if err != nil {
 		c.logger.WithError(err).Warnf("Failed to unmarshal peer share from peer %s", peer)
+		return nil
 	}
 
 	c.logger.Debugf("Received peer share from %s: %+v", peer, list)
 
 	var res []Endpoint
-	for _, p := range list {
-		if !p.Valid() {
-			c.logger.Infof("Peer %s tried to send us peer share with bad data: %s", peer, p)
+	for _, ep := range list {
+		if !ep.Valid() {
+			c.logger.Infof("Peer %s tried to send us peer share with bad data: %s", peer, ep)
 			return nil
 		}
-		ep, err := NewEndpoint(p.IP, p.Port)
-		if err != nil {
-			c.logger.WithError(err).Infof("Unable to register endpoint %s:%s from peer %s", p.IP, p.Port, peer)
-		} else if !c.isBannedEndpoint(ep) {
+
+		if !c.isBannedEndpoint(ep) {
 			res = append(res, ep)
 		}
-	}
-
-	if c.net.prom != nil {
-		c.net.prom.KnownPeers.Set(float64(c.peers.Total()))
 	}
 
 	return res

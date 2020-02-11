@@ -91,10 +91,6 @@ func newController(network *Network) (*controller, error) {
 		c.bootstrap = persist.Bootstrap
 	}
 
-	if c.net.prom != nil {
-		c.net.prom.KnownPeers.Set(float64(c.peers.Total()))
-	}
-
 	return c, nil
 }
 
