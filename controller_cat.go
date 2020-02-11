@@ -96,12 +96,9 @@ func (c *controller) makePeerShare(exclude Endpoint) []Endpoint {
 	return list
 }
 
-// sharePeers creates a list of peers to share and sends it to peer
+// sharePeers shares the list of endpoints with a peer
 func (c *controller) sharePeers(peer *Peer, list []Endpoint) {
-	if peer == nil {
-		return
-	}
-	// CAT select n random active peers
+	// convert to protocol
 	payload, err := peer.prot.MakePeerShare(list)
 	if err != nil {
 		c.logger.WithError(err).Error("Failed to marshal peer list to json")
