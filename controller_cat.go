@@ -129,6 +129,7 @@ func (c *controller) asyncPeerRequest(peer *Peer) ([]Endpoint, error) {
 	}()
 
 	req := newParcel(TypePeerRequest, []byte("Peer Request"))
+	peer.lastPeerSend = time.Now()
 	peer.Send(req)
 
 	select {
@@ -142,20 +143,26 @@ func (c *controller) asyncPeerRequest(peer *Peer) ([]Endpoint, error) {
 
 // catReplenish is the loop that brings the node up to the desired number of connections.
 // Does nothing if we have enough peers, otherwise it sends a peer request to a random peer.
+// The sources of new peers are, in order of priority:
+// (0. Bootstrap peers saved from previous run)
+// 1. Special peers
+// 2. Seed peers
+// 3. Random new peers shared by a random current peer
+// 4. Random new peers from peers rejecting our connection
 func (c *controller) catReplenish() {
 	c.logger.Debug("Replenish loop started")
 	defer c.logger.Debug("Replenish loop ended")
 
-	deny := func(ep Endpoint) bool {
-		return c.peers.Connected(ep) || c.isBannedEndpoint(ep) || !c.dialer.CanDial(ep)
+	canDial := func(ep Endpoint) bool {
+		return !c.peers.Connected(ep) && !c.isBannedEndpoint(ep) && c.dialer.CanDial(ep)
 	}
 
 	// bootstrap
 	if len(c.bootstrap) > 0 {
 		c.logger.Infof("Attempting to connect to %d peers from bootstrap", len(c.bootstrap))
 		for _, e := range c.bootstrap {
-			if !deny(e) {
-				_, _ = c.Dial(e)
+			if canDial(e) {
+				c.Dial(e)
 			}
 		}
 		c.bootstrap = nil
@@ -170,39 +177,32 @@ func (c *controller) catReplenish() {
 			continue
 		}
 
-		// reseed if necessary
-		min := c.net.conf.MinReseed
-		if uint(c.seed.size()) < min {
-			min = uint(c.seed.size()) - 1
-		}
-
 		// try special first
 		for _, sp := range c.specialEndpoints {
-			if deny(sp) {
-				continue
+			if canDial(sp) {
+				connect = append(connect, sp)
 			}
-			connect = append(connect, sp)
 		}
 
-		if uint(c.peers.Total()) <= min || time.Since(lastReseed) > c.net.conf.PeerReseedInterval {
+		// reseed if necessary
+		minReseed := c.net.conf.MinReseed
+		if uint(c.seed.size()) < minReseed {
+			minReseed = uint(c.seed.size()) - 1
+		}
+
+		if uint(c.peers.Total()) <= minReseed || time.Since(lastReseed) > c.net.conf.PeerReseedInterval {
 			seeds := c.seed.retrieve()
 			// shuffle to hit different seeds
 			c.net.rng.Shuffle(len(seeds), func(i, j int) {
 				seeds[i], seeds[j] = seeds[j], seeds[i]
 			})
 			for _, s := range seeds {
-				if deny(s) {
-					continue
+				if canDial(s) {
+					connect = append(connect, s)
 				}
-				connect = append(connect, s)
 			}
 			lastReseed = time.Now()
 		}
-
-		// if we connect to a peer that's full it gives us some alternatives
-		// left unchecked, this can be a very long loop, therefore we are limiting it
-		// sum(special, seeds) + 5 more
-		var attemptsLimit = len(connect) + 5
 
 		if c.peers.Total() > 0 {
 			rand := c.randomPeersConditional(1, func(p *Peer) bool {
@@ -211,13 +211,12 @@ func (c *controller) catReplenish() {
 			if len(rand) > 0 {
 				p := rand[0]
 				// error just means timeout of async request
-				p.lastPeerSend = time.Now()
 				if eps, err := c.asyncPeerRequest(p); err == nil {
 					// pick random share from peer
 					if len(eps) > 0 {
 						el := c.net.rng.Intn(len(eps))
 						ep := eps[el]
-						if !deny(ep) {
+						if canDial(ep) {
 							connect = append(connect, ep)
 						}
 					}
@@ -225,13 +224,20 @@ func (c *controller) catReplenish() {
 			}
 		}
 
-		var ep Endpoint
+		// if we connect to a peer that's full it gives us some alternatives
+		// left unchecked, this can be a very long loop, therefore we are limiting it
+		// sum(special, seeds) + 5 more
+		attemptsLimit := len(connect) + 5
 		var attempts int
-		for len(connect) > 0 && attempts < attemptsLimit {
-			ep = connect[0]
+
+		for len(connect) > 0 &&
+			attempts < attemptsLimit &&
+			uint(c.peers.Total()) < c.net.conf.TargetPeers {
+
+			ep := connect[0]
 			connect = connect[1:]
 
-			if deny(ep) {
+			if !canDial(ep) {
 				continue
 			}
 
@@ -241,13 +247,7 @@ func (c *controller) catReplenish() {
 					connect = append(connect, alt)
 				}
 			}
-
-			if uint(c.peers.Total()) >= c.net.conf.TargetPeers {
-				break
-			}
 		}
-
-		connect = nil
 
 		if attempts == 0 { // no peers and we exhausted special and seeds
 			time.Sleep(time.Second)
