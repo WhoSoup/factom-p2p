@@ -12,10 +12,8 @@ var _ Protocol = (*ProtocolV10)(nil)
 // ProtocolV10 is the protocol introduced by p2p 2.0.
 // It is a slimmed down version of V9, reducing overhead
 type ProtocolV10 struct {
-	net     *Network
 	decoder *gob.Decoder
 	encoder *gob.Encoder
-	peer    *Peer
 }
 
 // V10Msg is the barebone message
@@ -25,9 +23,7 @@ type V10Msg struct {
 	Payload []byte
 }
 
-func (v10 *ProtocolV10) init(peer *Peer, decoder *gob.Decoder, encoder *gob.Encoder) {
-	v10.peer = peer
-	v10.net = peer.net
+func (v10 *ProtocolV10) init(decoder *gob.Decoder, encoder *gob.Encoder) {
 	v10.decoder = decoder
 	v10.encoder = encoder
 }

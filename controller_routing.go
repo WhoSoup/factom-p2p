@@ -61,7 +61,7 @@ func (c *controller) manageData() {
 				}
 			case TypePeerResponse:
 				c.shareMtx.RLock()
-				if async, ok := c.shareListener[peer.NodeID]; ok {
+				if async, ok := c.shareListener[peer.Hash]; ok {
 					async <- parcel
 				}
 				c.shareMtx.RUnlock()

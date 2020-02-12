@@ -19,7 +19,7 @@ func (n *Network) DebugMessage() (string, string, int) {
 		metrics := p.GetMetrics()
 		r += fmt.Sprintf("\tPeer %s (MPS %.2f/%.2f) (BPS %.2f/%.2f) (Cap %.2f)\n", p.String(), metrics.MPSDown, metrics.MPSUp, metrics.BPSDown, metrics.BPSUp, metrics.Capacity)
 		edge := ""
-		if n.conf.NodeID < 4 || p.NodeID < 4 {
+		/*if n.conf.NodeID < 4 || p.NodeID < 4 {
 			min := n.conf.NodeID
 			if p.NodeID < min {
 				min = p.NodeID
@@ -28,7 +28,7 @@ func (n *Network) DebugMessage() (string, string, int) {
 				color := []string{"red", "green", "blue"}[min-1]
 				edge = fmt.Sprintf(" {color:%s, weight=3}", color)
 			}
-		}
+		}*/
 		if p.IsIncoming {
 			hv += fmt.Sprintf("%s -> %s:%s%s\n", p.Endpoint, n.conf.BindIP, n.conf.ListenPort, edge)
 		} else {

@@ -17,12 +17,10 @@ type ProtocolV9 struct {
 	net     *Network
 	decoder *gob.Decoder
 	encoder *gob.Encoder
-	peer    *Peer
 }
 
-func (v9 *ProtocolV9) init(peer *Peer, decoder *gob.Decoder, encoder *gob.Encoder) {
-	v9.peer = peer
-	v9.net = peer.net
+func (v9 *ProtocolV9) init(net *Network, decoder *gob.Decoder, encoder *gob.Encoder) {
+	v9.net = net
 	v9.decoder = decoder
 	v9.encoder = encoder
 }
