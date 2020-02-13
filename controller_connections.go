@@ -194,6 +194,13 @@ func (c *controller) handshake(ip string, con net.Conn, incoming bool) (*Peer, [
 
 	c.peerStatus <- peerStatus{peer: peer, online: true}
 
+	// the v9 handshake is actually a request for peers, so it needs to be processed
+	if prot.Version() == "9" {
+		req := newParcel(TypePeerRequest, []byte("Peer Request"))
+		req.Address = peer.Hash
+		c.peerData <- peerParcel{peer: peer, parcel: req}
+	}
+
 	return peer, nil, nil
 }
 
