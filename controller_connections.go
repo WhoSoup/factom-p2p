@@ -104,8 +104,19 @@ func (c *controller) handleIncoming(con net.Conn) {
 	c.logger.Debugf("Incoming handshake success for peer %s, version %s", peer.Hash, peer.prot.Version())
 }
 
+// handshake performs a basic handshake maneouver to establish the validity of the connection.
+// The functionality is symmetrical and used for both incoming and outgoing connections.
+// The handshake is backwards compatible with V9. Since V9 doesn't have an explicit handshake, V10
+// sends a V9 parcel upon connection and waits for the response, which can be any parcel.
+//
+// The handshake ensures that ALL peers have a valid Port field to start with.
+// If there is no reply within the specified HandshakeTimeout config setting, the process
+// fails
+//
+// For outgoing connections, it is possible the endpoint will reject due to being full, in which
+// case this function returns an error AND a list of alternate endpoints
 func (c *controller) handshake(ip string, con net.Conn, incoming bool) (*Peer, []Endpoint, error) {
-	tmplogger := c.logger.WithField("addr", ip)
+	tmplogger := c.logger.WithField("addr", ip).WithField("incoming", incoming)
 	timeout := time.Now().Add(c.net.conf.HandshakeTimeout)
 
 	nonce := make([]byte, 8) // loopback detection
@@ -128,13 +139,13 @@ func (c *controller) handshake(ip string, con net.Conn, incoming bool) (*Peer, [
 
 	err := encoder.Encode(handshake)
 	if err != nil {
-		return failfunc(fmt.Errorf("Failed to send handshake to incoming connection"))
+		return failfunc(fmt.Errorf("Failed to send handshake"))
 	}
 
 	var reply Handshake
 	err = decoder.Decode(&reply)
 	if err != nil {
-		return failfunc(fmt.Errorf("Failed to read handshake from incoming connection"))
+		return failfunc(fmt.Errorf("Failed to read handshake"))
 	}
 
 	// check basic structure
@@ -161,6 +172,7 @@ func (c *controller) handshake(ip string, con net.Conn, incoming bool) (*Peer, [
 		return failfunc(err)
 	}
 
+	// dialed a node that's full
 	if reply.Header.Type == TypeRejectAlternative {
 		con.Close()
 		tmplogger.Debug("con rejected with alternatives")
@@ -178,7 +190,7 @@ func (c *controller) handshake(ip string, con net.Conn, incoming bool) (*Peer, [
 		return nil, share, fmt.Errorf("connection rejected")
 	}
 
-	peer := newPeer(c.net, uint32(reply.Header.NodeID), endpoint, con, prot, metrics, true)
+	peer := newPeer(c.net, uint32(reply.Header.NodeID), endpoint, con, prot, metrics, incoming)
 
 	c.peerStatus <- peerStatus{peer: peer, online: true}
 
