@@ -2,6 +2,7 @@ package p2p
 
 import (
 	"io"
+	"sync"
 )
 
 type StatsCollector interface {
@@ -16,8 +17,8 @@ type ReadWriteCollector interface {
 // MetricsReadWriter is a wrapper for net.Conn that allows the package to
 // observe the actual amount of bytes passing through it
 type MetricsReadWriter struct {
-	rw io.ReadWriter
-
+	rw              io.ReadWriter
+	mtx             sync.Mutex
 	messagesWritten uint64
 	messagesRead    uint64
 	bytesWritten    uint64
@@ -35,19 +36,24 @@ func NewMetricsReadWriter(rw io.ReadWriter) *MetricsReadWriter {
 
 func (sc *MetricsReadWriter) Write(p []byte) (int, error) {
 	n, e := sc.rw.Write(p)
+	sc.mtx.Lock()
 	sc.messagesWritten++
 	sc.bytesWritten += uint64(n)
+	sc.mtx.Unlock()
 	return n, e
 }
 
 func (sc *MetricsReadWriter) Read(p []byte) (int, error) {
 	n, e := sc.rw.Read(p)
+	sc.mtx.Lock()
 	sc.messagesRead++
 	sc.bytesRead += uint64(n)
+	sc.mtx.Unlock()
 	return n, e
 }
 
 func (sc *MetricsReadWriter) Collect() (mw uint64, mr uint64, bw uint64, br uint64) {
+	sc.mtx.Lock()
 	mw = sc.messagesWritten
 	sc.messagesWritten = 0
 	mr = sc.messagesRead
@@ -56,5 +62,6 @@ func (sc *MetricsReadWriter) Collect() (mw uint64, mr uint64, bw uint64, br uint
 	sc.bytesWritten = 0
 	br = sc.bytesRead
 	sc.bytesRead = 0
+	sc.mtx.Unlock()
 	return
 }
