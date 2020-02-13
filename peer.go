@@ -393,12 +393,12 @@ func (p *Peer) GetMetrics() PeerMetrics {
 		BPSDown:          p.bpsDown,
 		BPSUp:            p.bpsUp,
 		ConnectionState:  fmt.Sprintf("v%s", p.prot.Version()),
-		Capacity:         p.Capacity(),
+		SendUsageRate:    p.SendUsageRate(),
 		Dropped:          p.dropped,
 	}
 }
 
-// Capacity is a wrapper for the send channel's Capacity
-func (p *Peer) Capacity() float64 {
-	return p.send.Capacity()
+// SendUsageRate is a wrapper for the send channel's UsageRate
+func (p *Peer) SendUsageRate() float64 {
+	return p.send.UsageRate()
 }

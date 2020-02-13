@@ -55,7 +55,7 @@ func (v10 *ProtocolV10) Receive() (*Parcel, error) {
 	}
 
 	if len(msg.Payload) == 0 {
-		return nil, fmt.Errorf("nul payload")
+		return nil, fmt.Errorf("null payload")
 	}
 
 	csum := crc32.Checksum(msg.Payload, crcTable)
