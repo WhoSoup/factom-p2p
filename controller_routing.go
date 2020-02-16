@@ -90,9 +90,6 @@ func (c *controller) manageData() {
 
 func (c *controller) randomPeers(max uint) []*Peer {
 	peers := c.peers.Slice()
-	if len(peers) == 0 {
-		return nil
-	}
 	// not enough to randomize
 	if uint(len(peers)) <= max {
 		return peers
@@ -107,9 +104,6 @@ func (c *controller) randomPeers(max uint) []*Peer {
 
 func (c *controller) randomPeersConditional(max uint, condition func(*Peer) bool) []*Peer {
 	peers := c.peers.Slice()
-	if len(peers) == 0 {
-		return nil
-	}
 
 	filtered := make([]*Peer, 0)
 	for _, p := range peers {
