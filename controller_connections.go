@@ -167,7 +167,7 @@ func (c *controller) handshake(ip string, con net.Conn, incoming bool) (*Peer, [
 		return failfunc(fmt.Errorf("loopback"))
 	}
 
-	prot, err := c.determineProtocol(&reply, con, decoder, encoder)
+	prot, err := c.determineProtocol(reply.Header.Version, con, decoder, encoder)
 	if err != nil {
 		return failfunc(err)
 	}
@@ -204,8 +204,7 @@ func (c *controller) handshake(ip string, con net.Conn, incoming bool) (*Peer, [
 	return peer, nil, nil
 }
 
-func (c *controller) determineProtocol(hs *Handshake, conn net.Conn, decoder *gob.Decoder, encoder *gob.Encoder) (Protocol, error) {
-	v := hs.Header.Version
+func (c *controller) determineProtocol(v uint16, conn net.Conn, decoder *gob.Decoder, encoder *gob.Encoder) (Protocol, error) {
 	if v > c.net.conf.ProtocolVersion {
 		v = c.net.conf.ProtocolVersion
 	}
