@@ -112,11 +112,11 @@ func (c *controller) randomPeer() *Peer {
 	return nil
 }
 
-func (c *controller) selectBroadcastPeers(max uint) []*Peer {
+func (c *controller) selectBroadcastPeers(fanout uint) []*Peer {
 	peers := c.peers.Slice()
 
 	// not enough to randomize
-	if uint(len(peers)) <= max {
+	if uint(len(peers)) <= fanout {
 		return peers
 	}
 
@@ -131,7 +131,7 @@ func (c *controller) selectBroadcastPeers(max uint) []*Peer {
 		}
 	}
 
-	if uint(len(regular)) < max {
+	if uint(len(regular)) < fanout {
 		return append(special, regular...)
 	}
 
@@ -139,5 +139,5 @@ func (c *controller) selectBroadcastPeers(max uint) []*Peer {
 		regular[i], regular[j] = regular[j], regular[i]
 	})
 
-	return append(special, regular[:max]...)
+	return append(special, regular[:fanout]...)
 }
