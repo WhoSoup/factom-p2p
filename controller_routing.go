@@ -88,13 +88,13 @@ func (c *controller) manageData() {
 	}
 }
 
-func (c *controller) randomPeers(count uint) []*Peer {
+func (c *controller) randomPeers(max uint) []*Peer {
 	peers := c.peers.Slice()
 	if len(peers) == 0 {
 		return nil
 	}
 	// not enough to randomize
-	if uint(len(peers)) <= count {
+	if uint(len(peers)) <= max {
 		return peers
 	}
 
@@ -102,10 +102,10 @@ func (c *controller) randomPeers(count uint) []*Peer {
 		peers[i], peers[j] = peers[j], peers[i]
 	})
 
-	return peers[:count]
+	return peers[:max]
 }
 
-func (c *controller) randomPeersConditional(count uint, condition func(*Peer) bool) []*Peer {
+func (c *controller) randomPeersConditional(max uint, condition func(*Peer) bool) []*Peer {
 	peers := c.peers.Slice()
 	if len(peers) == 0 {
 		return nil
@@ -118,7 +118,7 @@ func (c *controller) randomPeersConditional(count uint, condition func(*Peer) bo
 		}
 	}
 	// not enough to randomize
-	if len(filtered) <= int(count) {
+	if len(filtered) <= int(max) {
 		return filtered
 	}
 
@@ -126,7 +126,7 @@ func (c *controller) randomPeersConditional(count uint, condition func(*Peer) bo
 		filtered[i], filtered[j] = filtered[j], filtered[i]
 	})
 
-	return filtered[:count]
+	return filtered[:max]
 }
 
 func (c *controller) randomPeer() *Peer {
@@ -137,11 +137,11 @@ func (c *controller) randomPeer() *Peer {
 	return nil
 }
 
-func (c *controller) selectBroadcastPeers(count uint) []*Peer {
+func (c *controller) selectBroadcastPeers(max uint) []*Peer {
 	peers := c.peers.Slice()
 
 	// not enough to randomize
-	if uint(len(peers)) <= count {
+	if uint(len(peers)) <= max {
 		return peers
 	}
 
@@ -156,7 +156,7 @@ func (c *controller) selectBroadcastPeers(count uint) []*Peer {
 		}
 	}
 
-	if uint(len(regular)) < count {
+	if uint(len(regular)) < max {
 		return append(special, regular...)
 	}
 
@@ -164,5 +164,5 @@ func (c *controller) selectBroadcastPeers(count uint) []*Peer {
 		regular[i], regular[j] = regular[j], regular[i]
 	})
 
-	return append(special, regular[:count]...)
+	return append(special, regular[:max]...)
 }
