@@ -2,21 +2,37 @@ package p2p
 
 import "time"
 
-// route Takes messages from the network's ToNetwork channel and routes via the appropriate function
+// route takes messages from ToNetwork and routes it to the appropriate peers
 func (c *controller) route() {
 	for {
 		// blocking read on ToNetwork, and c.stopRoute
 		select {
-		case message := <-c.net.ToNetwork:
-			switch message.Address {
+		case parcel := <-c.net.ToNetwork:
+			switch parcel.Address {
 			case FullBroadcast:
-				c.Broadcast(message, true)
+				for _, p := range c.peers.Slice() {
+					p.Send(parcel)
+				}
+
 			case Broadcast:
-				c.Broadcast(message, false)
+				selection := c.selectBroadcastPeers(c.net.conf.Fanout)
+				for _, p := range selection {
+					p.Send(parcel)
+				}
+
+			case "":
+				fallthrough
 			case RandomPeer:
-				c.ToPeer("", message)
+				if random := c.randomPeer(); random != nil {
+					random.Send(parcel)
+				} else {
+					c.logger.Debugf("attempted to send parcel %s to a random peer but no peers are connected", parcel)
+				}
+
 			default:
-				c.ToPeer(message.Address, message)
+				if p := c.peers.Get(parcel.Address); p != nil {
+					p.Send(parcel)
+				}
 			}
 		}
 	}
@@ -68,38 +84,6 @@ func (c *controller) manageData() {
 			default:
 				//not handled
 			}
-		}
-	}
-}
-
-// Broadcast delivers a parcel to multiple connections specified by the fanout.
-// A full broadcast sends the parcel to ALL connected peers
-func (c *controller) Broadcast(parcel *Parcel, full bool) {
-	if full {
-		for _, p := range c.peers.Slice() {
-			p.Send(parcel)
-		}
-		return
-	}
-	selection := c.selectBroadcastPeers(c.net.conf.Fanout)
-	for _, p := range selection {
-		p.Send(parcel)
-	}
-}
-
-// ToPeer sends a parcel to a single peer, specified by their peer hash.
-// If the hash is empty, a random connected peer will be chosen
-func (c *controller) ToPeer(hash string, parcel *Parcel) {
-	if hash == "" {
-		if random := c.randomPeer(); random != nil {
-			random.Send(parcel)
-		} else {
-			c.logger.Warnf("attempted to send parcel %s to a random peer but no peers are connected", parcel)
-		}
-	} else {
-		p := c.peers.Get(hash)
-		if p != nil {
-			p.Send(parcel)
 		}
 	}
 }
