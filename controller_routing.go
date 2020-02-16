@@ -88,21 +88,7 @@ func (c *controller) manageData() {
 	}
 }
 
-func (c *controller) randomPeers(max uint) []*Peer {
-	peers := c.peers.Slice()
-	// not enough to randomize
-	if uint(len(peers)) <= max {
-		return peers
-	}
-
-	c.net.rng.Shuffle(len(peers), func(i, j int) {
-		peers[i], peers[j] = peers[j], peers[i]
-	})
-
-	return peers[:max]
-}
-
-func (c *controller) randomPeersConditional(max uint, condition func(*Peer) bool) []*Peer {
+func (c *controller) randomPeerConditional(condition func(*Peer) bool) *Peer {
 	peers := c.peers.Slice()
 
 	filtered := make([]*Peer, 0)
@@ -111,22 +97,17 @@ func (c *controller) randomPeersConditional(max uint, condition func(*Peer) bool
 			filtered = append(filtered, p)
 		}
 	}
-	// not enough to randomize
-	if len(filtered) <= int(max) {
-		return filtered
+
+	if len(filtered) > 0 {
+		return filtered[c.net.rng.Intn(len(filtered))]
 	}
-
-	c.net.rng.Shuffle(len(filtered), func(i, j int) {
-		filtered[i], filtered[j] = filtered[j], filtered[i]
-	})
-
-	return filtered[:max]
+	return nil
 }
 
 func (c *controller) randomPeer() *Peer {
-	peers := c.randomPeers(1)
-	if len(peers) == 1 {
-		return peers[0]
+	peers := c.peers.Slice()
+	if len(peers) > 0 {
+		return peers[c.net.rng.Intn(len(peers))]
 	}
 	return nil
 }

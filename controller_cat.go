@@ -205,13 +205,12 @@ func (c *controller) catReplenish() {
 		}
 
 		if c.peers.Total() > 0 {
-			rand := c.randomPeersConditional(1, func(p *Peer) bool {
+			rand := c.randomPeerConditional(func(p *Peer) bool {
 				return time.Since(p.lastPeerSend) >= c.net.conf.PeerRequestInterval
 			})
-			if len(rand) > 0 {
-				p := rand[0]
+			if rand != nil {
 				// error just means timeout of async request
-				if eps, err := c.asyncPeerRequest(p); err == nil {
+				if eps, err := c.asyncPeerRequest(rand); err == nil {
 					// pick random share from peer
 					if len(eps) > 0 {
 						el := c.net.rng.Intn(len(eps))
