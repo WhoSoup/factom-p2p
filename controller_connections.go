@@ -177,8 +177,9 @@ func (c *controller) handshake(ip string, con net.Conn, incoming bool) (*Peer, [
 		con.Close()
 		tmplogger.Debug("con rejected with alternatives")
 
-		share, err := prot.ParsePeerShare(reply.Payload)
-		if err != nil {
+		// handshake alternatives is NOT protocol based
+		var share []Endpoint
+		if err := json.Unmarshal(reply.Payload, &share); err != nil {
 			return nil, nil, fmt.Errorf("unable to parse alternatives: %s", err.Error())
 		}
 
