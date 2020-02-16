@@ -1,6 +1,8 @@
 package p2p
 
 import (
+	"bytes"
+	"encoding/binary"
 	"encoding/gob"
 	"encoding/json"
 	"fmt"
@@ -90,19 +92,134 @@ func (c *controller) handleIncoming(con net.Conn) {
 		return
 	}
 
-	peer := newPeer(c.net, c.peerStatus, c.peerData)
-	// we are never expecting a reject-alternate for incoming connections
-	if _, err := peer.StartWithHandshake(ep, con, true); err != nil {
-		c.logger.WithError(err).Debugf("Handshake failed for address %s, stopping", ep)
-		peer.Stop()
+	// don't bother with alternatives for incoming connections
+	peer, _, err := c.handshake(host, con, true)
+
+	if err != nil {
+		c.logger.WithError(err).Debugf("inbound connection from %s failed handshake", host)
+		con.Close()
 		return
 	}
 
 	c.logger.Debugf("Incoming handshake success for peer %s, version %s", peer.Hash, peer.prot.Version())
+}
 
-	if c.isBannedEndpoint(peer.Endpoint) {
-		c.logger.Debugf("Peer %s is banned, disconnecting", peer.Hash)
-		peer.Stop()
+// handshake performs a basic handshake maneouver to establish the validity of the connection.
+// The functionality is symmetrical and used for both incoming and outgoing connections.
+// The handshake is backwards compatible with V9. Since V9 doesn't have an explicit handshake, V10
+// sends a V9 parcel upon connection and waits for the response, which can be any parcel.
+//
+// The handshake ensures that ALL peers have a valid Port field to start with.
+// If there is no reply within the specified HandshakeTimeout config setting, the process
+// fails
+//
+// For outgoing connections, it is possible the endpoint will reject due to being full, in which
+// case this function returns an error AND a list of alternate endpoints
+func (c *controller) handshake(ip string, con net.Conn, incoming bool) (*Peer, []Endpoint, error) {
+	tmplogger := c.logger.WithField("addr", ip).WithField("incoming", incoming)
+	timeout := time.Now().Add(c.net.conf.HandshakeTimeout)
+
+	nonce := make([]byte, 8) // loopback detection
+	binary.LittleEndian.PutUint64(nonce, c.net.instanceID)
+
+	// upgrade connection to a metrics connection
+	metrics := NewMetricsReadWriter(con)
+
+	handshake := newHandshake(c.net.conf, nonce)
+	decoder := gob.NewDecoder(metrics) // pipe gob through the metrics writer
+	encoder := gob.NewEncoder(metrics)
+	con.SetWriteDeadline(timeout)
+	con.SetReadDeadline(timeout)
+
+	failfunc := func(err error) (*Peer, []Endpoint, error) {
+		tmplogger.WithError(err).Debug("Handshake failed")
+		con.Close()
+		return nil, nil, err
+	}
+
+	err := encoder.Encode(handshake)
+	if err != nil {
+		return failfunc(fmt.Errorf("Failed to send handshake"))
+	}
+
+	var reply Handshake
+	err = decoder.Decode(&reply)
+	if err != nil {
+		return failfunc(fmt.Errorf("Failed to read handshake"))
+	}
+
+	// check basic structure
+	if err = reply.Valid(c.net.conf); err != nil {
+		return failfunc(err)
+	}
+
+	endpoint, err := NewEndpoint(ip, reply.Header.PeerPort)
+	if err != nil {
+		return failfunc(fmt.Errorf("failed to create endpoint: %v", err))
+	}
+
+	if c.isBannedEndpoint(endpoint) {
+		return failfunc(fmt.Errorf("Peer %s is banned, disconnecting", endpoint))
+	}
+
+	// loopback detection
+	if bytes.Equal(reply.Payload, nonce) {
+		return failfunc(fmt.Errorf("loopback"))
+	}
+
+	prot, err := c.determineProtocol(reply.Header.Version, con, decoder, encoder)
+	if err != nil {
+		return failfunc(err)
+	}
+
+	// dialed a node that's full
+	if reply.Header.Type == TypeRejectAlternative {
+		con.Close()
+		tmplogger.Debug("con rejected with alternatives")
+
+		share, err := prot.ParsePeerShare(reply.Payload)
+		if err != nil {
+			return nil, nil, fmt.Errorf("unable to parse alternatives: %s", err.Error())
+		}
+
+		for _, ep := range share {
+			if !ep.Valid() {
+				return nil, nil, fmt.Errorf("peer provided invalid peer share")
+			}
+		}
+		return nil, share, fmt.Errorf("connection rejected")
+	}
+
+	peer := newPeer(c.net, uint32(reply.Header.NodeID), endpoint, con, prot, metrics, incoming)
+
+	c.peerStatus <- peerStatus{peer: peer, online: true}
+
+	// a p2p1 node sends a peer request, so it needs to be processed
+	if reply.Header.Type == TypePeerRequest {
+		req := newParcel(TypePeerRequest, []byte("Peer Request"))
+		req.Address = peer.Hash
+		c.peerData <- peerParcel{peer: peer, parcel: req}
+	}
+
+	return peer, nil, nil
+}
+
+func (c *controller) determineProtocol(v uint16, conn net.Conn, decoder *gob.Decoder, encoder *gob.Encoder) (Protocol, error) {
+	if v > c.net.conf.ProtocolVersion {
+		v = c.net.conf.ProtocolVersion
+	}
+
+	switch v {
+	case 9:
+		v9 := new(ProtocolV9)
+		v9.init(c.net, decoder, encoder)
+		return v9, nil
+	case 10:
+		v10 := new(ProtocolV10)
+		v10.init(decoder, encoder)
+		return v10, nil
+	default:
+		return nil, fmt.Errorf("unknown protocol version %d", v)
 	}
 }
 
@@ -139,31 +256,26 @@ func (c *controller) Dial(ep Endpoint) (bool, []Endpoint) {
 		defer c.net.prom.Connecting.Dec()
 	}
 
-	if ep.Port == "" {
-		ep.Port = c.net.conf.ListenPort
-		c.logger.Debugf("Dialing to %s (with no previously known port)", ep)
-	} else {
-		c.logger.Debugf("Dialing to %s", ep)
-	}
-
+	c.logger.Debugf("Dialing to %s", ep)
 	con, err := c.dialer.Dial(ep)
 	if err != nil {
 		c.logger.WithError(err).Infof("Failed to dial to %s", ep)
 		return false, nil
 	}
 
-	peer := newPeer(c.net, c.peerStatus, c.peerData)
-	if share, err := peer.StartWithHandshake(ep, con, false); err != nil {
+	peer, alternatives, err := c.handshake(ep.IP, con, false)
+	if err != nil { // handshake closes connection
 		if err.Error() == "loopback" {
 			c.logger.Debugf("Banning ourselves for 50 years")
 			c.banEndpoint(ep, time.Hour*24*365*50) // ban for 50 years
-		} else if len(share) > 0 {
-			c.logger.Debugf("Connection declined with alternatives from %s", ep)
-			return false, share
-		} else {
-			c.logger.WithError(err).Debugf("Handshake fail with %s", ep)
+			return false, nil
 		}
-		peer.Stop()
+
+		if len(alternatives) > 0 {
+			c.logger.Debugf("Connection declined with alternatives from %s", ep)
+			return false, alternatives
+		}
+		c.logger.WithError(err).Debugf("Handshake fail with %s", ep)
 		return false, nil
 	}
 

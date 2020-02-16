@@ -31,7 +31,7 @@ type controller struct {
 	specialEndpoints []Endpoint
 	bootstrap        []Endpoint
 
-	shareListener map[uint32]chan *Parcel
+	shareListener map[string]chan *Parcel
 	shareMtx      sync.RWMutex
 
 	lastPeerDial time.Time
@@ -73,7 +73,7 @@ func newController(network *Network) (*controller, error) {
 	c.peerData = make(chan peerParcel, conf.ChannelCapacity)
 
 	c.special = make(map[string]bool)
-	c.shareListener = make(map[uint32]chan *Parcel)
+	c.shareListener = make(map[string]chan *Parcel)
 
 	// CAT
 	c.lastRound = time.Now()

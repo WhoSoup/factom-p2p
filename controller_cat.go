@@ -119,12 +119,12 @@ func (c *controller) asyncPeerRequest(peer *Peer) ([]Endpoint, error) {
 	async := make(chan *Parcel, 1)
 
 	c.shareMtx.Lock()
-	c.shareListener[peer.NodeID] = async
+	c.shareListener[peer.Hash] = async
 	c.shareMtx.Unlock()
 
 	defer func() {
 		c.shareMtx.Lock()
-		delete(c.shareListener, peer.NodeID)
+		delete(c.shareListener, peer.Hash)
 		c.shareMtx.Unlock()
 	}()
 
@@ -233,7 +233,7 @@ func (c *controller) catReplenish() {
 		for len(connect) > 0 &&
 			attempts < attemptsLimit &&
 			uint(c.peers.Total()) < c.net.conf.TargetPeers {
-
+			c.logger.Debugf("replenish loop with %d peers", len(connect))
 			ep := connect[0]
 			connect = connect[1:]
 
