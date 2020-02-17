@@ -393,12 +393,12 @@ func (p *Peer) GetMetrics() PeerMetrics {
 		BPSDown:          p.bpsDown,
 		BPSUp:            p.bpsUp,
 		ConnectionState:  fmt.Sprintf("v%s", p.prot.Version()),
-		SendUsageRate:    p.SendUsageRate(),
+		SendFillRatio:    p.SendFillRatio(),
 		Dropped:          p.dropped,
 	}
 }
 
-// SendUsageRate is a wrapper for the send channel's UsageRate
-func (p *Peer) SendUsageRate() float64 {
-	return p.send.UsageRate()
+// SendFillRatio is a wrapper for the send channel's FillRatio
+func (p *Peer) SendFillRatio() float64 {
+	return p.send.FillRatio()
 }
