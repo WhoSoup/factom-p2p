@@ -20,9 +20,7 @@ func (c *controller) route() {
 					p.Send(parcel)
 				}
 
-			case "":
-				fallthrough
-			case RandomPeer:
+			case "", RandomPeer:
 				if random := c.randomPeer(); random != nil {
 					random.Send(parcel)
 				} else {
@@ -61,10 +59,7 @@ func (c *controller) manageData() {
 					parcel := newParcel(TypePong, []byte("Pong"))
 					peer.Send(parcel)
 				}()
-			case TypeMessage:
-				//c.net.FromNetwork.Send(parcel)
-				fallthrough
-			case TypeMessagePart:
+			case TypeMessage, TypeMessagePart:
 				parcel.Type = TypeMessage
 				c.net.FromNetwork.Send(parcel)
 			case TypePeerRequest:
