@@ -17,7 +17,7 @@ func (n *Network) DebugMessage() (string, string, int) {
 	for _, p := range s {
 
 		metrics := p.GetMetrics()
-		r += fmt.Sprintf("\tPeer %s (MPS %.2f/%.2f) (BPS %.2f/%.2f) (Cap %.2f)\n", p.String(), metrics.MPSDown, metrics.MPSUp, metrics.BPSDown, metrics.BPSUp, metrics.Capacity)
+		r += fmt.Sprintf("\tPeer %s (MPS %.2f/%.2f) (BPS %.2f/%.2f) (Cap %.2f)\n", p.String(), metrics.MPSDown, metrics.MPSUp, metrics.BPSDown, metrics.BPSUp, metrics.SendFillRatio)
 		edge := ""
 		/*if n.conf.NodeID < 4 || p.NodeID < 4 {
 			min := n.conf.NodeID
@@ -87,7 +87,7 @@ func DebugServer(n *Network) {
 			out += fmt.Sprintf("\t\tMPS Up: %.2f\n", m.MPSUp)
 			out += fmt.Sprintf("\t\tBPS Down: %.2f\n", m.BPSDown)
 			out += fmt.Sprintf("\t\tBPS Up: %.2f\n", m.BPSUp)
-			out += fmt.Sprintf("\t\tCapacity: %.2f\n", m.Capacity)
+			out += fmt.Sprintf("\t\tCapacity: %.2f\n", m.SendFillRatio)
 			out += fmt.Sprintf("\t\tDropped: %d\n", m.Dropped)
 		}
 

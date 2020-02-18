@@ -21,7 +21,7 @@ func (c *controller) run() {
 	}
 }
 
-// the factom network ping behavior is so send a ping message after
+// the factom network ping behavior is to send a ping message after
 // a specific duration has passed
 func (c *controller) runPing() {
 	for _, p := range c.peers.Slice() {
