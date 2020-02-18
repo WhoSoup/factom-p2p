@@ -38,15 +38,14 @@ var packageLogger = log.WithField("package", "p2p")
 // Does not start the network automatically.
 func NewNetwork(conf Configuration) (*Network, error) {
 	var err error
-	myconf := conf // copy
-	myconf.Sanitize()
 
 	n := new(Network)
+	n.conf = &conf
+	n.conf.Sanitize()
 	n.fatalError = make(chan error)
 
-	n.logger = packageLogger.WithField("subpackage", "Network").WithField("node", conf.NodeName)
+	n.logger = packageLogger.WithField("subpackage", "Network").WithField("node", n.conf.NodeName)
 
-	n.conf = &myconf
 	if n.conf.EnablePrometheus {
 		n.prom = new(Prometheus)
 		n.prom.Setup()
@@ -64,8 +63,8 @@ func NewNetwork(conf Configuration) (*Network, error) {
 	if err != nil {
 		return nil, err
 	}
-	n.ToNetwork = newParcelChannel(conf.ChannelCapacity)
-	n.FromNetwork = newParcelChannel(conf.ChannelCapacity)
+	n.ToNetwork = newParcelChannel(n.conf.ChannelCapacity)
+	n.FromNetwork = newParcelChannel(n.conf.ChannelCapacity)
 	return n, nil
 }
 
