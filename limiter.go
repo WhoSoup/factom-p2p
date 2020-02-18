@@ -12,10 +12,10 @@ type LimitedListener struct {
 	listener       net.Listener
 	limit          time.Duration
 	lastConnection time.Time
-	history        []connection
+	history        []attempt
 }
 
-type connection struct {
+type attempt struct {
 	host string
 	time time.Time
 }
@@ -79,7 +79,7 @@ func (ll *LimitedListener) isInHistory(host string) bool {
 
 // addToHistory adds an address to the system at the current time
 func (ll *LimitedListener) addToHistory(host string) {
-	ll.history = append(ll.history, connection{host: host, time: time.Now()})
+	ll.history = append(ll.history, attempt{host: host, time: time.Now()})
 	ll.lastConnection = time.Now()
 }
 
