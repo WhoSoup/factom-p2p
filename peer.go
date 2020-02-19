@@ -96,10 +96,16 @@ func (p *Peer) String() string {
 }
 
 func (p *Peer) Send(parcel *Parcel) {
-	_, dropped := p.send.Send(parcel)
-	p.metricsMtx.Lock()
-	p.dropped += uint64(dropped)
-	p.metricsMtx.Unlock()
+	select {
+	case <-p.stop:
+		// don't send when stopped
+	default:
+		_, dropped := p.send.Send(parcel)
+		p.metricsMtx.Lock()
+		p.dropped += uint64(dropped)
+		p.metricsMtx.Unlock()
+
+	}
 }
 
 func (p *Peer) statLoop() {
@@ -174,9 +180,9 @@ func (p *Peer) readLoop() {
 // deliver is a blocking delivery of this peer's messages to the peer manager.
 func (p *Peer) deliver(parcel *Parcel) bool {
 	select {
-	case p.net.controller.peerData <- peerParcel{peer: p, parcel: parcel}:
 	case <-p.stop:
 		return false
+	case p.net.controller.peerData <- peerParcel{peer: p, parcel: parcel}:
 	}
 	return true
 }
