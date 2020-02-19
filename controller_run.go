@@ -25,7 +25,7 @@ func (c *controller) run() {
 // a specific duration has passed
 func (c *controller) runPing() {
 	for _, p := range c.peers.Slice() {
-		if time.Since(p.lastSend) > c.net.conf.PingInterval {
+		if p.LastSendAge() > c.net.conf.PingInterval {
 			ping := newParcel(TypePing, []byte("Ping"))
 			p.Send(ping)
 		}

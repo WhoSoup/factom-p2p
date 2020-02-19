@@ -84,19 +84,8 @@ func newPeer(net *Network, id uint32, ep Endpoint, conn net.Conn, protocol Proto
 func (p *Peer) Stop() {
 	p.stopper.Do(func() {
 		p.logger.Debug("Stopping peer")
-		sc := p.send
-
-		p.send = nil
-
-		close(p.stop)
-
-		if p.conn != nil {
-			p.conn.Close()
-		}
-
-		if sc != nil {
-			close(sc)
-		}
+		close(p.stop) // stops sendLoop and readLoop and statLoop
+		// sendLoop closes p.conn and p.send in defer
 
 		p.net.controller.peerStatus <- peerStatus{peer: p, online: false}
 	})
@@ -108,7 +97,9 @@ func (p *Peer) String() string {
 
 func (p *Peer) Send(parcel *Parcel) {
 	_, dropped := p.send.Send(parcel)
+	p.metricsMtx.Lock()
 	p.dropped += uint64(dropped)
+	p.metricsMtx.Unlock()
 }
 
 func (p *Peer) statLoop() {
@@ -198,6 +189,7 @@ func (p *Peer) sendLoop() {
 		defer p.net.prom.SendRoutines.Dec()
 	}
 
+	defer close(p.send)
 	defer p.conn.Close() // close connection on fatal error
 	for {
 		select {
@@ -232,6 +224,12 @@ func (p *Peer) sendLoop() {
 			}
 		}
 	}
+}
+
+func (p *Peer) LastSendAge() time.Duration {
+	p.metricsMtx.RLock()
+	defer p.metricsMtx.RUnlock()
+	return time.Since(p.lastSend)
 }
 
 // GetMetrics returns live metrics for this connection

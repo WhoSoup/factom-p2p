@@ -131,11 +131,14 @@ func (ps *PeerStore) Count(addr string) int {
 // ordered
 func (ps *PeerStore) Slice() []*Peer {
 	ps.mtx.RLock()
-	defer ps.mtx.RUnlock()
-
 	if ps.curSlice != nil {
+		defer ps.mtx.RUnlock()
 		return append(ps.curSlice[:0:0], ps.curSlice...)
 	}
+	ps.mtx.RUnlock()
+
+	ps.mtx.Lock()
+	defer ps.mtx.Unlock()
 	r := make([]*Peer, 0, len(ps.peers))
 	for _, p := range ps.peers {
 		r = append(r, p)
