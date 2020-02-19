@@ -1,59 +1,106 @@
 package p2p
 
 import (
+	"encoding/binary"
+	"encoding/hex"
 	"fmt"
 	"net/http"
 	"sort"
+	"strings"
+	"text/tabwriter"
 )
 
 // this file is for debugging only and not included in the factom repo
 
 // DebugMessage is temporary
-func (n *Network) DebugMessage() (string, string, int) {
-	hv := ""
+func (n *Network) DebugMessage() (string, int) {
 	s := n.controller.peers.Slice()
-	r := fmt.Sprintf("\nONLINE: (%d/%d/%d)\n", len(s), n.conf.TargetPeers, n.conf.MaxPeers)
+
+	sort.Slice(s, func(i, j int) bool {
+		return s[i].Hash < s[j].Hash
+	})
+
+	buf := new(strings.Builder)
+
+	fmt.Fprintf(buf, "\nONLINE: (%d/%d/%d)\n", len(s), n.conf.TargetPeers, n.conf.MaxPeers)
+
+	tw := tabwriter.NewWriter(buf, 0, 0, 3, ' ', 0)
+
+	fmt.Fprintf(tw, "Hash\tMPS Down\tMPS Up\tBps Down\tBps up\tRatio\tDropped\t\n")
+	fmt.Fprintf(tw, "----\t--------\t------\t--------\t------\t-----\t-------\t\n")
+
 	count := len(s)
 	for _, p := range s {
+		m := p.GetMetrics()
+		fmt.Fprintf(tw, "%s\t%.2f\t%.2f\t%.2f\t%.2f\t%.2f\t%d\t\n", p.Hash, m.MPSDown, m.MPSUp, m.BPSDown, m.BPSUp, m.SendFillRatio, m.Dropped)
+	}
+	tw.Flush()
 
-		metrics := p.GetMetrics()
-		r += fmt.Sprintf("\tPeer %s (MPS %.2f/%.2f) (BPS %.2f/%.2f) (Cap %.2f)\n", p.String(), metrics.MPSDown, metrics.MPSUp, metrics.BPSDown, metrics.BPSUp, metrics.SendFillRatio)
+	fmt.Fprint(buf, "\nBANS:\n")
+	tw = tabwriter.NewWriter(buf, 0, 0, 3, ' ', 0)
+
+	fmt.Fprintf(tw, "Address\tExpires\t\n")
+	fmt.Fprintf(tw, "-------\t-------\t\n")
+
+	n.controller.banMtx.RLock()
+	for ip, ts := range n.controller.bans {
+		fmt.Fprintf(tw, "%s\t%s\t\n", ip, ts.Format("2006-01-02 15:04:05"))
+	}
+	n.controller.banMtx.RUnlock()
+	tw.Flush()
+
+	return buf.String(), count
+}
+
+func (n *Network) DebugHalfviz() string {
+	halfviz := ""
+
+	idFromHash := func(s string) int64 {
+		bits := strings.Split(s, " ")
+		if len(bits) != 2 || len(bits[1]) != 8 {
+			return -1
+		}
+		dec, err := hex.DecodeString(bits[1])
+		if err != nil {
+			return -2
+		}
+		return int64(binary.LittleEndian.Uint32(dec))
+	}
+
+	peers := n.controller.peers.Slice()
+	for _, p := range peers {
+
 		edge := ""
-		/*if n.conf.NodeID < 4 || p.NodeID < 4 {
+		id := idFromHash(p.Hash)
+		if id < 0 {
+			return fmt.Sprintf("[halfviz] unable to get id from %s (code %d)", p.Hash, id)
+		}
+		if n.conf.NodeID < 4 || id < 4 {
 			min := n.conf.NodeID
-			if p.NodeID < min {
-				min = p.NodeID
+			if uint32(id) < min {
+				min = uint32(id)
 			}
 			if min != 0 {
 				color := []string{"red", "green", "blue"}[min-1]
 				edge = fmt.Sprintf(" {color:%s, weight=3}", color)
 			}
-		}*/
+		}
+
 		if p.IsIncoming {
-			hv += fmt.Sprintf("%s -> %s:%s%s\n", p.Endpoint, n.conf.BindIP, n.conf.ListenPort, edge)
+			halfviz += fmt.Sprintf("%s -> %s:%s%s\n", p.Endpoint, n.conf.BindIP, n.conf.ListenPort, edge)
 		} else {
-			hv += fmt.Sprintf("%s:%s -> %s%s\n", n.conf.BindIP, n.conf.ListenPort, p.Endpoint, edge)
+			halfviz += fmt.Sprintf("%s:%s -> %s%s\n", n.conf.BindIP, n.conf.ListenPort, p.Endpoint, edge)
 		}
 	}
-	known := ""
-	/*for _, ip := range n.controller.endpoints.IPs() {
-		known += ip.Address + " "
-	}*/
-	r += "\nKNOWN:\n" + known
 
-	/*banned := ""
-	for ip, time := range n.controller.endpoints.Bans {
-		banned += fmt.Sprintf("\t%s %s\n", ip, time)
-	}
-	r += "\nBANNED:\n" + banned*/
-	return r, hv, count
+	return halfviz
 }
 
 // DebugServer is temporary
 func DebugServer(n *Network) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/debug", func(rw http.ResponseWriter, req *http.Request) {
-		a, _, _ := n.DebugMessage()
+		a, _ := n.DebugMessage()
 		rw.Write([]byte(a))
 	})
 
