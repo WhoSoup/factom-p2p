@@ -23,7 +23,7 @@ type Network struct {
 
 	metricsHook func(pm map[string]PeerMetrics)
 
-	rng        *rand.Rand
+	rng        *rand.Rand // note: not thread safe for Read()
 	instanceID uint64
 	logger     *log.Entry
 
@@ -50,7 +50,12 @@ func NewNetwork(conf Configuration) (*Network, error) {
 		n.prom = new(Prometheus)
 		n.prom.Setup()
 	}
-	n.rng = rand.New(rand.NewSource(time.Now().UnixNano()))
+
+	if src, err := newLockSource(time.Now().UnixNano()); err != nil {
+		return nil, err
+	} else {
+		n.rng = rand.New(src)
+	}
 	// generate random instanceid for loopback detection
 	n.instanceID = n.rng.Uint64()
 
