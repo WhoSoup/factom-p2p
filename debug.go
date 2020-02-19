@@ -35,11 +35,12 @@ func (n *Network) DebugMessage() (string, string, int) {
 			hv += fmt.Sprintf("%s:%s -> %s%s\n", n.conf.BindIP, n.conf.ListenPort, p.Endpoint, edge)
 		}
 	}
-	known := ""
+	known := fmt.Sprintf("\tDropped ToNetwork: %d\n", n.controller.droppedToNetwork)
+	known += fmt.Sprintf("\tDropped FromNetwork: %d\n", n.controller.droppedFromNetwork)
 	/*for _, ip := range n.controller.endpoints.IPs() {
 		known += ip.Address + " "
 	}*/
-	r += "\nKNOWN:\n" + known
+	r += "\nDATA:\n" + known
 
 	/*banned := ""
 	for ip, time := range n.controller.endpoints.Bans {

@@ -106,9 +106,10 @@ func (p *Peer) String() string {
 	return p.Hash
 }
 
-func (p *Peer) Send(parcel *Parcel) {
+func (p *Peer) Send(parcel *Parcel) int {
 	_, dropped := p.send.Send(parcel)
 	p.dropped += uint64(dropped)
+	return dropped
 }
 
 func (p *Peer) statLoop() {

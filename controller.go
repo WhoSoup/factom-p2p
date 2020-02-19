@@ -41,6 +41,9 @@ type controller struct {
 	online     int
 	connecting int
 
+	droppedToNetwork   uint64
+	droppedFromNetwork uint64
+
 	lastRound    time.Time
 	seed         *seed
 	replenishing bool
@@ -69,8 +72,8 @@ func newController(network *Network) (*controller, error) {
 	}
 	c.lastPersist = time.Now()
 
-	c.peerStatus = make(chan peerStatus, 10) // TODO reconsider this value
-	c.peerData = make(chan peerParcel, conf.ChannelCapacity)
+	c.peerStatus = make(chan peerStatus) // TODO reconsider this value
+	c.peerData = make(chan peerParcel)
 
 	c.special = make(map[string]bool)
 	c.shareListener = make(map[string]chan *Parcel)

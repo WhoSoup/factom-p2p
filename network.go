@@ -13,8 +13,8 @@ import (
 //
 // FromNetwork is the channel that gets filled with parcels arriving from the network layer
 type Network struct {
-	ToNetwork   ParcelChannel
-	FromNetwork ParcelChannel
+	ToNetwork   chan *Parcel
+	FromNetwork chan *Parcel
 
 	conf       *Configuration
 	controller *controller
@@ -68,8 +68,8 @@ func NewNetwork(conf Configuration) (*Network, error) {
 	if err != nil {
 		return nil, err
 	}
-	n.ToNetwork = newParcelChannel(n.conf.ChannelCapacity)
-	n.FromNetwork = newParcelChannel(n.conf.ChannelCapacity)
+	n.ToNetwork = make(chan *Parcel)   // newParcelChannel(n.conf.ChannelCapacity)
+	n.FromNetwork = make(chan *Parcel) //newParcelChannel(n.conf.ChannelCapacity)
 	return n, nil
 }
 

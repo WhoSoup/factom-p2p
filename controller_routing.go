@@ -1,6 +1,9 @@
 package p2p
 
-import "time"
+import (
+	"sync/atomic"
+	"time"
+)
 
 // route takes messages from ToNetwork and routes it to the appropriate peers
 func (c *controller) route() {
@@ -8,30 +11,33 @@ func (c *controller) route() {
 		// blocking read on ToNetwork, and c.stopRoute
 		select {
 		case parcel := <-c.net.ToNetwork:
+			var dropped uint64
 			switch parcel.Address {
 			case FullBroadcast:
 				for _, p := range c.peers.Slice() {
-					p.Send(parcel)
+					dropped += uint64(p.Send(parcel))
 				}
 
 			case Broadcast:
 				selection := c.selectBroadcastPeers(c.net.conf.Fanout)
 				for _, p := range selection {
-					p.Send(parcel)
+					dropped += uint64(p.Send(parcel))
 				}
 
 			case "", RandomPeer:
 				if random := c.randomPeer(); random != nil {
-					random.Send(parcel)
+					dropped += uint64(random.Send(parcel))
 				} else {
 					c.logger.Debugf("attempted to send parcel %s to a random peer but no peers are connected", parcel)
 				}
 
 			default:
 				if p := c.peers.Get(parcel.Address); p != nil {
-					p.Send(parcel)
+					dropped += uint64(p.Send(parcel))
 				}
 			}
+
+			atomic.AddUint64(&c.droppedToNetwork, dropped)
 		}
 	}
 }
@@ -61,7 +67,8 @@ func (c *controller) manageData() {
 				}()
 			case TypeMessage, TypeMessagePart:
 				parcel.Type = TypeMessage
-				c.net.FromNetwork.Send(parcel)
+				c.net.FromNetwork <- parcel
+				//atomic.AddUint64(&c.droppedFromNetwork, uint64(dropped))
 			case TypePeerRequest:
 				if time.Since(peer.lastPeerRequest) >= c.net.conf.PeerRequestInterval {
 					peer.lastPeerRequest = time.Now()
