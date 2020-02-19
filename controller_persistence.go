@@ -40,7 +40,7 @@ func (c *controller) loadPeerCacheFile() ([]byte, error) {
 	return ioutil.ReadFile(c.net.conf.PeerCacheFile)
 }
 
-func (c *controller) persistData() ([]byte, error) {
+func (c *controller) peerCacheData() ([]byte, error) {
 	var pers PeerCache
 	pers.Bans = make(map[string]time.Time)
 
@@ -85,13 +85,13 @@ func (c *controller) persistPeerFile() {
 		return
 	}
 
-	data, err := c.persistData()
+	data, err := c.peerCacheData()
 	if err != nil {
-		c.logger.WithError(err).Warn("unable to create peer persist data")
+		c.logger.WithError(err).Warn("unable to create peer cache data")
 	} else {
 		err = c.writePeerCacheFile(data)
 		if err != nil {
-			c.logger.WithError(err).Warn("unable to persist peer data")
+			c.logger.WithError(err).Warn("unable to persist peer cache data")
 		}
 	}
 }

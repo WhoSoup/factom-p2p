@@ -24,7 +24,7 @@ func NewPeerStore() *PeerStore {
 	return ps
 }
 
-// Add a peer to be managed. Throws error if a peer with that hash
+// Add a peer to be managed. Returns an error if a peer with that hash
 // is already tracked
 func (ps *PeerStore) Add(p *Peer) error {
 	if p == nil {
@@ -32,8 +32,8 @@ func (ps *PeerStore) Add(p *Peer) error {
 	}
 	ps.mtx.Lock()
 	defer ps.mtx.Unlock()
-	_, ok := ps.peers[p.Hash]
-	if ok {
+
+	if _, ok := ps.peers[p.Hash]; ok {
 		return fmt.Errorf("peer already exists")
 	}
 	ps.curSlice = nil

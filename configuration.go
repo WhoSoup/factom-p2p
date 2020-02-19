@@ -59,8 +59,8 @@ type Configuration struct {
 	// Amount of peers to drop down to
 	DropTo uint
 	// Reseed if there are fewer than this peers
-	MinReseed uint
-	Incoming  uint // maximum inbound connections, 0 <= Incoming <= Max
+	MinReseed   uint
+	MaxIncoming uint // maximum inbound connections, 0 <= MaxIncoming <= MaxPeers
 
 	// === Gossip Behavior ===
 
@@ -134,7 +134,7 @@ func DefaultP2PConfiguration() (c Configuration) {
 	c.PeerCacheFile = ""
 	c.PeerCacheAge = time.Hour //
 
-	c.Incoming = 36
+	c.MaxIncoming = 36
 	c.Fanout = 8
 	c.PeerShareAmount = 3 // CAT share
 	c.RoundTime = time.Minute * 15
@@ -165,7 +165,7 @@ func DefaultP2PConfiguration() (c Configuration) {
 
 // Sanitize automatically adjusts some variables that are dependent on others
 func (c *Configuration) Sanitize() {
-	if c.Incoming > c.MaxPeers {
-		c.Incoming = c.MaxPeers
+	if c.MaxIncoming > c.MaxPeers {
+		c.MaxIncoming = c.MaxPeers
 	}
 }

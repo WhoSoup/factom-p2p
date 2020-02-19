@@ -22,15 +22,14 @@ func (c *controller) manageOnline() {
 		select {
 		case pc := <-c.peerStatus:
 			if pc.online {
-				old := c.peers.Get(pc.peer.Hash)
-				if old != nil {
+				if old := c.peers.Get(pc.peer.Hash); old != nil {
 					old.Stop()
 					c.logger.Debugf("removing old peer %s", pc.peer.Hash)
 					c.peers.Remove(old)
 				}
 				err := c.peers.Add(pc.peer)
 				if err != nil {
-					c.logger.Errorf("Unable to add peer %s to peer store because an old peer still exists", pc.peer)
+					c.logger.WithError(err).Errorf("Unable to add peer %s", pc.peer)
 				}
 			} else {
 				c.peers.Remove(pc.peer)
@@ -51,8 +50,8 @@ func (c *controller) allowIncoming(addr string) error {
 		return fmt.Errorf("Address %s is banned", addr)
 	}
 
-	if uint(c.peers.Total()) >= c.net.conf.Incoming && !c.isSpecialIP(addr) {
-		return fmt.Errorf("Refusing incoming connection from %s because we are maxed out (%d of %d)", addr, c.peers.Total(), c.net.conf.Incoming)
+	if uint(c.peers.Total()) >= c.net.conf.MaxIncoming && !c.isSpecialIP(addr) {
+		return fmt.Errorf("Refusing incoming connection from %s because we are maxed out (%d of %d)", addr, c.peers.Total(), c.net.conf.MaxIncoming)
 	}
 
 	if c.net.conf.PeerIPLimitIncoming > 0 && uint(c.peers.Count(addr)) >= c.net.conf.PeerIPLimitIncoming {
@@ -286,7 +285,7 @@ func (c *controller) Dial(ep Endpoint) (bool, []Endpoint) {
 
 // listen listens for incoming TCP connections and passes them off to handshake maneuver
 func (c *controller) listen() {
-	tmpLogger := c.logger.WithFields(log.Fields{"address": c.net.conf.BindIP, "port": c.net.conf.ListenPort})
+	tmpLogger := c.logger.WithFields(log.Fields{"host": c.net.conf.BindIP, "port": c.net.conf.ListenPort})
 	tmpLogger.Debug("controller.listen() starting up")
 
 	addr := fmt.Sprintf("%s:%s", c.net.conf.BindIP, c.net.conf.ListenPort)
