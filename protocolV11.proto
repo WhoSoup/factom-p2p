@@ -1,0 +1,8 @@
+syntax = "proto3";
+package p2p;
+
+message V11Msg {
+    uint32 Type = 1;
+    bytes Payload = 2;
+}
+
