@@ -86,7 +86,6 @@ func (p *Peer) Stop() {
 		p.logger.Debug("Stopping peer")
 		close(p.stop) // stops sendLoop and readLoop and statLoop
 		// sendLoop closes p.conn and p.send in defer
-
 		p.net.controller.peerStatus <- peerStatus{peer: p, online: false}
 	})
 }

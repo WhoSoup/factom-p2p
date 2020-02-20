@@ -126,11 +126,11 @@ func (n *Network) Stop() error {
 	case <-n.stopper:
 		return fmt.Errorf("network not running")
 	default:
-		n.controller.listener.Close()
-		close(n.stopper)
+		n.logger.Info("Network.Stop() called")
 		for _, p := range n.controller.peers.Slice() {
 			p.Stop()
 		}
+		close(n.stopper)
 		return nil
 	}
 }
