@@ -48,13 +48,9 @@ func (sc *MetricsReadWriter) Read(p []byte) (int, error) {
 }
 
 func (sc *MetricsReadWriter) Collect() (mw uint64, mr uint64, bw uint64, br uint64) {
-	mw = sc.messagesWritten
-	sc.messagesWritten = 0
-	mr = sc.messagesRead
-	sc.messagesRead = 0
-	bw = sc.bytesWritten
-	sc.bytesWritten = 0
-	br = sc.bytesRead
-	sc.bytesRead = 0
+	mw = atomic.SwapUint64(&sc.messagesWritten, 0)
+	mr = atomic.SwapUint64(&sc.messagesRead, 0)
+	bw = atomic.SwapUint64(&sc.bytesWritten, 0)
+	br = atomic.SwapUint64(&sc.bytesRead, 0)
 	return
 }
