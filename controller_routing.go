@@ -4,9 +4,13 @@ import "time"
 
 // route takes messages from ToNetwork and routes it to the appropriate peers
 func (c *controller) route() {
+	c.logger.Debug("Start controller.route()")
+	defer c.logger.Debug("Start controller.route()")
 	for {
 		// blocking read on ToNetwork, and c.stopRoute
 		select {
+		case <-c.net.stopper:
+			return
 		case parcel := <-c.net.ToNetwork:
 			switch parcel.Address {
 			case FullBroadcast:
@@ -39,10 +43,12 @@ func (c *controller) route() {
 // manageData processes parcels arriving from peers and responds appropriately.
 // application messages are forwarded to the network channel.
 func (c *controller) manageData() {
-	c.logger.Debug("Start manageData()")
-	defer c.logger.Debug("Stop manageData()")
+	c.logger.Debug("Start controller.manageData()")
+	defer c.logger.Debug("Stop controller.manageData()")
 	for {
 		select {
+		case <-c.net.stopper:
+			return
 		case pp := <-c.peerData:
 			parcel := pp.parcel
 			peer := pp.peer

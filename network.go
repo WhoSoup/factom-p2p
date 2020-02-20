@@ -1,7 +1,9 @@
 package p2p
 
 import (
+	"fmt"
 	"math/rand"
+	"sync"
 	"time"
 
 	log "github.com/sirupsen/logrus"
@@ -27,8 +29,8 @@ type Network struct {
 	instanceID uint64
 	logger     *log.Entry
 
-	globalCloser chan interface{}
-	fatalError   chan error
+	stopper        chan interface{}
+	startStopMutex sync.Mutex
 }
 
 var packageLogger = log.WithField("package", "p2p")
@@ -42,7 +44,7 @@ func NewNetwork(conf Configuration) (*Network, error) {
 	n := new(Network)
 	n.conf = &conf
 	n.conf.Sanitize()
-	n.fatalError = make(chan error)
+	n.stopper = make(chan interface{})
 
 	n.logger = packageLogger.WithField("subpackage", "Network").WithField("node", n.conf.NodeName)
 
@@ -104,19 +106,33 @@ func (n *Network) SetMetricsHook(f func(pm map[string]PeerMetrics)) {
 }
 
 // Run starts the network.
-// Listens to incoming connections on the specified port
-// and connects to other peers
-func (n *Network) Run() {
-	n.logger.Infof("Starting a P2P Network with configuration %+v", n.conf)
+// Listens to incoming connections on the specified port and connects to other peers
+func (n *Network) Run() error {
+	select {
+	case <-n.stopper:
+		return fmt.Errorf("unable to restart a network that has been stopped")
+	default:
+		n.logger.Infof("Starting a P2P Network with configuration %+v", n.conf)
+		n.controller.Start()
+		return nil
+	}
 
-	n.controller.Start() // this will get peer manager ready to handle incoming connections
-	//DebugServer(n)
 }
 
-func (n *Network) Stop() {
-	// TODO implement
-	// close stop channel
-	// stop all peers
+// Stop shuts down the network
+// Note that the network object will become unusable after it is stopped
+func (n *Network) Stop() error {
+	select {
+	case <-n.stopper:
+		return fmt.Errorf("network not running")
+	default:
+		n.controller.listener.Close()
+		close(n.stopper)
+		for _, p := range n.controller.peers.Slice() {
+			p.Stop()
+		}
+		return nil
+	}
 }
 
 // Ban removes a peer as well as any other peer from that address

@@ -16,6 +16,8 @@ func (c *controller) run() {
 		c.runPing()
 
 		select {
+		case <-c.net.stopper:
+			return
 		case <-time.After(time.Second):
 		}
 	}

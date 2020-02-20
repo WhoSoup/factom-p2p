@@ -20,6 +20,8 @@ func (c *controller) manageOnline() {
 	defer c.logger.Debug("Stop manageOnline()")
 	for {
 		select {
+		case <-c.net.stopper:
+			return
 		case pc := <-c.peerStatus:
 			if pc.online {
 				if old := c.peers.Get(pc.peer.Hash); old != nil {
