@@ -5,7 +5,7 @@ import "time"
 // route takes messages from ToNetwork and routes it to the appropriate peers
 func (c *controller) route() {
 	c.logger.Debug("Start controller.route()")
-	defer c.logger.Debug("Start controller.route()")
+	defer c.logger.Debug("Stop controller.route()")
 	for {
 		// blocking read on ToNetwork, and c.stopRoute
 		select {

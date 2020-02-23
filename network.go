@@ -3,7 +3,6 @@ package p2p
 import (
 	"fmt"
 	"math/rand"
-	"sync"
 	"time"
 
 	log "github.com/sirupsen/logrus"
@@ -29,8 +28,7 @@ type Network struct {
 	instanceID uint64
 	logger     *log.Entry
 
-	stopper        chan interface{}
-	startStopMutex sync.Mutex
+	stopper chan interface{}
 }
 
 var packageLogger = log.WithField("package", "p2p")
@@ -124,12 +122,10 @@ func (n *Network) Run() error {
 func (n *Network) Stop() error {
 	select {
 	case <-n.stopper:
-		return fmt.Errorf("network not running")
+		return fmt.Errorf("network already stopped")
 	default:
 		n.logger.Info("Network.Stop() called")
-		for _, p := range n.controller.peers.Slice() {
-			p.Stop()
-		}
+		n.controller.listener.Close()
 		close(n.stopper)
 		return nil
 	}

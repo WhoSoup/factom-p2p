@@ -41,7 +41,6 @@ func (c *controller) manageOnline() {
 				c.net.prom.Outgoing.Set(float64(c.peers.Outgoing()))
 			}
 		case <-c.net.stopper:
-			// ordered second so that manageOnline will clear out all peers from the peer store first
 			return
 		}
 	}
@@ -300,11 +299,6 @@ func (c *controller) listen() {
 	}
 	defer tmpLogger.Debug("controller.listen() stopping")
 	c.listener = l
-
-	go func() { // the listener doesn't play well with immediately stopping
-		<-c.net.stopper
-		c.listener.Close()
-	}()
 
 	// start permanent loop
 	// terminates on program exit or when listener is closed
