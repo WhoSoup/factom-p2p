@@ -300,6 +300,11 @@ func (c *controller) listen() {
 	defer tmpLogger.Debug("controller.listen() stopping")
 	c.listener = l
 
+	go func() { // the listener doesn't play well with immediately stopping
+		<-c.net.stopper
+		c.listener.Close()
+	}()
+
 	// start permanent loop
 	// terminates on program exit or when listener is closed
 	for {

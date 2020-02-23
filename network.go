@@ -125,7 +125,6 @@ func (n *Network) Stop() error {
 		return fmt.Errorf("network already stopped")
 	default:
 		n.logger.Info("Network.Stop() called")
-		n.controller.listener.Close()
 		close(n.stopper)
 		return nil
 	}
