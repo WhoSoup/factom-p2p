@@ -7,16 +7,22 @@ import (
 )
 
 type Handshake struct {
-	Network    NetworkID
-	Version    uint16
-	Type       ParcelType
-	NodeID     uint32
-	ListenPort string
+	Network      NetworkID
+	Version      uint16
+	Type         ParcelType
+	NodeID       uint32
+	ListenPort   string
+	Loopback     uint64
+	Alternatives []Endpoint
 }
 
-func (h *Handshake) Valid(conf *Configuration) error {
+func (h *Handshake) Valid(conf *Configuration, loopback uint64) error {
 	if h.Version < conf.ProtocolVersionMinimum {
 		return fmt.Errorf("version %d is below the minimum", h.Version)
+	}
+
+	if h.Loopback == loopback {
+		return fmt.Errorf("loopback")
 	}
 
 	if h.Network != conf.Network {
@@ -31,7 +37,25 @@ func (h *Handshake) Valid(conf *Configuration) error {
 	if port < 1 || port > 65535 {
 		return fmt.Errorf("given port out of range: %d", port)
 	}
+
+	for _, ep := range h.Alternatives {
+		if !ep.Valid() {
+			return fmt.Errorf("invalid list of alternatives provided")
+		}
+	}
+
 	return nil
+}
+
+func newHandshake(conf *Configuration, loopback uint64) *Handshake {
+	hs := new(Handshake)
+	hs.Type = TypeHandshake
+	hs.Network = conf.Network
+	hs.Version = conf.ProtocolVersion
+	hs.NodeID = conf.NodeID
+	hs.ListenPort = conf.ListenPort
+	hs.Loopback = loopback
+	return hs
 }
 
 // HandshakeGob is an alias of V9MSG for backward compatibility

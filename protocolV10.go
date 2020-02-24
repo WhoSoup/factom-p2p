@@ -1,6 +1,7 @@
 package p2p
 
 import (
+	"encoding/binary"
 	"encoding/gob"
 	"encoding/json"
 	"fmt"
@@ -23,13 +24,75 @@ type V10Msg struct {
 	Payload []byte
 }
 
-func (v10 *ProtocolV10) init(decoder *gob.Decoder, encoder *gob.Encoder) {
+func newProtocolV10(decoder *gob.Decoder, encoder *gob.Encoder) *ProtocolV10 {
+	v10 := new(ProtocolV10)
 	v10.decoder = decoder
 	v10.encoder = encoder
+	return v10
 }
 
-func (v10 *ProtocolV10) SendHandshake(*Handshake) error     { return nil }
-func (v10 *ProtocolV10) ReadHandshake() (*Handshake, error) { return nil, nil }
+func (v10 *ProtocolV10) SendHandshake(h *Handshake) error {
+	if h.Type == TypeHandshake {
+		h.Type = TypePeerRequest
+	}
+
+	payload := []byte("Peer Request")
+	if len(h.Alternatives) > 0 {
+		if data, err := json.Marshal(h.Alternatives); err != nil {
+			return err
+		} else {
+			payload = data
+		}
+	}
+
+	var msg V9Msg
+	msg.Header.Network = h.Network
+	msg.Header.Version = 10 // hardcoded
+	msg.Header.Type = h.Type
+	msg.Header.TargetPeer = ""
+
+	msg.Header.NodeID = uint64(h.NodeID)
+	msg.Header.PeerAddress = ""
+	msg.Header.PeerPort = h.ListenPort
+	msg.Header.AppHash = "NetworkMessage"
+	msg.Header.AppType = "Network"
+
+	msg.Payload = payload
+	msg.Header.Crc32 = crc32.Checksum(msg.Payload, crcTable)
+	msg.Header.Length = uint32(len(msg.Payload))
+
+	return v10.encoder.Encode(&msg)
+}
+
+func (v10 *ProtocolV10) ReadHandshake() (*Handshake, error) {
+	msg := new(V9Msg)
+	err := v10.decoder.Decode(msg)
+	if err != nil {
+		return nil, err
+	}
+
+	if err = msg.Valid(); err != nil {
+		return nil, err
+	}
+
+	hs := new(Handshake)
+	hs.Type = msg.Header.Type
+
+	if msg.Header.Type == TypeRejectAlternative {
+		var alternatives []Endpoint
+		if err = json.Unmarshal(msg.Payload, &alternatives); err != nil {
+			return nil, err
+		}
+		hs.Alternatives = alternatives
+	} else if len(msg.Payload) == 8 {
+		hs.Loopback = binary.BigEndian.Uint64(msg.Payload)
+	}
+	hs.ListenPort = msg.Header.PeerPort
+	hs.Network = msg.Header.Network
+	hs.NodeID = uint32(msg.Header.NodeID)
+	hs.Version = msg.Header.Version
+	return hs, nil
+}
 
 // Send encodes a Parcel as V10Msg, calculates the crc and encodes it as gob
 func (v10 *ProtocolV10) Send(p *Parcel) error {

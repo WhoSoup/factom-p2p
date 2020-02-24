@@ -1,6 +1,7 @@
 package p2p
 
 import (
+	"encoding/binary"
 	"encoding/gob"
 	"encoding/json"
 	"fmt"
@@ -19,14 +20,59 @@ type ProtocolV9 struct {
 	encoder *gob.Encoder
 }
 
-func (v9 *ProtocolV9) init(net *Network, decoder *gob.Decoder, encoder *gob.Encoder) {
+func newProtocolV9(net *Network, decoder *gob.Decoder, encoder *gob.Encoder) *ProtocolV9 {
+	v9 := new(ProtocolV9)
 	v9.net = net
 	v9.decoder = decoder
 	v9.encoder = encoder
+	return v9
 }
 
-func (v9 *ProtocolV9) SendHandshake(*Handshake) error     { return nil }
-func (v9 *ProtocolV9) ReadHandshake() (*Handshake, error) { return nil, nil }
+// SendHandshake sends out a v9 structured handshake
+// transform handshake into peer request
+func (v9 *ProtocolV9) SendHandshake(h *Handshake) error {
+	if h.Type == TypeHandshake {
+		h.Type = TypePeerRequest
+	}
+
+	payload := []byte("Peer Request")
+	if len(h.Alternatives) > 0 {
+		if data, err := json.Marshal(h.Alternatives); err != nil {
+			return err
+		} else {
+			payload = data
+		}
+	}
+
+	p := newParcel(h.Type, payload)
+	return v9.Send(p)
+}
+
+func (v9 *ProtocolV9) ReadHandshake() (*Handshake, error) {
+	msg, err := v9.read()
+	if err != nil {
+		return nil, err
+	}
+
+	hs := new(Handshake)
+	hs.Type = msg.Header.Type
+
+	if msg.Header.Type == TypeRejectAlternative {
+		var alternatives []Endpoint
+		if err = json.Unmarshal(msg.Payload, &alternatives); err != nil {
+			return nil, err
+		}
+		hs.Alternatives = alternatives
+	} else if len(msg.Payload) == 8 {
+		hs.Loopback = binary.BigEndian.Uint64(msg.Payload)
+	}
+	hs.ListenPort = msg.Header.PeerPort
+	hs.Network = msg.Header.Network
+	hs.NodeID = uint32(msg.Header.NodeID)
+	hs.Version = msg.Header.Version
+
+	return hs, nil
+}
 
 // Send a parcel over the connection
 func (v9 *ProtocolV9) Send(p *Parcel) error {
@@ -49,15 +95,24 @@ func (v9 *ProtocolV9) Send(p *Parcel) error {
 	return v9.encoder.Encode(&msg)
 }
 
-// Receive a parcel from the network. Blocking.
-func (v9 *ProtocolV9) Receive() (*Parcel, error) {
-	var msg V9Msg
-	err := v9.decoder.Decode(&msg)
+func (v9 *ProtocolV9) read() (*V9Msg, error) {
+	msg := new(V9Msg)
+	err := v9.decoder.Decode(msg)
 	if err != nil {
 		return nil, err
 	}
 
 	if err = msg.Valid(); err != nil {
+		return nil, err
+	}
+
+	return msg, nil
+}
+
+// Receive a parcel from the network. Blocking.
+func (v9 *ProtocolV9) Receive() (*Parcel, error) {
+	msg, err := v9.read()
+	if err != nil {
 		return nil, err
 	}
 

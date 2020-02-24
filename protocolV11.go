@@ -15,13 +15,13 @@ var V11Signature = []byte{0xfa, 0xfa, 0xfa, 0xfa}
 var _ Protocol = (*ProtocolV11)(nil)
 
 type ProtocolV11 struct {
-	net *Network
-	rw  io.ReadWriter
+	rw io.ReadWriter
 }
 
-func (v11 *ProtocolV11) init(net *Network, rw io.ReadWriter) {
-	v11.net = net
+func newProtocolV11(rw io.ReadWriter) *ProtocolV11 {
+	v11 := new(ProtocolV11)
 	v11.rw = rw
+	return v11
 }
 
 func (v11 *ProtocolV11) SendHandshake(*Handshake) error     { return nil }
