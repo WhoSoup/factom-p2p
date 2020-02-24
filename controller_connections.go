@@ -1,11 +1,13 @@
 package p2p
 
 import (
+	"bufio"
 	"bytes"
 	"encoding/binary"
 	"encoding/gob"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net"
 	"time"
 
@@ -91,16 +93,85 @@ func (c *controller) handleIncoming(con net.Conn) {
 		return
 	}
 
-	// don't bother with alternatives for incoming connections
-	peer, _, err := c.handshake(host, con, true)
+	// upgrade connection to a metrics connection
+	metrics := NewMetricsReadWriter(con)
+	prot, handshake, err := c.detectProtocol(metrics)
 
-	if err != nil {
+	if err := handshake.Valid(c.net.conf); err != nil {
 		c.logger.WithError(err).Debugf("inbound connection from %s failed handshake", host)
 		con.Close()
 		return
 	}
 
+	// host has been verified above
+	// listenport has been validated in handshake.Valid
+	ep, _ = NewEndpoint(host, handshake.ListenPort)
+
+	peer := newPeer(c.net, handshake.NodeID, ep, con, prot, metrics, true)
+	c.peerStatus <- peerStatus{peer: peer, online: true}
+
+	// a p2p1 node sends a peer request, so it needs to be processed
+	if handshake.Type == TypePeerRequest {
+		req := newParcel(TypePeerRequest, []byte("Peer Request"))
+		req.Address = peer.Hash
+		c.peerData <- peerParcel{peer: peer, parcel: req}
+	}
+
 	c.logger.Debugf("Incoming handshake success for peer %s, version %s", peer.Hash, peer.prot.Version())
+}
+
+func (c *controller) detectProtocol(rw io.ReadWriter) (Protocol, *Handshake, error) {
+	var prot Protocol
+
+	buffy := bufio.NewReader(rw)
+
+	sig, err := buffy.Peek(4)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	if bytes.Equal(sig, V11Signature) {
+		v11 := new(ProtocolV11)
+		v11.init(c.net, rw)
+
+		prot = v11
+	} else {
+
+		encoder := gob.NewEncoder(rw)
+		decoder := gob.NewDecoder(buffy)
+
+		handshake := new(HandshakeGob)
+		if err := decoder.Decode(handshake); err != nil {
+			return nil, nil, err
+		}
+
+		v := handshake.Header.Version
+		if v > c.net.conf.ProtocolVersion {
+			v = c.net.conf.ProtocolVersion
+		}
+
+		switch v {
+		case 9:
+			v9 := new(ProtocolV9)
+			v9.init(c.net, decoder, encoder)
+
+			prot = v9
+		case 10:
+			v10 := new(ProtocolV10)
+			v10.init(decoder, encoder)
+
+			prot = v10
+		default:
+			return nil, nil, fmt.Errorf("unknown protocol version %d", v)
+		}
+	}
+
+	hs, err := prot.ReadHandshake()
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return prot, hs, err
 }
 
 // handshake performs a basic handshake maneouver to establish the validity of the connection.
@@ -124,7 +195,7 @@ func (c *controller) handshake(ip string, con net.Conn, incoming bool) (*Peer, [
 	// upgrade connection to a metrics connection
 	metrics := NewMetricsReadWriter(con)
 
-	handshake := newHandshake(c.net.conf, nonce)
+	handshake := newHandshakeGob(c.net.conf, nonce)
 	decoder := gob.NewDecoder(metrics) // pipe gob through the metrics writer
 	encoder := gob.NewEncoder(metrics)
 	con.SetWriteDeadline(timeout)
@@ -141,7 +212,7 @@ func (c *controller) handshake(ip string, con net.Conn, incoming bool) (*Peer, [
 		return failfunc(fmt.Errorf("Failed to send handshake"))
 	}
 
-	var reply Handshake
+	var reply HandshakeGob
 	err = decoder.Decode(&reply)
 	if err != nil {
 		return failfunc(fmt.Errorf("Failed to read handshake"))
@@ -233,7 +304,7 @@ func (c *controller) RejectWithShare(con net.Conn, share []Endpoint) error {
 		return err
 	}
 
-	handshake := newHandshake(c.net.conf, payload)
+	handshake := newHandshakeGob(c.net.conf, payload)
 	handshake.Header.Type = TypeRejectAlternative
 
 	// only push the handshake, don't care what they send us

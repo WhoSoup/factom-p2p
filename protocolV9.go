@@ -25,6 +25,9 @@ func (v9 *ProtocolV9) init(net *Network, decoder *gob.Decoder, encoder *gob.Enco
 	v9.encoder = encoder
 }
 
+func (v9 *ProtocolV9) SendHandshake(*Handshake) error     { return nil }
+func (v9 *ProtocolV9) ReadHandshake() (*Handshake, error) { return nil, nil }
+
 // Send a parcel over the connection
 func (v9 *ProtocolV9) Send(p *Parcel) error {
 	var msg V9Msg

@@ -6,11 +6,39 @@ import (
 	"strconv"
 )
 
-// Handshake is an alias of V9MSG for backward compatibility
-type Handshake V9Msg
+type Handshake struct {
+	Network    NetworkID
+	Version    uint16
+	Type       ParcelType
+	NodeID     uint32
+	ListenPort string
+}
+
+func (h *Handshake) Valid(conf *Configuration) error {
+	if h.Version < conf.ProtocolVersionMinimum {
+		return fmt.Errorf("version %d is below the minimum", h.Version)
+	}
+
+	if h.Network != conf.Network {
+		return fmt.Errorf("wrong network id %x", h.Network)
+	}
+
+	port, err := strconv.Atoi(h.ListenPort)
+	if err != nil {
+		return fmt.Errorf("unable to parse port %s: %v", h.ListenPort, err)
+	}
+
+	if port < 1 || port > 65535 {
+		return fmt.Errorf("given port out of range: %d", port)
+	}
+	return nil
+}
+
+// HandshakeGob is an alias of V9MSG for backward compatibility
+type HandshakeGob V9Msg
 
 // Valid checks if the other node is compatible
-func (h *Handshake) Valid(conf *Configuration) error {
+func (h *HandshakeGob) Valid(conf *Configuration) error {
 	if h.Header.Version < conf.ProtocolVersionMinimum {
 		return fmt.Errorf("version %d is below the minimum", h.Header.Version)
 	}
@@ -43,8 +71,8 @@ func (h *Handshake) Valid(conf *Configuration) error {
 	return nil
 }
 
-func newHandshake(conf *Configuration, payload []byte) *Handshake {
-	hs := new(Handshake)
+func newHandshakeGob(conf *Configuration, payload []byte) *HandshakeGob {
+	hs := new(HandshakeGob)
 	hs.Header = V9Header{
 		Network:  conf.Network,
 		Version:  conf.ProtocolVersion,
@@ -58,9 +86,19 @@ func newHandshake(conf *Configuration, payload []byte) *Handshake {
 	return hs
 }
 
-// SetPayload adds a payload to the handshake and updates the header with metadata
-func (h *Handshake) SetPayload(payload []byte) {
+// SetPayload adds a payload to the HandshakeGob and updates the header with metadata
+func (h *HandshakeGob) SetPayload(payload []byte) {
 	h.Payload = payload
 	h.Header.Crc32 = crc32.Checksum(h.Payload, crcTable)
 	h.Header.Length = uint32(len(h.Payload))
+}
+
+func newHandshakeV11(conf *Configuration, loopback []byte) *V11Handshake {
+	hs := new(V11Handshake)
+	hs.NetworkID = uint32(conf.Network)
+	hs.Version = uint32(conf.ProtocolVersion)
+	hs.ListenPort = conf.ListenPort
+	hs.NodeID = conf.NodeID
+	hs.Loopback = loopback
+	return hs
 }

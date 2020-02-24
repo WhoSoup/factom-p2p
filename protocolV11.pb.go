@@ -22,6 +22,93 @@ var _ = math.Inf
 // proto package needs to be updated.
 const _ = proto.ProtoPackageIsVersion3 // please upgrade the proto package
 
+type V11Handshake struct {
+	NetworkID            uint32   `protobuf:"varint,1,opt,name=NetworkID,proto3" json:"NetworkID,omitempty"`
+	Version              uint32   `protobuf:"varint,2,opt,name=Version,proto3" json:"Version,omitempty"`
+	NodeID               uint32   `protobuf:"varint,3,opt,name=NodeID,proto3" json:"NodeID,omitempty"`
+	ListenPort           string   `protobuf:"bytes,4,opt,name=ListenPort,proto3" json:"ListenPort,omitempty"`
+	Loopback             []byte   `protobuf:"bytes,5,opt,name=Loopback,proto3" json:"Loopback,omitempty"`
+	Compatible           []uint32 `protobuf:"varint,6,rep,packed,name=Compatible,proto3" json:"Compatible,omitempty"`
+	XXX_NoUnkeyedLiteral struct{} `json:"-"`
+	XXX_unrecognized     []byte   `json:"-"`
+	XXX_sizecache        int32    `json:"-"`
+}
+
+func (m *V11Handshake) Reset()         { *m = V11Handshake{} }
+func (m *V11Handshake) String() string { return proto.CompactTextString(m) }
+func (*V11Handshake) ProtoMessage()    {}
+func (*V11Handshake) Descriptor() ([]byte, []int) {
+	return fileDescriptor_88431f7e68323b26, []int{0}
+}
+func (m *V11Handshake) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *V11Handshake) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_V11Handshake.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalToSizedBuffer(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (m *V11Handshake) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_V11Handshake.Merge(m, src)
+}
+func (m *V11Handshake) XXX_Size() int {
+	return m.Size()
+}
+func (m *V11Handshake) XXX_DiscardUnknown() {
+	xxx_messageInfo_V11Handshake.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_V11Handshake proto.InternalMessageInfo
+
+func (m *V11Handshake) GetNetworkID() uint32 {
+	if m != nil {
+		return m.NetworkID
+	}
+	return 0
+}
+
+func (m *V11Handshake) GetVersion() uint32 {
+	if m != nil {
+		return m.Version
+	}
+	return 0
+}
+
+func (m *V11Handshake) GetNodeID() uint32 {
+	if m != nil {
+		return m.NodeID
+	}
+	return 0
+}
+
+func (m *V11Handshake) GetListenPort() string {
+	if m != nil {
+		return m.ListenPort
+	}
+	return ""
+}
+
+func (m *V11Handshake) GetLoopback() []byte {
+	if m != nil {
+		return m.Loopback
+	}
+	return nil
+}
+
+func (m *V11Handshake) GetCompatible() []uint32 {
+	if m != nil {
+		return m.Compatible
+	}
+	return nil
+}
+
 type V11Msg struct {
 	Type                 uint32   `protobuf:"varint,1,opt,name=Type,proto3" json:"Type,omitempty"`
 	Payload              []byte   `protobuf:"bytes,2,opt,name=Payload,proto3" json:"Payload,omitempty"`
@@ -34,7 +121,7 @@ func (m *V11Msg) Reset()         { *m = V11Msg{} }
 func (m *V11Msg) String() string { return proto.CompactTextString(m) }
 func (*V11Msg) ProtoMessage()    {}
 func (*V11Msg) Descriptor() ([]byte, []int) {
-	return fileDescriptor_88431f7e68323b26, []int{0}
+	return fileDescriptor_88431f7e68323b26, []int{1}
 }
 func (m *V11Msg) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -78,21 +165,104 @@ func (m *V11Msg) GetPayload() []byte {
 }
 
 func init() {
+	proto.RegisterType((*V11Handshake)(nil), "p2p.V11Handshake")
 	proto.RegisterType((*V11Msg)(nil), "p2p.V11Msg")
 }
 
 func init() { proto.RegisterFile("protocolV11.proto", fileDescriptor_88431f7e68323b26) }
 
 var fileDescriptor_88431f7e68323b26 = []byte{
-	// 115 bytes of a gzipped FileDescriptorProto
+	// 242 bytes of a gzipped FileDescriptorProto
 	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0xe2, 0x12, 0x2c, 0x28, 0xca, 0x2f,
 	0xc9, 0x4f, 0xce, 0xcf, 0x09, 0x33, 0x34, 0xd4, 0x03, 0xb3, 0x85, 0x98, 0x0b, 0x8c, 0x0a, 0x94,
-	0xcc, 0xb8, 0xd8, 0xc2, 0x0c, 0x0d, 0x7d, 0x8b, 0xd3, 0x85, 0x84, 0xb8, 0x58, 0x42, 0x2a, 0x0b,
-	0x52, 0x25, 0x18, 0x15, 0x18, 0x35, 0x78, 0x83, 0xc0, 0x6c, 0x21, 0x09, 0x2e, 0xf6, 0x80, 0xc4,
-	0xca, 0x9c, 0xfc, 0xc4, 0x14, 0x09, 0x26, 0x05, 0x46, 0x0d, 0x9e, 0x20, 0x18, 0xd7, 0x49, 0xe0,
-	0xc4, 0x23, 0x39, 0xc6, 0x0b, 0x8f, 0xe4, 0x18, 0x1f, 0x3c, 0x92, 0x63, 0x9c, 0xf1, 0x58, 0x8e,
-	0x21, 0x89, 0x0d, 0x6c, 0xaa, 0x31, 0x20, 0x00, 0x00, 0xff, 0xff, 0x31, 0x56, 0xee, 0x05, 0x6a,
-	0x00, 0x00, 0x00,
+	0x76, 0x31, 0x72, 0xf1, 0x84, 0x19, 0x1a, 0x7a, 0x24, 0xe6, 0xa5, 0x14, 0x67, 0x24, 0x66, 0xa7,
+	0x0a, 0xc9, 0x70, 0x71, 0xfa, 0xa5, 0x96, 0x94, 0xe7, 0x17, 0x65, 0x7b, 0xba, 0x48, 0x30, 0x2a,
+	0x30, 0x6a, 0xf0, 0x06, 0x21, 0x04, 0x84, 0x24, 0xb8, 0xd8, 0xc3, 0x52, 0x8b, 0x8a, 0x33, 0xf3,
+	0xf3, 0x24, 0x98, 0xc0, 0x72, 0x30, 0xae, 0x90, 0x18, 0x17, 0x9b, 0x5f, 0x7e, 0x4a, 0xaa, 0xa7,
+	0x8b, 0x04, 0x33, 0x58, 0x02, 0xca, 0x13, 0x92, 0xe3, 0xe2, 0xf2, 0xc9, 0x2c, 0x2e, 0x49, 0xcd,
+	0x0b, 0xc8, 0x2f, 0x2a, 0x91, 0x60, 0x51, 0x60, 0xd4, 0xe0, 0x0c, 0x42, 0x12, 0x11, 0x92, 0xe2,
+	0xe2, 0xf0, 0xc9, 0xcf, 0x2f, 0x48, 0x4a, 0x4c, 0xce, 0x96, 0x60, 0x55, 0x60, 0xd4, 0xe0, 0x09,
+	0x82, 0xf3, 0x41, 0x7a, 0x9d, 0xf3, 0x73, 0x0b, 0x12, 0x4b, 0x32, 0x93, 0x72, 0x52, 0x25, 0xd8,
+	0x14, 0x98, 0x35, 0x78, 0x83, 0x90, 0x44, 0x94, 0xcc, 0xb8, 0xd8, 0xc2, 0x0c, 0x0d, 0x7d, 0x8b,
+	0xd3, 0x85, 0x84, 0xb8, 0x58, 0x42, 0x2a, 0x0b, 0x52, 0xa1, 0x0e, 0x06, 0xb3, 0x41, 0x6e, 0x0d,
+	0x48, 0xac, 0xcc, 0xc9, 0x4f, 0x4c, 0x01, 0xbb, 0x95, 0x27, 0x08, 0xc6, 0x75, 0x12, 0x38, 0xf1,
+	0x48, 0x8e, 0xf1, 0xc2, 0x23, 0x39, 0xc6, 0x07, 0x8f, 0xe4, 0x18, 0x67, 0x3c, 0x96, 0x63, 0x48,
+	0x62, 0x03, 0x07, 0x89, 0x31, 0x20, 0x00, 0x00, 0xff, 0xff, 0xa0, 0x13, 0x7e, 0xf7, 0x27, 0x01,
+	0x00, 0x00,
+}
+
+func (m *V11Handshake) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *V11Handshake) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *V11Handshake) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.XXX_unrecognized != nil {
+		i -= len(m.XXX_unrecognized)
+		copy(dAtA[i:], m.XXX_unrecognized)
+	}
+	if len(m.Compatible) > 0 {
+		dAtA2 := make([]byte, len(m.Compatible)*10)
+		var j1 int
+		for _, num := range m.Compatible {
+			for num >= 1<<7 {
+				dAtA2[j1] = uint8(uint64(num)&0x7f | 0x80)
+				num >>= 7
+				j1++
+			}
+			dAtA2[j1] = uint8(num)
+			j1++
+		}
+		i -= j1
+		copy(dAtA[i:], dAtA2[:j1])
+		i = encodeVarintProtocolV11(dAtA, i, uint64(j1))
+		i--
+		dAtA[i] = 0x32
+	}
+	if len(m.Loopback) > 0 {
+		i -= len(m.Loopback)
+		copy(dAtA[i:], m.Loopback)
+		i = encodeVarintProtocolV11(dAtA, i, uint64(len(m.Loopback)))
+		i--
+		dAtA[i] = 0x2a
+	}
+	if len(m.ListenPort) > 0 {
+		i -= len(m.ListenPort)
+		copy(dAtA[i:], m.ListenPort)
+		i = encodeVarintProtocolV11(dAtA, i, uint64(len(m.ListenPort)))
+		i--
+		dAtA[i] = 0x22
+	}
+	if m.NodeID != 0 {
+		i = encodeVarintProtocolV11(dAtA, i, uint64(m.NodeID))
+		i--
+		dAtA[i] = 0x18
+	}
+	if m.Version != 0 {
+		i = encodeVarintProtocolV11(dAtA, i, uint64(m.Version))
+		i--
+		dAtA[i] = 0x10
+	}
+	if m.NetworkID != 0 {
+		i = encodeVarintProtocolV11(dAtA, i, uint64(m.NetworkID))
+		i--
+		dAtA[i] = 0x8
+	}
+	return len(dAtA) - i, nil
 }
 
 func (m *V11Msg) Marshal() (dAtA []byte, err error) {
@@ -145,6 +315,42 @@ func encodeVarintProtocolV11(dAtA []byte, offset int, v uint64) int {
 	dAtA[offset] = uint8(v)
 	return base
 }
+func (m *V11Handshake) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.NetworkID != 0 {
+		n += 1 + sovProtocolV11(uint64(m.NetworkID))
+	}
+	if m.Version != 0 {
+		n += 1 + sovProtocolV11(uint64(m.Version))
+	}
+	if m.NodeID != 0 {
+		n += 1 + sovProtocolV11(uint64(m.NodeID))
+	}
+	l = len(m.ListenPort)
+	if l > 0 {
+		n += 1 + l + sovProtocolV11(uint64(l))
+	}
+	l = len(m.Loopback)
+	if l > 0 {
+		n += 1 + l + sovProtocolV11(uint64(l))
+	}
+	if len(m.Compatible) > 0 {
+		l = 0
+		for _, e := range m.Compatible {
+			l += sovProtocolV11(uint64(e))
+		}
+		n += 1 + sovProtocolV11(uint64(l)) + l
+	}
+	if m.XXX_unrecognized != nil {
+		n += len(m.XXX_unrecognized)
+	}
+	return n
+}
+
 func (m *V11Msg) Size() (n int) {
 	if m == nil {
 		return 0
@@ -169,6 +375,259 @@ func sovProtocolV11(x uint64) (n int) {
 }
 func sozProtocolV11(x uint64) (n int) {
 	return sovProtocolV11(uint64((x << 1) ^ uint64((int64(x) >> 63))))
+}
+func (m *V11Handshake) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowProtocolV11
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: V11Handshake: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: V11Handshake: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field NetworkID", wireType)
+			}
+			m.NetworkID = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowProtocolV11
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.NetworkID |= uint32(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 2:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Version", wireType)
+			}
+			m.Version = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowProtocolV11
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.Version |= uint32(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 3:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field NodeID", wireType)
+			}
+			m.NodeID = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowProtocolV11
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.NodeID |= uint32(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 4:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field ListenPort", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowProtocolV11
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthProtocolV11
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return ErrInvalidLengthProtocolV11
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.ListenPort = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		case 5:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Loopback", wireType)
+			}
+			var byteLen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowProtocolV11
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				byteLen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if byteLen < 0 {
+				return ErrInvalidLengthProtocolV11
+			}
+			postIndex := iNdEx + byteLen
+			if postIndex < 0 {
+				return ErrInvalidLengthProtocolV11
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Loopback = append(m.Loopback[:0], dAtA[iNdEx:postIndex]...)
+			if m.Loopback == nil {
+				m.Loopback = []byte{}
+			}
+			iNdEx = postIndex
+		case 6:
+			if wireType == 0 {
+				var v uint32
+				for shift := uint(0); ; shift += 7 {
+					if shift >= 64 {
+						return ErrIntOverflowProtocolV11
+					}
+					if iNdEx >= l {
+						return io.ErrUnexpectedEOF
+					}
+					b := dAtA[iNdEx]
+					iNdEx++
+					v |= uint32(b&0x7F) << shift
+					if b < 0x80 {
+						break
+					}
+				}
+				m.Compatible = append(m.Compatible, v)
+			} else if wireType == 2 {
+				var packedLen int
+				for shift := uint(0); ; shift += 7 {
+					if shift >= 64 {
+						return ErrIntOverflowProtocolV11
+					}
+					if iNdEx >= l {
+						return io.ErrUnexpectedEOF
+					}
+					b := dAtA[iNdEx]
+					iNdEx++
+					packedLen |= int(b&0x7F) << shift
+					if b < 0x80 {
+						break
+					}
+				}
+				if packedLen < 0 {
+					return ErrInvalidLengthProtocolV11
+				}
+				postIndex := iNdEx + packedLen
+				if postIndex < 0 {
+					return ErrInvalidLengthProtocolV11
+				}
+				if postIndex > l {
+					return io.ErrUnexpectedEOF
+				}
+				var elementCount int
+				var count int
+				for _, integer := range dAtA[iNdEx:postIndex] {
+					if integer < 128 {
+						count++
+					}
+				}
+				elementCount = count
+				if elementCount != 0 && len(m.Compatible) == 0 {
+					m.Compatible = make([]uint32, 0, elementCount)
+				}
+				for iNdEx < postIndex {
+					var v uint32
+					for shift := uint(0); ; shift += 7 {
+						if shift >= 64 {
+							return ErrIntOverflowProtocolV11
+						}
+						if iNdEx >= l {
+							return io.ErrUnexpectedEOF
+						}
+						b := dAtA[iNdEx]
+						iNdEx++
+						v |= uint32(b&0x7F) << shift
+						if b < 0x80 {
+							break
+						}
+					}
+					m.Compatible = append(m.Compatible, v)
+				}
+			} else {
+				return fmt.Errorf("proto: wrong wireType = %d for field Compatible", wireType)
+			}
+		default:
+			iNdEx = preIndex
+			skippy, err := skipProtocolV11(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if skippy < 0 {
+				return ErrInvalidLengthProtocolV11
+			}
+			if (iNdEx + skippy) < 0 {
+				return ErrInvalidLengthProtocolV11
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.XXX_unrecognized = append(m.XXX_unrecognized, dAtA[iNdEx:iNdEx+skippy]...)
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
 }
 func (m *V11Msg) Unmarshal(dAtA []byte) error {
 	l := len(dAtA)

@@ -28,6 +28,9 @@ func (v10 *ProtocolV10) init(decoder *gob.Decoder, encoder *gob.Encoder) {
 	v10.encoder = encoder
 }
 
+func (v10 *ProtocolV10) SendHandshake(*Handshake) error     { return nil }
+func (v10 *ProtocolV10) ReadHandshake() (*Handshake, error) { return nil, nil }
+
 // Send encodes a Parcel as V10Msg, calculates the crc and encodes it as gob
 func (v10 *ProtocolV10) Send(p *Parcel) error {
 	var msg V10Msg

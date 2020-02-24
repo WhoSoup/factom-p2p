@@ -14,6 +14,8 @@ package p2p
 // Every protocol should be bootstraped in peer:bootstrapProtocol() where
 // it can be initialized with the required serialization methods
 type Protocol interface {
+	SendHandshake(*Handshake) error
+	ReadHandshake() (*Handshake, error)
 	Send(p *Parcel) error
 	Receive() (*Parcel, error)
 	MakePeerShare([]Endpoint) ([]byte, error)

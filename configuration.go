@@ -13,6 +13,11 @@ const (
 	RandomPeer = "<RANDOMPEER>"
 )
 
+const (
+	FORMAT_GOB = iota
+	FORMAT_PROTO
+)
+
 // Configuration defines the behavior of the gossip network protocol
 type Configuration struct {
 	// Network is the NetworkID of the network to use, eg. MainNet, TestNet, etc

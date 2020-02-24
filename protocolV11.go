@@ -3,24 +3,44 @@ package p2p
 import (
 	"encoding/binary"
 	"fmt"
-	"net"
+	"io"
 )
 
 // V11MaxParcelSize limits the amount of ram allocated for a parcel to 128 MiB
 const V11MaxParcelSize = 134217728
 
+// V11Signature is the 4-byte sequence that indicates the remote connection wants to use V11
+var V11Signature = []byte{0xfa, 0xfa, 0xfa, 0xfa}
+
 var _ Protocol = (*ProtocolV11)(nil)
 
 type ProtocolV11 struct {
 	net *Network
-	con net.Conn
+	rw  io.ReadWriter
 }
 
+func (v11 *ProtocolV11) init(net *Network, rw io.ReadWriter) {
+	v11.net = net
+	v11.rw = rw
+}
+
+func (v11 *ProtocolV11) SendHandshake(*Handshake) error     { return nil }
+func (v11 *ProtocolV11) ReadHandshake() (*Handshake, error) { return nil, nil }
+
 func (v11 *ProtocolV11) writeCheck(data []byte) error {
-	if n, err := v11.con.Write(data); err != nil {
+	if n, err := v11.rw.Write(data); err != nil {
 		return err
 	} else if n != len(data) {
 		return fmt.Errorf("unable to write data (%d of %d)", n, len(data))
+	}
+	return nil
+}
+
+func (v11 *ProtocolV11) readCheck(data []byte) error {
+	if n, err := v11.rw.Read(data); err != nil {
+		return err
+	} else if n != len(data) {
+		return fmt.Errorf("unable to read buffer (%d of %d)", n, len(data))
 	}
 	return nil
 }
@@ -44,15 +64,6 @@ func (v11 *ProtocolV11) Send(p *Parcel) error {
 	}
 
 	return v11.writeCheck(data)
-}
-
-func (v11 *ProtocolV11) readCheck(data []byte) error {
-	if n, err := v11.con.Read(data); err != nil {
-		return err
-	} else if n != len(data) {
-		return fmt.Errorf("unable to read buffer (%d of %d)", n, len(data))
-	}
-	return nil
 }
 
 func (v11 *ProtocolV11) Receive() (*Parcel, error) {
