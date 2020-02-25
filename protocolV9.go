@@ -15,14 +15,18 @@ var _ Protocol = (*ProtocolV9)(nil)
 // over the wire using gob. The V9Msg struct is equivalent to the old package's
 // "Parcel" and "ParcelHeader" structure
 type ProtocolV9 struct {
-	net     *Network
+	network NetworkID
+	nodeID  uint32
+	port    string
 	decoder *gob.Decoder
 	encoder *gob.Encoder
 }
 
-func newProtocolV9(net *Network, decoder *gob.Decoder, encoder *gob.Encoder) *ProtocolV9 {
+func newProtocolV9(netw NetworkID, nodeID uint32, listenPort string, decoder *gob.Decoder, encoder *gob.Encoder) *ProtocolV9 {
 	v9 := new(ProtocolV9)
-	v9.net = net
+	v9.network = netw
+	v9.nodeID = nodeID
+	v9.port = listenPort
 	v9.decoder = decoder
 	v9.encoder = encoder
 	return v9
@@ -35,13 +39,16 @@ func (v9 *ProtocolV9) SendHandshake(h *Handshake) error {
 		h.Type = TypePeerRequest
 	}
 
-	payload := []byte("Peer Request")
+	var payload []byte
 	if len(h.Alternatives) > 0 {
 		if data, err := json.Marshal(h.Alternatives); err != nil {
 			return err
 		} else {
 			payload = data
 		}
+	} else {
+		payload = make([]byte, 8)
+		binary.LittleEndian.PutUint64(payload, h.Loopback)
 	}
 
 	p := newParcel(h.Type, payload)
@@ -64,7 +71,7 @@ func (v9 *ProtocolV9) ReadHandshake() (*Handshake, error) {
 		}
 		hs.Alternatives = alternatives
 	} else if len(msg.Payload) == 8 {
-		hs.Loopback = binary.BigEndian.Uint64(msg.Payload)
+		hs.Loopback = binary.LittleEndian.Uint64(msg.Payload)
 	}
 	hs.ListenPort = msg.Header.PeerPort
 	hs.Network = msg.Header.Network
@@ -77,14 +84,14 @@ func (v9 *ProtocolV9) ReadHandshake() (*Handshake, error) {
 // Send a parcel over the connection
 func (v9 *ProtocolV9) Send(p *Parcel) error {
 	var msg V9Msg
-	msg.Header.Network = v9.net.conf.Network
+	msg.Header.Network = v9.network
 	msg.Header.Version = 9 // hardcoded
 	msg.Header.Type = p.Type
 	msg.Header.TargetPeer = p.Address
 
-	msg.Header.NodeID = uint64(v9.net.conf.NodeID)
+	msg.Header.NodeID = uint64(v9.nodeID)
 	msg.Header.PeerAddress = ""
-	msg.Header.PeerPort = v9.net.conf.ListenPort
+	msg.Header.PeerPort = v9.port
 	msg.Header.AppHash = "NetworkMessage"
 	msg.Header.AppType = "Network"
 
@@ -92,27 +99,27 @@ func (v9 *ProtocolV9) Send(p *Parcel) error {
 	msg.Header.Crc32 = crc32.Checksum(p.Payload, crcTable)
 	msg.Header.Length = uint32(len(p.Payload))
 
-	return v9.encoder.Encode(&msg)
+	return v9.encoder.Encode(msg)
 }
 
 func (v9 *ProtocolV9) read() (*V9Msg, error) {
-	msg := new(V9Msg)
-	err := v9.decoder.Decode(msg)
+	var msg V9Msg
+	err := v9.decoder.Decode(&msg)
 	if err != nil {
 		return nil, err
 	}
 
-	if err = msg.Valid(); err != nil {
-		return nil, err
-	}
-
-	return msg, nil
+	return &msg, nil
 }
 
 // Receive a parcel from the network. Blocking.
 func (v9 *ProtocolV9) Receive() (*Parcel, error) {
 	msg, err := v9.read()
 	if err != nil {
+		return nil, err
+	}
+
+	if err = msg.Valid(); err != nil {
 		return nil, err
 	}
 
@@ -202,7 +209,7 @@ func (v9 *ProtocolV9) MakePeerShare(ps []Endpoint) ([]byte, error) {
 			NodeID:       1,
 			Hash:         ep.IP,
 			Location:     loc,
-			Network:      v9.net.conf.Network,
+			Network:      v9.network,
 			Type:         0,
 			Connections:  1,
 			LastContact:  time.Time{},

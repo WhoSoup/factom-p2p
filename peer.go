@@ -66,6 +66,7 @@ func newPeer(net *Network, id uint32, ep Endpoint, conn net.Conn, protocol Proto
 		"address": p.Endpoint.IP,
 		"Port":    p.Endpoint.Port,
 		"Version": p.prot.Version(),
+		"node":    p.net.conf.NodeName,
 	})
 
 	// initialize channels

@@ -1,7 +1,6 @@
 package p2p
 
 import (
-	"bufio"
 	"bytes"
 	"encoding/gob"
 	"encoding/json"
@@ -32,8 +31,10 @@ func (c *controller) manageOnline() {
 				if err != nil {
 					c.logger.WithError(err).Errorf("Unable to add peer %s", pc.peer)
 				}
+				c.logger.Debugf("adding peer %s", pc.peer.Hash)
 			} else {
 				c.peers.Remove(pc.peer)
+				c.logger.Debugf("removing peer %s", pc.peer.Hash)
 			}
 			if c.net.prom != nil {
 				c.net.prom.Connections.Set(float64(c.peers.Total()))
@@ -69,7 +70,6 @@ func (c *controller) handleIncoming(con net.Conn) {
 		defer c.net.prom.Connecting.Dec()
 	}
 
-	c.logger.Debug("incoming step 1")
 	host, _, err := net.SplitHostPort(con.RemoteAddr().String())
 	if err != nil {
 		c.logger.WithError(err).Debugf("Unable to parse address %s", con.RemoteAddr().String())
@@ -77,7 +77,6 @@ func (c *controller) handleIncoming(con net.Conn) {
 		return
 	}
 
-	c.logger.Debug("incoming step 2")
 	// port is overriden during handshake, use default port as temp port
 	ep, err := NewEndpoint(host, c.net.conf.ListenPort)
 	if err != nil { // should never happen for incoming
@@ -86,7 +85,6 @@ func (c *controller) handleIncoming(con net.Conn) {
 		return
 	}
 
-	c.logger.Debug("incoming step 3")
 	timeout := time.Now().Add(c.net.conf.HandshakeTimeout)
 	con.SetDeadline(timeout)
 
@@ -97,7 +95,6 @@ func (c *controller) handleIncoming(con net.Conn) {
 		c.RejectWithShare(con, share) // closes con
 		return
 	}
-	c.logger.Debug("incoming step 4")
 
 	// upgrade connection to a metrics connection
 	metrics := NewMetricsReadWriter(con)
@@ -107,7 +104,6 @@ func (c *controller) handleIncoming(con net.Conn) {
 		con.Close()
 		return
 	}
-	c.logger.Debug("incoming step 5")
 
 	if err := handshake.Valid(c.net.conf, c.net.instanceID); err != nil {
 		c.logger.WithError(err).Debugf("inbound connection from %s failed handshake", host)
@@ -115,15 +111,20 @@ func (c *controller) handleIncoming(con net.Conn) {
 		return
 	}
 
-	c.logger.Debug("incoming step 6")
+	c.logger.Debugf("answering incoming handshake. our version = %d, their version = %d, detected = %s", c.net.conf.ProtocolVersion, handshake.Version, prot.Version())
+	reply := newHandshake(c.net.conf, handshake.Loopback)
+	reply.Version = handshake.Version
+	if err := prot.SendHandshake(reply); err != nil {
+		c.logger.WithError(err).Debugf("unable to reply to handshake")
+		con.Close()
+		return
+	}
 
 	// listenport has been validated in handshake.Valid
 	ep.Port = handshake.ListenPort
 
 	peer := newPeer(c.net, handshake.NodeID, ep, con, prot, metrics, true)
 	c.peerStatus <- peerStatus{peer: peer, online: true}
-
-	c.logger.Debug("incoming step 7")
 
 	// a p2p1 node sends a peer request, so it needs to be processed
 	if handshake.Type == TypePeerRequest {
@@ -132,8 +133,6 @@ func (c *controller) handleIncoming(con net.Conn) {
 		c.peerData <- peerParcel{peer: peer, parcel: req}
 	}
 
-	c.logger.Debug("incoming step 8")
-
 	c.logger.Debugf("Incoming handshake success for peer %s, version %s", peer.Hash, peer.prot.Version())
 }
 
@@ -141,19 +140,14 @@ func (c *controller) detectProtocol(rw io.ReadWriter) (Protocol, *Handshake, err
 	var prot Protocol
 	var handshake *Handshake
 
-	c.logger.Debug("detect protocol step 1")
-
-	buffy := bufio.NewReader(rw)
-
-	c.logger.Debug("detect protocol step 2")
+	/*buffy := bufio.NewReader(rw)
 
 	sig, err := buffy.Peek(4)
 	if err != nil {
 		return nil, nil, err
 	}
-
-	c.logger.Debug("detect protocol step 3")
-
+	*/
+	var sig []byte
 	if bytes.Equal(sig, V11Signature) {
 		prot = newProtocolV11(rw)
 		hs, err := prot.ReadHandshake()
@@ -166,11 +160,10 @@ func (c *controller) detectProtocol(rw io.ReadWriter) (Protocol, *Handshake, err
 		}
 		handshake = hs
 	} else {
-		c.logger.Debug("detect protocol step 4")
 		encoder := gob.NewEncoder(rw)
-		decoder := gob.NewDecoder(buffy)
+		decoder := gob.NewDecoder(rw)
 
-		v9test := newProtocolV9(c.net, decoder, encoder)
+		v9test := newProtocolV9(c.net.conf.Network, c.net.conf.NodeID, c.net.conf.ListenPort, decoder, encoder)
 		hs, err := v9test.ReadHandshake()
 		if err != nil {
 			return nil, nil, err
@@ -193,11 +186,11 @@ func (c *controller) detectProtocol(rw io.ReadWriter) (Protocol, *Handshake, err
 		case 10:
 			prot = newProtocolV10(decoder, encoder)
 		default:
-			return nil, nil, fmt.Errorf("unknown protocol version %d", v)
+			return nil, nil, fmt.Errorf("unsupported protocol version %d", v)
 		}
 	}
 
-	return prot, handshake, err
+	return prot, handshake, nil
 }
 
 func (c *controller) selectProtocol(rw io.ReadWriter) Protocol {
@@ -211,7 +204,7 @@ func (c *controller) selectProtocol(rw io.ReadWriter) Protocol {
 	default:
 		decoder := gob.NewDecoder(rw)
 		encoder := gob.NewEncoder(rw)
-		return newProtocolV9(c.net, decoder, encoder)
+		return newProtocolV9(c.net.conf.Network, c.net.conf.NodeID, c.net.conf.ListenPort, decoder, encoder)
 	}
 }
 
@@ -252,6 +245,8 @@ func (c *controller) handleOutgoing(ep Endpoint, con net.Conn) (*Peer, []Endpoin
 		return failfunc(err)
 	}
 
+	c.logger.Debugf("received handshake reply. our version = %d, their version = %d, detected = %s", c.net.conf.ProtocolVersion, reply.Version, prot.Version())
+
 	// dialed a node that's full
 	if reply.Type == TypeRejectAlternative {
 		con.Close()
@@ -269,6 +264,8 @@ func (c *controller) handleOutgoing(ep Endpoint, con net.Conn) (*Peer, []Endpoin
 		req.Address = peer.Hash
 		c.peerData <- peerParcel{peer: peer, parcel: req}
 	}
+
+	c.logger.Debugf("Outgoing handshake success for peer %s, version %s", peer.Hash, peer.prot.Version())
 
 	return peer, nil, nil
 }

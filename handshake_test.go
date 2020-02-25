@@ -7,26 +7,17 @@ func TestHandshake_Valid(t *testing.T) {
 
 	var handshakes []*Handshake
 	for i := 0; i < 13; i++ {
-		hs := newHandshake(&conf, []byte("nonce"))
-		hs.Header.NodeID++
-		hs.Header.PeerAddress = "127.0.0.1"
+		hs := newHandshake(&conf, 0)
+		hs.NodeID++
 		handshakes = append(handshakes, hs)
 	}
 	// 0 is default payload
-	handshakes[1].Header.Version = 2 // incompatible version
-	handshakes[2].Header.Network = 0xf00
-	handshakes[3].Header.PeerPort = "foo"
-	handshakes[4].Header.PeerPort = ""
-	handshakes[5].Header.PeerPort = "0"
-	handshakes[6].Header.PeerPort = "900000"
-	handshakes[7].SetPayload(nil)
-	handshakes[8].Payload = nil
-	handshakes[8].Header.Crc32 = 0
-	handshakes[8].Header.Length = 0
-	handshakes[9].Header.Length = 100
-	handshakes[10].Header.Crc32 = 0xf00
-	handshakes[11].Payload = []byte("Invalid")
-	handshakes[12].Header.PeerAddress = ""
+	handshakes[1].Version = 2 // incompatible version
+	handshakes[2].Network = 0xf00
+	handshakes[3].ListenPort = "foo"
+	handshakes[4].ListenPort = ""
+	handshakes[5].ListenPort = "0"
+	handshakes[6].ListenPort = "900000"
 
 	type args struct {
 		conf *Configuration
@@ -54,7 +45,7 @@ func TestHandshake_Valid(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if err := tt.h.Valid(tt.args.conf); (err != nil) != tt.wantErr {
+			if err := tt.h.Valid(tt.args.conf, 0); (err != nil) != tt.wantErr {
 				t.Errorf("Handshake.Valid() error = %v, wantErr %v", err, tt.wantErr)
 			}
 		})

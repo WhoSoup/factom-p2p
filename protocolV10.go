@@ -1,7 +1,6 @@
 package p2p
 
 import (
-	"encoding/binary"
 	"encoding/gob"
 	"encoding/json"
 	"fmt"
@@ -65,7 +64,8 @@ func (v10 *ProtocolV10) SendHandshake(h *Handshake) error {
 }
 
 func (v10 *ProtocolV10) ReadHandshake() (*Handshake, error) {
-	msg := new(V9Msg)
+	return nil, fmt.Errorf("V10 doesn't have its own handshake")
+	/*msg := new(V9Msg)
 	err := v10.decoder.Decode(msg)
 	if err != nil {
 		return nil, err
@@ -91,7 +91,7 @@ func (v10 *ProtocolV10) ReadHandshake() (*Handshake, error) {
 	hs.Network = msg.Header.Network
 	hs.NodeID = uint32(msg.Header.NodeID)
 	hs.Version = msg.Header.Version
-	return hs, nil
+	return hs, nil*/
 }
 
 // Send encodes a Parcel as V10Msg, calculates the crc and encodes it as gob
