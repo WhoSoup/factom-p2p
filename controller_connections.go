@@ -98,7 +98,7 @@ func (c *controller) handleIncoming(con net.Conn) {
 
 	// upgrade connection to a metrics connection
 	metrics := NewMetricsReadWriter(con)
-	prot, handshake, err := c.detectProtocol(metrics)
+	prot, handshake, err := c.detectProtocol(nil, metrics)
 	if err != nil {
 		c.logger.WithError(err).Debug("error detecting protocol")
 		con.Close()
@@ -112,7 +112,7 @@ func (c *controller) handleIncoming(con net.Conn) {
 	}
 
 	c.logger.Debugf("answering incoming handshake. our version = %d, their version = %d, detected = %s", c.net.conf.ProtocolVersion, handshake.Version, prot.Version())
-	reply := newHandshake(c.net.conf, handshake.Loopback)
+	reply := newHandshake(c.net.conf, c.net.instanceID)
 	reply.Version = handshake.Version
 	if err := prot.SendHandshake(reply); err != nil {
 		c.logger.WithError(err).Debugf("unable to reply to handshake")
@@ -136,7 +136,7 @@ func (c *controller) handleIncoming(con net.Conn) {
 	c.logger.Debugf("Incoming handshake success for peer %s, version %s", peer.Hash, peer.prot.Version())
 }
 
-func (c *controller) detectProtocol(rw io.ReadWriter) (Protocol, *Handshake, error) {
+func (c *controller) detectProtocol(desired Protocol, rw io.ReadWriter) (Protocol, *Handshake, error) {
 	var prot Protocol
 	var handshake *Handshake
 
@@ -160,8 +160,22 @@ func (c *controller) detectProtocol(rw io.ReadWriter) (Protocol, *Handshake, err
 		}
 		handshake = hs
 	} else {
-		encoder := gob.NewEncoder(rw)
-		decoder := gob.NewDecoder(rw)
+		var encoder *gob.Encoder
+		if v9, ok := desired.(*ProtocolV9); ok {
+			encoder = v9.encoder
+		} else if v10, ok := desired.(*ProtocolV10); ok {
+			encoder = v10.encoder
+		} else {
+			encoder = gob.NewEncoder(rw)
+		}
+		var decoder *gob.Decoder
+		if v9, ok := desired.(*ProtocolV9); ok {
+			decoder = v9.decoder
+		} else if v10, ok := desired.(*ProtocolV10); ok {
+			decoder = v10.decoder
+		} else {
+			decoder = gob.NewDecoder(rw)
+		}
 
 		v9test := newProtocolV9(c.net.conf.Network, c.net.conf.NodeID, c.net.conf.ListenPort, decoder, encoder)
 		hs, err := v9test.ReadHandshake()
@@ -240,7 +254,7 @@ func (c *controller) handleOutgoing(ep Endpoint, con net.Conn) (*Peer, []Endpoin
 	}
 	tmplogger.WithField("handshake", handshake).Debugf("Sent Handshake")
 
-	prot, reply, err := c.detectProtocol(metrics)
+	prot, reply, err := c.detectProtocol(desiredProt, metrics)
 	if err != nil {
 		return failfunc(err)
 	}

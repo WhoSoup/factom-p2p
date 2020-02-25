@@ -21,6 +21,7 @@ type ProtocolV9 struct {
 	decoder *gob.Decoder
 	encoder *gob.Encoder
 }
+type V9Handshake V9Msg
 
 func newProtocolV9(netw NetworkID, nodeID uint32, listenPort string, decoder *gob.Decoder, encoder *gob.Encoder) *ProtocolV9 {
 	v9 := new(ProtocolV9)
@@ -51,8 +52,23 @@ func (v9 *ProtocolV9) SendHandshake(h *Handshake) error {
 		binary.LittleEndian.PutUint64(payload, h.Loopback)
 	}
 
-	p := newParcel(h.Type, payload)
-	return v9.Send(p)
+	var msg V9Handshake
+	msg.Header.Network = v9.network
+	msg.Header.Version = 9 // hardcoded
+	msg.Header.Type = h.Type
+	msg.Header.TargetPeer = ""
+
+	msg.Header.NodeID = uint64(v9.nodeID)
+	msg.Header.PeerAddress = ""
+	msg.Header.PeerPort = v9.port
+	msg.Header.AppHash = "NetworkMessage"
+	msg.Header.AppType = "Network"
+
+	msg.Payload = payload
+	msg.Header.Crc32 = crc32.Checksum(payload, crcTable)
+	msg.Header.Length = uint32(len(payload))
+
+	return v9.encoder.Encode(msg)
 }
 
 func (v9 *ProtocolV9) ReadHandshake() (*Handshake, error) {
@@ -72,6 +88,8 @@ func (v9 *ProtocolV9) ReadHandshake() (*Handshake, error) {
 		hs.Alternatives = alternatives
 	} else if len(msg.Payload) == 8 {
 		hs.Loopback = binary.LittleEndian.Uint64(msg.Payload)
+	} else {
+		fmt.Printf("handshake payload %x %s\n", msg.Payload, string(msg.Payload))
 	}
 	hs.ListenPort = msg.Header.PeerPort
 	hs.Network = msg.Header.Network

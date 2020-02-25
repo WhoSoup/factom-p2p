@@ -1,6 +1,7 @@
 package p2p
 
 import (
+	"encoding/binary"
 	"encoding/gob"
 	"encoding/json"
 	"fmt"
@@ -35,16 +36,19 @@ func (v10 *ProtocolV10) SendHandshake(h *Handshake) error {
 		h.Type = TypePeerRequest
 	}
 
-	payload := []byte("Peer Request")
+	var payload []byte
 	if len(h.Alternatives) > 0 {
 		if data, err := json.Marshal(h.Alternatives); err != nil {
 			return err
 		} else {
 			payload = data
 		}
+	} else {
+		payload = make([]byte, 8)
+		binary.LittleEndian.PutUint64(payload, h.Loopback)
 	}
 
-	var msg V9Msg
+	var msg V9Handshake
 	msg.Header.Network = h.Network
 	msg.Header.Version = 10 // hardcoded
 	msg.Header.Type = h.Type
