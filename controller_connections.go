@@ -40,6 +40,8 @@ func (c *controller) manageOnline() {
 				c.net.prom.Incoming.Set(float64(c.peers.Incoming()))
 				c.net.prom.Outgoing.Set(float64(c.peers.Outgoing()))
 			}
+		case <-c.net.stopper:
+			return
 		}
 	}
 }
@@ -295,8 +297,13 @@ func (c *controller) listen() {
 		tmpLogger.WithError(err).Error("controller.Start() unable to start limited listener")
 		return
 	}
-
+	defer tmpLogger.Debug("controller.listen() stopping")
 	c.listener = l
+
+	go func() { // the listener doesn't play well with immediately stopping
+		<-c.net.stopper
+		c.listener.Close()
+	}()
 
 	// start permanent loop
 	// terminates on program exit or when listener is closed
@@ -305,7 +312,8 @@ func (c *controller) listen() {
 		if err != nil {
 			if ne, ok := err.(*net.OpError); ok && !ne.Timeout() {
 				if !ne.Temporary() {
-					tmpLogger.WithError(err).Warn("controller.acceptLoop() error accepting")
+					tmpLogger.WithError(err).Error("controller.acceptLoop() error accepting")
+					return
 				}
 			}
 			continue
