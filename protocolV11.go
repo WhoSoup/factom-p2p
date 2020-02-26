@@ -1,7 +1,6 @@
 package p2p
 
 import (
-	"bytes"
 	"encoding/binary"
 	"fmt"
 	"io"
@@ -38,6 +37,7 @@ func (v11 *ProtocolV11) SendHandshake(hs *Handshake) error {
 	v11hs.Loopback = hs.Loopback
 	v11hs.Network = uint32(hs.Network)
 	v11hs.NodeID = hs.NodeID
+	v11hs.Version = uint32(hs.Version)
 
 	if len(hs.Alternatives) > 0 {
 		v11hs.Alternatives = make([]*V11Endpoint, 0, len(hs.Alternatives))
@@ -46,17 +46,18 @@ func (v11 *ProtocolV11) SendHandshake(hs *Handshake) error {
 		}
 	}
 
-	return nil
+	return v11.writeMessage(v11hs)
 }
-func (v11 *ProtocolV11) ReadHandshake() (*Handshake, error) {
-	sig := make([]byte, 4)
-	if err := v11.readCheck(sig); err != nil {
-		return nil, err
-	}
 
-	if !bytes.Equal(sig, V11Signature) {
-		return nil, fmt.Errorf("signature check failed. got = %x, want = %x", sig, V11Signature)
-	}
+func (v11 *ProtocolV11) ReadHandshake() (*Handshake, error) {
+	/*	sig := make([]byte, 4)
+		if err := v11.readCheck(sig); err != nil {
+			return nil, err
+		}
+
+		if !bytes.Equal(sig, V11Signature) {
+			return nil, fmt.Errorf("signature check failed. got = %x, want = %x", sig, V11Signature)
+		}*/
 
 	v11hs := new(V11Handshake)
 	if err := v11.readMessage(v11hs); err != nil {
@@ -69,6 +70,7 @@ func (v11 *ProtocolV11) ReadHandshake() (*Handshake, error) {
 	hs.Loopback = v11hs.Loopback
 	hs.Network = NetworkID(v11hs.Network)
 	hs.NodeID = v11hs.NodeID
+	hs.Version = uint16(v11hs.Version)
 
 	if len(v11hs.Alternatives) > 0 {
 		hs.Alternatives = make([]Endpoint, 0, len(v11hs.Alternatives))

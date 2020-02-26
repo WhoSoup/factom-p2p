@@ -15,11 +15,9 @@ func _detectProtocol(t *testing.T, version uint16) {
 	conf.NodeID = 1
 	conf.ListenPort = "8999"
 
-	a, b := net.Pipe()
-	A := NewMetricsReadWriter(a)
-	B := NewMetricsReadWriter(b)
-	a.SetDeadline(time.Now().Add(time.Millisecond * 50))
-	b.SetDeadline(time.Now().Add(time.Millisecond * 50))
+	A, B := net.Pipe()
+	A.SetDeadline(time.Now().Add(time.Millisecond * 50))
+	B.SetDeadline(time.Now().Add(time.Millisecond * 50))
 
 	c := new(controller)
 	c.net = new(Network)

@@ -146,11 +146,11 @@ func (c *controller) handshakeIncoming(con net.Conn) {
 
 // detectProtocol will listen for data to arrive on the ReadWriter and then attempt to interpret it.
 // the existing protocol is only needed for nodes running v9 in order to bring
-func (c *controller) detectProtocolFromFirstMessage(rw *MetricsReadWriter) (Protocol, *Handshake, error) {
+func (c *controller) detectProtocolFromFirstMessage(rw io.ReadWriter) (Protocol, *Handshake, error) {
 	var prot Protocol
 	var handshake *Handshake
 
-	buffy := bufio.NewReader(rw.read)
+	buffy := bufio.NewReader(rw)
 
 	sig, err := buffy.Peek(4)
 	if err != nil {
@@ -158,7 +158,6 @@ func (c *controller) detectProtocolFromFirstMessage(rw *MetricsReadWriter) (Prot
 	}
 
 	if bytes.Equal(sig, V11Signature) {
-		rw.read = buffy
 		prot = newProtocolV11(rw)
 		hs, err := prot.ReadHandshake()
 		if err != nil {
@@ -170,8 +169,8 @@ func (c *controller) detectProtocolFromFirstMessage(rw *MetricsReadWriter) (Prot
 		}
 		handshake = hs
 	} else {
-		encoder := gob.NewEncoder(rw.write)
 		decoder := gob.NewDecoder(buffy)
+		encoder := gob.NewEncoder(rw)
 
 		v9test := newProtocolV9(c.net.conf.Network, c.net.conf.NodeID, c.net.conf.ListenPort, decoder, encoder)
 		hs, err := v9test.ReadHandshake()
