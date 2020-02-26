@@ -20,5 +20,6 @@ type Protocol interface {
 	Receive() (*Parcel, error)
 	MakePeerShare([]Endpoint) ([]byte, error)
 	ParsePeerShare([]byte) ([]Endpoint, error)
-	Version() string
+	Version() uint16
+	String() string
 }

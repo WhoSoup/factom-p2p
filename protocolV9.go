@@ -149,9 +149,11 @@ func (v9 *ProtocolV9) Receive() (*Parcel, error) {
 }
 
 // Version of the protocol
-func (v9 *ProtocolV9) Version() string {
-	return "9"
+func (v9 *ProtocolV9) Version() uint16 {
+	return 9
 }
+
+func (v9 *ProtocolV9) String() string { return "9" }
 
 // V9Msg is the legacy format of protocol 9
 type V9Msg struct {

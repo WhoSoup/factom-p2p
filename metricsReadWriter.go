@@ -17,7 +17,8 @@ type ReadWriteCollector interface {
 // MetricsReadWriter is a wrapper for net.Conn that allows the package to
 // observe the actual amount of bytes passing through it
 type MetricsReadWriter struct {
-	rw              io.ReadWriter
+	read            io.Reader
+	write           io.Writer
 	messagesWritten uint64
 	messagesRead    uint64
 	bytesWritten    uint64
@@ -26,22 +27,24 @@ type MetricsReadWriter struct {
 
 var _ StatsCollector = (*MetricsReadWriter)(nil)
 var _ ReadWriteCollector = (*MetricsReadWriter)(nil)
+var _ io.ReadWriter = (*MetricsReadWriter)(nil)
 
 func NewMetricsReadWriter(rw io.ReadWriter) *MetricsReadWriter {
 	sc := new(MetricsReadWriter)
-	sc.rw = rw
+	sc.read = rw
+	sc.write = rw
 	return sc
 }
 
 func (sc *MetricsReadWriter) Write(p []byte) (int, error) {
-	n, e := sc.rw.Write(p)
+	n, e := sc.write.Write(p)
 	atomic.AddUint64(&sc.messagesWritten, 1)
 	atomic.AddUint64(&sc.bytesWritten, uint64(n))
 	return n, e
 }
 
 func (sc *MetricsReadWriter) Read(p []byte) (int, error) {
-	n, e := sc.rw.Read(p)
+	n, e := sc.read.Read(p)
 	atomic.AddUint64(&sc.messagesRead, 1)
 	atomic.AddUint64(&sc.bytesRead, uint64(n))
 	return n, e

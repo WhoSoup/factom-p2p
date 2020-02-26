@@ -69,33 +69,6 @@ func (v10 *ProtocolV10) SendHandshake(h *Handshake) error {
 
 func (v10 *ProtocolV10) ReadHandshake() (*Handshake, error) {
 	return nil, fmt.Errorf("V10 doesn't have its own handshake")
-	/*msg := new(V9Msg)
-	err := v10.decoder.Decode(msg)
-	if err != nil {
-		return nil, err
-	}
-
-	if err = msg.Valid(); err != nil {
-		return nil, err
-	}
-
-	hs := new(Handshake)
-	hs.Type = msg.Header.Type
-
-	if msg.Header.Type == TypeRejectAlternative {
-		var alternatives []Endpoint
-		if err = json.Unmarshal(msg.Payload, &alternatives); err != nil {
-			return nil, err
-		}
-		hs.Alternatives = alternatives
-	} else if len(msg.Payload) == 8 {
-		hs.Loopback = binary.BigEndian.Uint64(msg.Payload)
-	}
-	hs.ListenPort = msg.Header.PeerPort
-	hs.Network = msg.Header.Network
-	hs.NodeID = uint32(msg.Header.NodeID)
-	hs.Version = msg.Header.Version
-	return hs, nil*/
 }
 
 // Send encodes a Parcel as V10Msg, calculates the crc and encodes it as gob
@@ -108,7 +81,12 @@ func (v10 *ProtocolV10) Send(p *Parcel) error {
 }
 
 // Version 10
-func (v10 *ProtocolV10) Version() string {
+func (v10 *ProtocolV10) Version() uint16 {
+	return 10
+}
+
+// String 10
+func (v10 *ProtocolV10) String() string {
 	return "10"
 }
 

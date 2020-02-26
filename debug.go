@@ -32,7 +32,7 @@ func (n *Network) DebugMessage() (string, int) {
 	count := len(s)
 	for _, p := range s {
 		m := p.GetMetrics()
-		fmt.Fprintf(tw, "%s\t%.2f\t%.2f\t%.2f\t%.2f\t%.2f\t%d\t%s\t\n", p.Hash, m.MPSDown, m.MPSUp, m.BPSDown, m.BPSUp, m.SendFillRatio, m.Dropped, p.prot.Version())
+		fmt.Fprintf(tw, "%s\t%.2f\t%.2f\t%.2f\t%.2f\t%.2f\t%d\t%s\t\n", p.Hash, m.MPSDown, m.MPSUp, m.BPSDown, m.BPSUp, m.SendFillRatio, m.Dropped, p.prot)
 	}
 	tw.Flush()
 

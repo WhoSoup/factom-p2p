@@ -1,105 +1,70 @@
 package p2p
 
 import (
-	"encoding/gob"
+	"bytes"
 	"net"
+	"reflect"
 	"testing"
 	"time"
 )
 
-func Test_controller_detectProtocolV9(t *testing.T) {
+func _detectProtocol(t *testing.T, version uint16) {
 	conf := DefaultP2PConfiguration()
 	conf.Network = NewNetworkID("test")
-	conf.ProtocolVersion = 9
+	conf.ProtocolVersion = version
 	conf.NodeID = 1
 	conf.ListenPort = "8999"
 
-	A, B := net.Pipe()
-	A.SetDeadline(time.Now().Add(time.Millisecond * 50))
-	B.SetDeadline(time.Now().Add(time.Millisecond * 50))
+	a, b := net.Pipe()
+	A := NewMetricsReadWriter(a)
+	B := NewMetricsReadWriter(b)
+	a.SetDeadline(time.Now().Add(time.Millisecond * 50))
+	b.SetDeadline(time.Now().Add(time.Millisecond * 50))
 
 	c := new(controller)
 	c.net = new(Network)
 	c.net.conf = &conf
 	c.net.instanceID = 666
 
-	go func() {
-		encoder := gob.NewEncoder(B)
-		decoder := gob.NewDecoder(B)
-		v9prot := newProtocolV9(conf.Network, conf.NodeID, conf.ListenPort, decoder, encoder)
-		hs := newHandshake(&conf, 123)
+	sendprot := c.selectProtocol(B)
+	sendshake := newHandshake(&conf, 123)
 
-		if err := v9prot.SendHandshake(hs); err != nil {
+	go func() {
+		if err := sendprot.SendHandshake(sendshake); err != nil {
 			t.Error(err)
 		}
 
 		testp := newParcel(TypeMessage, []byte("foo"))
-		if err := v9prot.Send(testp); err != nil {
+		if err := sendprot.Send(testp); err != nil {
 			t.Error(err)
 		}
 	}()
 
-	prot, hs, err := c.detectProtocol(A)
+	prot, hs, err := c.detectProtocolFromFirstMessage(A)
 	if err != nil {
 		t.Error(err)
 	}
 
-	t.Error(prot.Version())
-	t.Error(hs)
+	if prot.Version() != version {
+		t.Errorf("version mismatch. want = %d, got = %s", version, prot)
+	}
+
+	if !reflect.DeepEqual(sendshake, hs) {
+		t.Errorf("handshake differs. want = %+v, got = %+v", sendshake, hs)
+	}
 
 	p, err := prot.Receive()
 	if err != nil {
 		t.Error(err)
 	}
 
-	t.Error(string(p.Payload))
+	if !bytes.Equal(p.Payload, []byte("foo")) {
+		t.Errorf("parcel didn't decode properly. want = %x, got = %x", []byte("foo"), p.Payload)
+	}
 }
 
-func Test_controller_detectProtocolV10(t *testing.T) {
-	conf := DefaultP2PConfiguration()
-	conf.Network = NewNetworkID("test")
-	conf.ProtocolVersion = 10
-	conf.NodeID = 1
-	conf.ListenPort = "8999"
-
-	A, B := net.Pipe()
-	A.SetDeadline(time.Now().Add(time.Millisecond * 50))
-	B.SetDeadline(time.Now().Add(time.Millisecond * 50))
-
-	c := new(controller)
-	c.net = new(Network)
-	c.net.conf = &conf
-	c.net.instanceID = 666
-
-	go func() {
-		encoder := gob.NewEncoder(B)
-		decoder := gob.NewDecoder(B)
-		v10prot := newProtocolV10(decoder, encoder)
-		hs := newHandshake(&conf, 123)
-
-		if err := v10prot.SendHandshake(hs); err != nil {
-			t.Error(err)
-		}
-
-		testp := newParcel(TypeMessage, []byte("foo"))
-		if err := v10prot.Send(testp); err != nil {
-			t.Error(err)
-		}
-	}()
-
-	prot, hs, err := c.detectProtocol(A)
-	if err != nil {
-		t.Error(err)
-	}
-
-	t.Error(prot.Version())
-	t.Error(hs)
-
-	p, err := prot.Receive()
-	if err != nil {
-		t.Error(err)
-	}
-
-	t.Error(string(p.Payload))
-
+func Test_controller_detectProtocol(t *testing.T) {
+	_detectProtocol(t, 9)
+	_detectProtocol(t, 10)
+	_detectProtocol(t, 11)
 }

@@ -1,9 +1,9 @@
 package p2p
 
 import (
+	"bufio"
 	"bytes"
 	"encoding/gob"
-	"encoding/json"
 	"fmt"
 	"io"
 	"net"
@@ -63,8 +63,17 @@ func (c *controller) allowIncoming(addr string) error {
 	return nil
 }
 
-// what to do with a new tcp connection
-func (c *controller) handleIncoming(con net.Conn) {
+// handshakeIncoming performs the handshake maneouver for incoming connections.
+// 	1. Determine their protocol from the first message they send
+//	2. If we understand that protocol, validate that handshake
+//	3. Reply with a handshake
+//	4. Create a peer with that protocol
+//
+// If the incoming endpoint is banned, the connection is closed without alternatives.
+// If the node is full, the connection is closed with alternatives.
+//
+// For more information, see the README
+func (c *controller) handshakeIncoming(con net.Conn) {
 	if c.net.prom != nil {
 		c.net.prom.Connecting.Inc()
 		defer c.net.prom.Connecting.Dec()
@@ -98,7 +107,7 @@ func (c *controller) handleIncoming(con net.Conn) {
 
 	// upgrade connection to a metrics connection
 	metrics := NewMetricsReadWriter(con)
-	prot, handshake, err := c.detectProtocol(nil, metrics)
+	prot, handshake, err := c.detectProtocolFromFirstMessage(metrics)
 	if err != nil {
 		c.logger.WithError(err).Debug("error detecting protocol")
 		con.Close()
@@ -111,7 +120,6 @@ func (c *controller) handleIncoming(con net.Conn) {
 		return
 	}
 
-	c.logger.Debugf("answering incoming handshake. our version = %d, their version = %d, detected = %s", c.net.conf.ProtocolVersion, handshake.Version, prot.Version())
 	reply := newHandshake(c.net.conf, c.net.instanceID)
 	reply.Version = handshake.Version
 	if err := prot.SendHandshake(reply); err != nil {
@@ -133,22 +141,24 @@ func (c *controller) handleIncoming(con net.Conn) {
 		c.peerData <- peerParcel{peer: peer, parcel: req}
 	}
 
-	c.logger.Debugf("Incoming handshake success for peer %s, version %s", peer.Hash, peer.prot.Version())
+	c.logger.Debugf("Incoming handshake success for peer %s, version %s", peer.Hash, peer.prot)
 }
 
-func (c *controller) detectProtocol(desired Protocol, rw io.ReadWriter) (Protocol, *Handshake, error) {
+// detectProtocol will listen for data to arrive on the ReadWriter and then attempt to interpret it.
+// the existing protocol is only needed for nodes running v9 in order to bring
+func (c *controller) detectProtocolFromFirstMessage(rw *MetricsReadWriter) (Protocol, *Handshake, error) {
 	var prot Protocol
 	var handshake *Handshake
 
-	/*buffy := bufio.NewReader(rw)
+	buffy := bufio.NewReader(rw.read)
 
 	sig, err := buffy.Peek(4)
 	if err != nil {
 		return nil, nil, err
 	}
-	*/
-	var sig []byte
+
 	if bytes.Equal(sig, V11Signature) {
+		rw.read = buffy
 		prot = newProtocolV11(rw)
 		hs, err := prot.ReadHandshake()
 		if err != nil {
@@ -160,22 +170,8 @@ func (c *controller) detectProtocol(desired Protocol, rw io.ReadWriter) (Protoco
 		}
 		handshake = hs
 	} else {
-		var encoder *gob.Encoder
-		if v9, ok := desired.(*ProtocolV9); ok {
-			encoder = v9.encoder
-		} else if v10, ok := desired.(*ProtocolV10); ok {
-			encoder = v10.encoder
-		} else {
-			encoder = gob.NewEncoder(rw)
-		}
-		var decoder *gob.Decoder
-		if v9, ok := desired.(*ProtocolV9); ok {
-			decoder = v9.decoder
-		} else if v10, ok := desired.(*ProtocolV10); ok {
-			decoder = v10.decoder
-		} else {
-			decoder = gob.NewDecoder(rw)
-		}
+		encoder := gob.NewEncoder(rw.write)
+		decoder := gob.NewDecoder(buffy)
 
 		v9test := newProtocolV9(c.net.conf.Network, c.net.conf.NodeID, c.net.conf.ListenPort, decoder, encoder)
 		hs, err := v9test.ReadHandshake()
@@ -222,18 +218,17 @@ func (c *controller) selectProtocol(rw io.ReadWriter) Protocol {
 	}
 }
 
-// handshake performs a basic handshake maneouver to establish the validity of the connection.
-// The functionality is symmetrical and used for both incoming and outgoing connections.
-// The handshake is backwards compatible with V9. Since V9 doesn't have an explicit handshake, V10
-// sends a V9 parcel upon connection and waits for the response, which can be any parcel.
+// handshakeOutgoing performs the handshake maneouver when dialing to remote nodes.
+// 	1. Pick our desired protocol
+//	2. Send a handshake
+//	3. Figure out which protocol to use from the reply
+//	4. Create a peer if a compatible protocol is established
 //
-// The handshake ensures that ALL peers have a valid Port field to start with.
-// If there is no reply within the specified HandshakeTimeout config setting, the process
-// fails
-//
-// For outgoing connections, it is possible the endpoint will reject due to being full, in which
+// It is possible the endpoint will reject due to being full, in which
 // case this function returns an error AND a list of alternate endpoints
-func (c *controller) handleOutgoing(ep Endpoint, con net.Conn) (*Peer, []Endpoint, error) {
+//
+// For more information, see the README
+func (c *controller) handshakeOutgoing(ep Endpoint, con net.Conn) (*Peer, []Endpoint, error) {
 	tmplogger := c.logger.WithField("endpoint", ep)
 	timeout := time.Now().Add(c.net.conf.HandshakeTimeout)
 	con.SetDeadline(timeout)
@@ -248,24 +243,29 @@ func (c *controller) handleOutgoing(ep Endpoint, con net.Conn) (*Peer, []Endpoin
 		return nil, nil, err
 	}
 
-	tmplogger.WithField("handshake", handshake).Debugf("Sending Handshake")
 	if err := desiredProt.SendHandshake(handshake); err != nil {
 		return failfunc(err)
 	}
-	tmplogger.WithField("handshake", handshake).Debugf("Sent Handshake")
 
-	prot, reply, err := c.detectProtocol(desiredProt, metrics)
+	prot, reply, err := c.detectProtocolFromFirstMessage(metrics)
 	if err != nil {
 		return failfunc(err)
 	}
 
-	c.logger.Debugf("received handshake reply. our version = %d, their version = %d, detected = %s", c.net.conf.ProtocolVersion, reply.Version, prot.Version())
+	// this is required because a new protocol is instantiated in the above call
+	// since V9Msg is already registered in the other end's gob, a new gob encoder
+	// would try to register it again, causing an error on the other side
+	// v10 is fine since it switches to a new V10Msg
+	if v9, ok := desiredProt.(*ProtocolV9); ok {
+		if v9new, ok := prot.(*ProtocolV9); ok {
+			v9new.encoder = v9.encoder
+		}
+	}
 
 	// dialed a node that's full
 	if reply.Type == TypeRejectAlternative {
 		con.Close()
 		tmplogger.Debug("con rejected with alternatives")
-
 		return nil, reply.Alternatives, fmt.Errorf("connection rejected")
 	}
 
@@ -279,7 +279,7 @@ func (c *controller) handleOutgoing(ep Endpoint, con net.Conn) (*Peer, []Endpoin
 		c.peerData <- peerParcel{peer: peer, parcel: req}
 	}
 
-	c.logger.Debugf("Outgoing handshake success for peer %s, version %s", peer.Hash, peer.prot.Version())
+	c.logger.Debugf("Outgoing handshake success for peer %s, version %s", peer.Hash, peer.prot)
 
 	return peer, nil, nil
 }
@@ -289,23 +289,13 @@ func (c *controller) handleOutgoing(ep Endpoint, con net.Conn) (*Peer, []Endpoin
 func (c *controller) RejectWithShare(con net.Conn, share []Endpoint) error {
 	defer con.Close() // we're rejecting, so always close
 
-	payload, err := json.Marshal(share)
-	if err != nil {
-		return err
-	}
+	prot := c.selectProtocol(con)
 
-	handshake := newHandshakeGob(c.net.conf, payload)
-	handshake.Header.Type = TypeRejectAlternative
+	handshake := newHandshake(c.net.conf, 0)
+	handshake.Type = TypeRejectAlternative
+	handshake.Alternatives = share
 
-	// only push the handshake, don't care what they send us
-	encoder := gob.NewEncoder(con)
-	con.SetWriteDeadline(time.Now().Add(c.net.conf.HandshakeTimeout))
-	err = encoder.Encode(handshake)
-	if err != nil {
-		return err
-	}
-
-	return nil
+	return prot.SendHandshake(handshake)
 }
 
 // Dial attempts to connect to a remote endpoint.
@@ -324,7 +314,7 @@ func (c *controller) Dial(ep Endpoint) (bool, []Endpoint) {
 		return false, nil
 	}
 
-	peer, alternatives, err := c.handleOutgoing(ep, con)
+	peer, alternatives, err := c.handshakeOutgoing(ep, con)
 	if err != nil { // handshake closes connection
 		if err.Error() == "loopback" {
 			c.logger.Debugf("Banning ourselves for 50 years")
@@ -340,7 +330,7 @@ func (c *controller) Dial(ep Endpoint) (bool, []Endpoint) {
 		return false, nil
 	}
 
-	c.logger.Debugf("Handshake success for peer %s, version %s", peer.Hash, peer.prot.Version())
+	c.logger.Debugf("Handshake success for peer %s, version %s", peer.Hash, peer.prot)
 	return true, nil
 }
 
@@ -372,6 +362,6 @@ func (c *controller) listen() {
 			continue
 		}
 
-		go c.handleIncoming(conn)
+		go c.handshakeIncoming(conn)
 	}
 }

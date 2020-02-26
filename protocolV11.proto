@@ -2,14 +2,13 @@ syntax = "proto3";
 package p2p;
 
 message V11Handshake {
-    bool Rejection = 1;
-    uint32 NetworkID = 2;
+    uint32 Type = 1;
+    uint32 Network = 2;
     uint32 Version = 3;
     uint32 NodeID = 4;
     string ListenPort = 5;
-    bytes Loopback = 6;
-    repeated uint32 Compatible = 7;
-    repeated V11Endpoint Alternatives = 8;
+    uint64 Loopback = 6;
+    repeated V11Endpoint Alternatives = 7;
 }
 
 message V11Endpoint {

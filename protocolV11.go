@@ -1,9 +1,12 @@
 package p2p
 
 import (
+	"bytes"
 	"encoding/binary"
 	"fmt"
 	"io"
+
+	"github.com/golang/protobuf/proto"
 )
 
 // V11MaxParcelSize limits the amount of ram allocated for a parcel to 128 MiB
@@ -24,16 +27,57 @@ func newProtocolV11(rw io.ReadWriter) *ProtocolV11 {
 	return v11
 }
 
-func (v11 *ProtocolV11) SendHandshake(*Handshake) error     { return nil }
-func (v11 *ProtocolV11) ReadHandshake() (*Handshake, error) { return nil, nil }
-
-func (v11 *ProtocolV11) writeCheck(data []byte) error {
-	if n, err := v11.rw.Write(data); err != nil {
+func (v11 *ProtocolV11) SendHandshake(hs *Handshake) error {
+	if err := v11.writeCheck(V11Signature); err != nil {
 		return err
-	} else if n != len(data) {
-		return fmt.Errorf("unable to write data (%d of %d)", n, len(data))
 	}
+
+	v11hs := new(V11Handshake)
+	v11hs.Type = uint32(hs.Type)
+	v11hs.ListenPort = hs.ListenPort
+	v11hs.Loopback = hs.Loopback
+	v11hs.Network = uint32(hs.Network)
+	v11hs.NodeID = hs.NodeID
+
+	if len(hs.Alternatives) > 0 {
+		v11hs.Alternatives = make([]*V11Endpoint, 0, len(hs.Alternatives))
+		for _, alt := range hs.Alternatives {
+			v11hs.Alternatives = append(v11hs.Alternatives, &V11Endpoint{Host: alt.IP, Port: alt.Port})
+		}
+	}
+
 	return nil
+}
+func (v11 *ProtocolV11) ReadHandshake() (*Handshake, error) {
+	sig := make([]byte, 4)
+	if err := v11.readCheck(sig); err != nil {
+		return nil, err
+	}
+
+	if !bytes.Equal(sig, V11Signature) {
+		return nil, fmt.Errorf("signature check failed. got = %x, want = %x", sig, V11Signature)
+	}
+
+	v11hs := new(V11Handshake)
+	if err := v11.readMessage(v11hs); err != nil {
+		return nil, err
+	}
+
+	hs := new(Handshake)
+	hs.Type = ParcelType(v11hs.Type)
+	hs.ListenPort = v11hs.ListenPort
+	hs.Loopback = v11hs.Loopback
+	hs.Network = NetworkID(v11hs.Network)
+	hs.NodeID = v11hs.NodeID
+
+	if len(v11hs.Alternatives) > 0 {
+		hs.Alternatives = make([]Endpoint, 0, len(v11hs.Alternatives))
+		for _, alt := range v11hs.Alternatives {
+			hs.Alternatives = append(hs.Alternatives, Endpoint{IP: alt.Host, Port: alt.Port})
+		}
+	}
+
+	return hs, nil
 }
 
 func (v11 *ProtocolV11) readCheck(data []byte) error {
@@ -45,57 +89,87 @@ func (v11 *ProtocolV11) readCheck(data []byte) error {
 	return nil
 }
 
-func (v11 *ProtocolV11) Send(p *Parcel) error {
-	buf := make([]byte, 4)
-
-	msg := new(V11Msg)
-	msg.Type = uint32(p.Type)
-	msg.Payload = p.Payload
-
-	data, err := msg.Marshal()
-	if err != nil {
-		return err
-	}
-
-	binary.BigEndian.PutUint32(buf, uint32(len(data)))
-
-	if err := v11.writeCheck(buf); err != nil {
-		return err
-	}
-
-	return v11.writeCheck(data)
-}
-
-func (v11 *ProtocolV11) Receive() (*Parcel, error) {
+func (v11 *ProtocolV11) readMessage(msg proto.Message) error {
 	buf := make([]byte, 4)
 	if err := v11.readCheck(buf); err != nil {
-		return nil, err
+		return err
 	}
 	size := binary.BigEndian.Uint32(buf)
 
 	if size > V11MaxParcelSize {
-		return nil, fmt.Errorf("peer attempted to send a parcel of size %d (max %d)", size, V11MaxParcelSize)
+		return fmt.Errorf("peer attempted to send a handshake of size %d (max %d)", size, V11MaxParcelSize)
 	}
 
 	data := make([]byte, size)
 	if err := v11.readCheck(data); err != nil {
-		return nil, err
+		return err
 	}
 
+	if err := proto.Unmarshal(data, msg); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (v11 *ProtocolV11) writeCheck(data []byte) error {
+	if n, err := v11.rw.Write(data); err != nil {
+		return err
+	} else if n != len(data) {
+		return fmt.Errorf("unable to write data (%d of %d)", n, len(data))
+	}
+	return nil
+}
+
+func (v11 *ProtocolV11) writeMessage(msg proto.Message) error {
+	data, err := proto.Marshal(msg)
+	if err != nil {
+		return err
+	}
+
+	if len(data) > V11MaxParcelSize {
+		return fmt.Errorf("trying to send a message that's too large %d bytes (max %d)", len(data), V11MaxParcelSize)
+	}
+
+	buf := make([]byte, 4)
+	binary.BigEndian.PutUint32(buf, uint32(len(data)))
+	if err := v11.writeCheck(buf); err != nil {
+		return err
+	}
+
+	if err := v11.writeCheck(data); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (v11 *ProtocolV11) Send(p *Parcel) error {
 	msg := new(V11Msg)
-	if err := msg.Unmarshal(data); err != nil {
+	msg.Type = uint32(p.Type)
+	msg.Payload = p.Payload
+
+	return v11.writeMessage(msg)
+}
+
+func (v11 *ProtocolV11) Receive() (*Parcel, error) {
+	msg := new(V11Msg)
+	if err := v11.readMessage(msg); err != nil {
 		return nil, err
 	}
-
 	// type validity is checked in parcel.Valid
 	return newParcel(ParcelType(msg.Type), msg.Payload), nil
 }
 
-func (v11 *ProtocolV11) Version() string {
+func (v11 *ProtocolV11) Version() uint16 {
+	return 11
+}
+
+func (v11 *ProtocolV11) String() string {
 	return "11"
 }
 
 func (v11 *ProtocolV11) MakePeerShare(ps []Endpoint) ([]byte, error) {
+
 	return nil, nil
 }
 
