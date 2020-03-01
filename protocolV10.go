@@ -50,7 +50,7 @@ func (v10 *ProtocolV10) SendHandshake(h *Handshake) error {
 
 	var msg V9Handshake
 	msg.Header.Network = h.Network
-	msg.Header.Version = 10 // hardcoded
+	msg.Header.Version = h.Version
 	msg.Header.Type = h.Type
 	msg.Header.TargetPeer = ""
 

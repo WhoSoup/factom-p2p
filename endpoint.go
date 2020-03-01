@@ -2,16 +2,27 @@ package p2p
 
 import (
 	"fmt"
+	math "math"
+	"math/rand"
 	"net"
 	"regexp"
 	"strconv"
 )
 
-// built after https://en.wikipedia.org/wiki/Hostname#Restrictions_on_valid_hostnames
-//                     (      optional labels        )    (    required label            )
+func testRandomEndpoint() Endpoint {
+	ip := fmt.Sprintf("%d.%d.%d.%d", 1+rand.Intn(255), rand.Intn(256), rand.Intn(256), 1+rand.Intn(255))
+	return Endpoint{IP: ip, Port: testRandomPort()}
+}
+
+func testRandomPort() string {
+	return fmt.Sprintf("%d", (1+rand.Uint32())%math.MaxUint16)
+}
+
 var hostnameRegex *regexp.Regexp
 
 func init() {
+	// built after https://en.wikipedia.org/wiki/Hostname#Restrictions_on_valid_hostnames
+	//                                   (      optional labels           ) (    required label          )
 	hostnameRegex = regexp.MustCompile(`^([0-9A-Za-z][0-9A-Za-z\-]{0,62}\.)*[0-9A-Za-z][0-9A-Za-z\-]{0,62}$`)
 }
 

@@ -158,7 +158,7 @@ func (c *controller) detectProtocolFromFirstMessage(rw io.ReadWriter) (Protocol,
 	}
 
 	if bytes.Equal(sig, V11Signature) {
-		prot = newProtocolV11(rw)
+		prot = newProtocolV11(bufio.NewReadWriter(buffy, bufio.NewWriter(rw)))
 		hs, err := prot.ReadHandshake()
 		if err != nil {
 			return nil, nil, err

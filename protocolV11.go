@@ -1,6 +1,7 @@
 package p2p
 
 import (
+	"bytes"
 	"encoding/binary"
 	"fmt"
 	"io"
@@ -50,14 +51,13 @@ func (v11 *ProtocolV11) SendHandshake(hs *Handshake) error {
 }
 
 func (v11 *ProtocolV11) ReadHandshake() (*Handshake, error) {
-	/*	sig := make([]byte, 4)
-		if err := v11.readCheck(sig); err != nil {
-			return nil, err
-		}
-
-		if !bytes.Equal(sig, V11Signature) {
-			return nil, fmt.Errorf("signature check failed. got = %x, want = %x", sig, V11Signature)
-		}*/
+	sig := make([]byte, 4)
+	if err := v11.readCheck(sig); err != nil {
+		return nil, err
+	}
+	if !bytes.Equal(sig, V11Signature) {
+		return nil, fmt.Errorf("invalid connection signature")
+	}
 
 	v11hs := new(V11Handshake)
 	if err := v11.readMessage(v11hs); err != nil {
@@ -171,10 +171,28 @@ func (v11 *ProtocolV11) String() string {
 }
 
 func (v11 *ProtocolV11) MakePeerShare(ps []Endpoint) ([]byte, error) {
+	v11share := new(V11Share)
+	v11share.Share = make([]*V11Endpoint, 0, len(ps))
+	for _, ep := range ps {
+		v11ep := new(V11Endpoint)
+		v11ep.Host = ep.IP
+		v11ep.Port = ep.Port
+		v11share.Share = append(v11share.Share, v11ep)
+	}
 
-	return nil, nil
+	return v11share.Marshal()
 }
 
 func (v11 *ProtocolV11) ParsePeerShare(payload []byte) ([]Endpoint, error) {
-	return nil, nil
+	v11share := new(V11Share)
+	if err := v11share.Unmarshal(payload); err != nil {
+		return nil, err
+	}
+
+	eps := make([]Endpoint, 0, len(v11share.Share))
+	for _, v11ep := range v11share.Share {
+		eps = append(eps, Endpoint{IP: v11ep.Host, Port: v11ep.Port})
+	}
+
+	return eps, nil
 }

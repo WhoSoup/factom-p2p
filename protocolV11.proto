@@ -21,3 +21,7 @@ message V11Msg {
     bytes Payload = 2;
 }
 
+message V11Share {
+    repeated V11Endpoint Share = 1;
+}
+

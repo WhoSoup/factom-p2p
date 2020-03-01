@@ -1,6 +1,29 @@
 package p2p
 
-import "testing"
+import (
+	"math/rand"
+	"testing"
+)
+
+func testRandomHandshake() *Handshake {
+	hs := new(Handshake)
+	hs.Version = uint16(rand.Uint32())
+	hs.Type = ParcelType(rand.Uint32())
+	hs.NodeID = rand.Uint32()
+	hs.Network = NetworkID(rand.Uint32())
+	hs.Loopback = rand.Uint64()
+	hs.ListenPort = testRandomPort()
+
+	if hs.Type == TypeRejectAlternative {
+		alts := 1 + rand.Intn(16)
+		hs.Alternatives = make([]Endpoint, alts)
+		for i := range hs.Alternatives {
+			hs.Alternatives[i] = testRandomEndpoint()
+		}
+	}
+
+	return hs
+}
 
 func TestHandshake_Valid(t *testing.T) {
 	conf := DefaultP2PConfiguration()

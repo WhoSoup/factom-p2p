@@ -53,14 +53,14 @@ func (v9 *ProtocolV9) SendHandshake(h *Handshake) error {
 	}
 
 	var msg V9Handshake
-	msg.Header.Network = v9.network
-	msg.Header.Version = 9 // hardcoded
+	msg.Header.Network = h.Network
+	msg.Header.Version = h.Version
 	msg.Header.Type = h.Type
 	msg.Header.TargetPeer = ""
 
-	msg.Header.NodeID = uint64(v9.nodeID)
+	msg.Header.NodeID = uint64(h.NodeID)
 	msg.Header.PeerAddress = ""
-	msg.Header.PeerPort = v9.port
+	msg.Header.PeerPort = h.ListenPort
 	msg.Header.AppHash = "NetworkMessage"
 	msg.Header.AppType = "Network"
 
@@ -88,9 +88,8 @@ func (v9 *ProtocolV9) ReadHandshake() (*Handshake, error) {
 		hs.Alternatives = alternatives
 	} else if len(msg.Payload) == 8 {
 		hs.Loopback = binary.LittleEndian.Uint64(msg.Payload)
-	} else {
-		fmt.Printf("handshake payload %x %s\n", msg.Payload, string(msg.Payload))
 	}
+
 	hs.ListenPort = msg.Header.PeerPort
 	hs.Network = msg.Header.Network
 	hs.NodeID = uint32(msg.Header.NodeID)
