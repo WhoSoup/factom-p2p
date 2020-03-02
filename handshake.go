@@ -5,6 +5,7 @@ import (
 	"strconv"
 )
 
+// Handshake is the protocol independent data that is required to authenticate a peer.
 type Handshake struct {
 	Network      NetworkID
 	Version      uint16
@@ -15,6 +16,8 @@ type Handshake struct {
 	Alternatives []Endpoint
 }
 
+// Valid checks the Handshake's data against a configuration.
+// Loopback is checked outside of this function.
 func (h *Handshake) Valid(conf *Configuration) error {
 	if h.Version < conf.ProtocolVersionMinimum {
 		return fmt.Errorf("version %d is below the minimum", h.Version)
@@ -42,6 +45,7 @@ func (h *Handshake) Valid(conf *Configuration) error {
 	return nil
 }
 
+// create a new handshake
 func newHandshake(conf *Configuration, loopback uint64) *Handshake {
 	hs := new(Handshake)
 	hs.Type = TypeHandshake

@@ -136,7 +136,7 @@ func (c *controller) handshakeIncoming(con net.Conn) {
 	c.logger.Debugf("Incoming handshake success for peer %s, version %s", peer.Hash, peer.prot)
 }
 
-// detectProtocol will listen for data to arrive on the ReadWriter and then attempt to interpret it.
+// detectProtocolFromFirstMessage will listen for data to arrive on the ReadWriter and then attempt to interpret it.
 // the existing protocol is only needed for nodes running v9 in order to bring
 func (c *controller) detectProtocolFromFirstMessage(rw io.ReadWriter) (Protocol, *Handshake, error) {
 	var prot Protocol
@@ -144,7 +144,7 @@ func (c *controller) detectProtocolFromFirstMessage(rw io.ReadWriter) (Protocol,
 
 	buffy := bufio.NewReader(rw)
 
-	sig, err := buffy.Peek(4)
+	sig, err := buffy.Peek(4) // don't consume in case it's gob
 	if err != nil {
 		return nil, nil, err
 	}
@@ -165,7 +165,7 @@ func (c *controller) detectProtocolFromFirstMessage(rw io.ReadWriter) (Protocol,
 			return nil, nil, err
 		}
 		handshake = hs
-	} else {
+	} else { // default = gob
 		decoder := gob.NewDecoder(buffy)
 		encoder := gob.NewEncoder(rw)
 
@@ -181,7 +181,7 @@ func (c *controller) detectProtocolFromFirstMessage(rw io.ReadWriter) (Protocol,
 
 		v := hs.Version
 		if v > c.net.conf.ProtocolVersion {
-			v = c.net.conf.ProtocolVersion
+			v = c.net.conf.ProtocolVersion // downgrade from 10 to 9
 		}
 
 		handshake = hs
@@ -199,6 +199,8 @@ func (c *controller) detectProtocolFromFirstMessage(rw io.ReadWriter) (Protocol,
 	return prot, handshake, nil
 }
 
+// selectProtocol chooses the protocol based on the configuration.
+// used to send the initial handshake when no other information is present.
 func (c *controller) selectProtocol(rw io.ReadWriter) Protocol {
 	switch c.net.conf.ProtocolVersion {
 	case 11:
