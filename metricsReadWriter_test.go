@@ -2,7 +2,6 @@ package p2p
 
 import (
 	"bytes"
-	"fmt"
 	"testing"
 )
 
@@ -73,7 +72,6 @@ func TestMetricsReadWriter_Collect(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got, err := tt.sc.Write(tt.args.p)
-			fmt.Println(tt.sc.bytesWritten)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("MetricsReadWriter.Write() error = %v, wantErr %v", err, tt.wantErr)
 				return

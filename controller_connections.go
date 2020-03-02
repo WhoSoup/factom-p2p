@@ -130,7 +130,6 @@ func (c *controller) handshakeIncoming(con net.Conn) {
 
 	// listenport has been validated in handshake.Valid
 	ep.Port = handshake.ListenPort
-	c.logger.WithField("ep", ep).WithField("prot", prot.Version()).Debugf("accepted peer")
 
 	peer := newPeer(c.net, handshake.NodeID, ep, con, prot, metrics, true)
 	c.peerStatus <- peerStatus{peer: peer, online: true}
