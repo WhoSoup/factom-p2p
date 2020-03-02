@@ -33,9 +33,7 @@ func newProtocolV9(netw NetworkID, nodeID uint32, listenPort string, decoder *go
 	return v9
 }
 
-// SendHandshake sends out a v9 structured handshake
-// transform handshake into peer request
-func (v9 *ProtocolV9) SendHandshake(h *Handshake) error {
+func v9SendHandshake(encoder *gob.Encoder, h *Handshake) error {
 	if h.Type == TypeHandshake {
 		h.Type = TypePeerRequest
 	}
@@ -54,7 +52,7 @@ func (v9 *ProtocolV9) SendHandshake(h *Handshake) error {
 
 	var msg V9Handshake
 	msg.Header.Network = h.Network
-	msg.Header.Version = h.Version
+	msg.Header.Version = h.Version // can be 9 or 10
 	msg.Header.Type = h.Type
 	msg.Header.TargetPeer = ""
 
@@ -65,10 +63,16 @@ func (v9 *ProtocolV9) SendHandshake(h *Handshake) error {
 	msg.Header.AppType = "Network"
 
 	msg.Payload = payload
-	msg.Header.Crc32 = crc32.Checksum(payload, crcTable)
-	msg.Header.Length = uint32(len(payload))
+	msg.Header.Crc32 = crc32.Checksum(msg.Payload, crcTable)
+	msg.Header.Length = uint32(len(msg.Payload))
 
-	return v9.encoder.Encode(msg)
+	return encoder.Encode(msg)
+}
+
+// SendHandshake sends out a v9 structured handshake
+// transform handshake into peer request
+func (v9 *ProtocolV9) SendHandshake(h *Handshake) error {
+	return v9SendHandshake(v9.encoder, h)
 }
 
 func (v9 *ProtocolV9) ReadHandshake() (*Handshake, error) {

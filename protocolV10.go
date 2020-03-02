@@ -1,7 +1,6 @@
 package p2p
 
 import (
-	"encoding/binary"
 	"encoding/gob"
 	"encoding/json"
 	"fmt"
@@ -32,39 +31,7 @@ func newProtocolV10(decoder *gob.Decoder, encoder *gob.Encoder) *ProtocolV10 {
 }
 
 func (v10 *ProtocolV10) SendHandshake(h *Handshake) error {
-	if h.Type == TypeHandshake {
-		h.Type = TypePeerRequest
-	}
-
-	var payload []byte
-	if len(h.Alternatives) > 0 {
-		if data, err := json.Marshal(h.Alternatives); err != nil {
-			return err
-		} else {
-			payload = data
-		}
-	} else {
-		payload = make([]byte, 8)
-		binary.LittleEndian.PutUint64(payload, h.Loopback)
-	}
-
-	var msg V9Handshake
-	msg.Header.Network = h.Network
-	msg.Header.Version = h.Version
-	msg.Header.Type = h.Type
-	msg.Header.TargetPeer = ""
-
-	msg.Header.NodeID = uint64(h.NodeID)
-	msg.Header.PeerAddress = ""
-	msg.Header.PeerPort = h.ListenPort
-	msg.Header.AppHash = "NetworkMessage"
-	msg.Header.AppType = "Network"
-
-	msg.Payload = payload
-	msg.Header.Crc32 = crc32.Checksum(msg.Payload, crcTable)
-	msg.Header.Length = uint32(len(msg.Payload))
-
-	return v10.encoder.Encode(&msg)
+	return v9SendHandshake(v10.encoder, h)
 }
 
 // ReadHandshake for v10 is using the identical format to V9 for backward compatibility.

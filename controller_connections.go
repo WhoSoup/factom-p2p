@@ -24,17 +24,15 @@ func (c *controller) manageOnline() {
 			if pc.online {
 				if old := c.peers.Get(pc.peer.Hash); old != nil {
 					old.Stop()
-					c.logger.Debugf("removing old peer %s", pc.peer.Hash)
+					c.logger.Debugf("replacing old peer %s", pc.peer.Hash)
 					c.peers.Remove(old)
 				}
 				err := c.peers.Add(pc.peer)
 				if err != nil {
 					c.logger.WithError(err).Errorf("Unable to add peer %s", pc.peer)
 				}
-				c.logger.Debugf("adding peer %s", pc.peer.Hash)
 			} else {
 				c.peers.Remove(pc.peer)
-				c.logger.Debugf("removing peer %s", pc.peer.Hash)
 			}
 			if c.net.prom != nil {
 				c.net.prom.Connections.Set(float64(c.peers.Total()))
@@ -110,12 +108,6 @@ func (c *controller) handshakeIncoming(con net.Conn) {
 	prot, handshake, err := c.detectProtocolFromFirstMessage(metrics)
 	if err != nil {
 		c.logger.WithError(err).Debug("error detecting protocol")
-		con.Close()
-		return
-	}
-
-	if err := handshake.Valid(c.net.conf); err != nil {
-		c.logger.WithError(err).Debugf("inbound connection from %s failed handshake", host)
 		con.Close()
 		return
 	}
@@ -207,14 +199,14 @@ func (c *controller) detectProtocolFromFirstMessage(rw io.ReadWriter) (Protocol,
 	return prot, handshake, nil
 }
 
-func (c *controller) selectProtocol(rw io.ReadWriter) Protocol {
+func (c *controller) selectHandshakeProtocol(rw io.ReadWriter) Protocol {
 	switch c.net.conf.ProtocolVersion {
 	case 11:
 		return newProtocolV11(rw)
-	case 10:
-		decoder := gob.NewDecoder(rw)
-		encoder := gob.NewEncoder(rw)
-		return newProtocolV10(decoder, encoder)
+		/*	case 10:
+			decoder := gob.NewDecoder(rw)
+			encoder := gob.NewEncoder(rw)
+			return newProtocolV10(decoder, encoder)*/
 	default:
 		decoder := gob.NewDecoder(rw)
 		encoder := gob.NewEncoder(rw)
@@ -239,7 +231,7 @@ func (c *controller) handshakeOutgoing(ep Endpoint, con net.Conn) (*Peer, []Endp
 
 	handshake := newHandshake(c.net.conf, c.net.instanceID)
 	metrics := NewMetricsReadWriter(con)
-	desiredProt := c.selectProtocol(metrics)
+	desiredProt := c.selectHandshakeProtocol(metrics)
 
 	failfunc := func(err error) (*Peer, []Endpoint, error) {
 		tmplogger.WithError(err).Debug("Handshake failed")
@@ -296,7 +288,7 @@ func (c *controller) handshakeOutgoing(ep Endpoint, con net.Conn) (*Peer, []Endp
 func (c *controller) RejectWithShare(con net.Conn, share []Endpoint) error {
 	defer con.Close() // we're rejecting, so always close
 
-	prot := c.selectProtocol(con)
+	prot := c.selectHandshakeProtocol(con)
 
 	handshake := newHandshake(c.net.conf, 0)
 	handshake.Type = TypeRejectAlternative
