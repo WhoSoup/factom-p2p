@@ -29,7 +29,7 @@ func TestHandshake_Valid(t *testing.T) {
 	conf := DefaultP2PConfiguration()
 
 	var handshakes []*Handshake
-	for i := 0; i < 13; i++ {
+	for i := 0; i < 7; i++ {
 		hs := newHandshake(&conf, 0)
 		hs.NodeID++
 		handshakes = append(handshakes, hs)
@@ -58,12 +58,6 @@ func TestHandshake_Valid(t *testing.T) {
 		{"empty port", handshakes[4], args{&conf}, true},
 		{"zero port", handshakes[5], args{&conf}, true},
 		{"too high port", handshakes[6], args{&conf}, true},
-		{"nil payload", handshakes[7], args{&conf}, true},
-		{"no payload initialized", handshakes[8], args{&conf}, true},
-		{"wrong payload length", handshakes[9], args{&conf}, true},
-		{"wrong payload crc", handshakes[10], args{&conf}, true},
-		{"wrong payload bytes", handshakes[11], args{&conf}, true},
-		{"no peer address", handshakes[12], args{&conf}, false},
 	}
 
 	for _, tt := range tests {
