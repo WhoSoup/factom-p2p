@@ -209,6 +209,9 @@ func (p *Peer) sendLoop() {
 			}
 
 			p.conn.SetWriteDeadline(time.Now().Add(p.net.conf.WriteDeadline))
+			if p.prot.Version() == 11 {
+				p.logger.WithField("parcel", parcel).WithField("payload", fmt.Sprintf("%x", parcel.Payload)).Debugf("sending v11 parcel")
+			}
 			err := p.prot.Send(parcel)
 			if err != nil { // no error is recoverable
 				p.logger.WithError(err).Debug("connection error (sendLoop)")

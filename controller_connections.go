@@ -99,7 +99,7 @@ func (c *controller) handshakeIncoming(con net.Conn) {
 
 	// reject incoming connections based on host
 	if err = c.allowIncoming(host); err != nil {
-		c.logger.WithError(err).Infof("Rejecting connection")
+		c.logger.WithError(err).Infof("Rejecting connection: %s", host)
 		share := c.makePeerShare(ep)  // they're not connected to us, so we don't have them in our system
 		c.RejectWithShare(con, share) // closes con
 		return
@@ -114,7 +114,7 @@ func (c *controller) handshakeIncoming(con net.Conn) {
 		return
 	}
 
-	if err := handshake.Valid(c.net.conf, c.net.instanceID); err != nil {
+	if err := handshake.Valid(c.net.conf); err != nil {
 		c.logger.WithError(err).Debugf("inbound connection from %s failed handshake", host)
 		con.Close()
 		return
@@ -130,6 +130,7 @@ func (c *controller) handshakeIncoming(con net.Conn) {
 
 	// listenport has been validated in handshake.Valid
 	ep.Port = handshake.ListenPort
+	c.logger.WithField("ep", ep).WithField("prot", prot.Version()).Debugf("accepted peer")
 
 	peer := newPeer(c.net, handshake.NodeID, ep, con, prot, metrics, true)
 	c.peerStatus <- peerStatus{peer: peer, online: true}
@@ -158,13 +159,18 @@ func (c *controller) detectProtocolFromFirstMessage(rw io.ReadWriter) (Protocol,
 	}
 
 	if bytes.Equal(sig, V11Signature) {
-		prot = newProtocolV11(bufio.NewReadWriter(buffy, bufio.NewWriter(rw)))
+		// pass the unread contents of buffy to the protocol so it's responsible for its own signature
+		rw = struct {
+			io.Reader
+			io.Writer
+		}{buffy, rw}
+		prot = newProtocolV11(rw)
 		hs, err := prot.ReadHandshake()
 		if err != nil {
 			return nil, nil, err
 		}
 
-		if err := hs.Valid(c.net.conf, c.net.instanceID); err != nil {
+		if err := hs.Valid(c.net.conf); err != nil {
 			return nil, nil, err
 		}
 		handshake = hs
@@ -178,7 +184,7 @@ func (c *controller) detectProtocolFromFirstMessage(rw io.ReadWriter) (Protocol,
 			return nil, nil, err
 		}
 
-		if err := hs.Valid(c.net.conf, c.net.instanceID); err != nil {
+		if err := hs.Valid(c.net.conf); err != nil {
 			return nil, nil, err
 		}
 
@@ -241,7 +247,6 @@ func (c *controller) handshakeOutgoing(ep Endpoint, con net.Conn) (*Peer, []Endp
 		con.Close()
 		return nil, nil, err
 	}
-
 	if err := desiredProt.SendHandshake(handshake); err != nil {
 		return failfunc(err)
 	}
@@ -249,6 +254,10 @@ func (c *controller) handshakeOutgoing(ep Endpoint, con net.Conn) (*Peer, []Endp
 	prot, reply, err := c.detectProtocolFromFirstMessage(metrics)
 	if err != nil {
 		return failfunc(err)
+	}
+
+	if reply.Loopback == handshake.Loopback {
+		return failfunc(fmt.Errorf("loopback"))
 	}
 
 	// this is required because a new protocol is instantiated in the above call

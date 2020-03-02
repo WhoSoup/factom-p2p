@@ -13,7 +13,7 @@ import (
 const V11MaxParcelSize = 134217728
 
 // V11Signature is the 4-byte sequence that indicates the remote connection wants to use V11
-var V11Signature = []byte{0xfa, 0xfa, 0xfa, 0xfa}
+var V11Signature = []byte{0x70, 0x62, 0x75, 0x66} // ascii for "pbuf"
 
 var _ Protocol = (*ProtocolV11)(nil)
 

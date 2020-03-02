@@ -67,6 +67,9 @@ func (v10 *ProtocolV10) SendHandshake(h *Handshake) error {
 	return v10.encoder.Encode(&msg)
 }
 
+// ReadHandshake for v10 is using the identical format to V9 for backward compatibility.
+// It can't be easily told apart without first decoding the message, so the code is only
+// implemented in v9, then upgraded to V10 based on the values
 func (v10 *ProtocolV10) ReadHandshake() (*Handshake, error) {
 	return nil, fmt.Errorf("V10 doesn't have its own handshake")
 }

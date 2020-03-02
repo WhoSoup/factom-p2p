@@ -15,13 +15,9 @@ type Handshake struct {
 	Alternatives []Endpoint
 }
 
-func (h *Handshake) Valid(conf *Configuration, loopback uint64) error {
+func (h *Handshake) Valid(conf *Configuration) error {
 	if h.Version < conf.ProtocolVersionMinimum {
 		return fmt.Errorf("version %d is below the minimum", h.Version)
-	}
-
-	if h.Loopback == loopback {
-		return fmt.Errorf("loopback")
 	}
 
 	if h.Network != conf.Network {

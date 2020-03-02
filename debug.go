@@ -26,13 +26,17 @@ func (n *Network) DebugMessage() (string, int) {
 
 	tw := tabwriter.NewWriter(buf, 0, 0, 3, ' ', 0)
 
-	fmt.Fprintf(tw, "Hash\tMPS Down\tMPS Up\tBps Down\tBps up\tRatio\tDropped\tProt\t\n")
-	fmt.Fprintf(tw, "----\t--------\t------\t--------\t------\t-----\t-------\t----\t\n")
+	fmt.Fprintf(tw, "Hash\tMPS Down\tMPS Up\tBps Down\tBps up\tRatio\tDropped\tProt\tType\t\n")
+	fmt.Fprintf(tw, "----\t--------\t------\t--------\t------\t-----\t-------\t----\t----\t\n")
 
 	count := len(s)
 	for _, p := range s {
 		m := p.GetMetrics()
-		fmt.Fprintf(tw, "%s\t%.2f\t%.2f\t%.2f\t%.2f\t%.2f\t%d\t%s\t\n", p.Hash, m.MPSDown, m.MPSUp, m.BPSDown, m.BPSUp, m.SendFillRatio, m.Dropped, p.prot)
+		t := "Outgoing"
+		if p.IsIncoming {
+			t = "Incoming"
+		}
+		fmt.Fprintf(tw, "%s\t%.2f\t%.2f\t%.2f\t%.2f\t%.2f\t%d\t%s\t%s\t\n", p.Hash, m.MPSDown, m.MPSUp, m.BPSDown, m.BPSUp, m.SendFillRatio, m.Dropped, p.prot, t)
 	}
 	tw.Flush()
 
