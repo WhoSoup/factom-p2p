@@ -16,7 +16,7 @@ func (c *controller) run() {
 		c.runPing()
 
 		select {
-		case <-time.After(time.Second):
+		case <-time.After(loopTimer):
 		}
 	}
 }

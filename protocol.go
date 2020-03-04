@@ -10,9 +10,6 @@ package p2p
 //
 // Peer Sharing creates the protocol specific payload for a TypePeerShare
 // Parcel
-//
-// Every protocol should be bootstraped in peer:bootstrapProtocol() where
-// it can be initialized with the required serialization methods
 type Protocol interface {
 	SendHandshake(*Handshake) error
 	ReadHandshake() (*Handshake, error)

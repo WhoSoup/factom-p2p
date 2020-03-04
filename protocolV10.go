@@ -81,7 +81,7 @@ func (v10 *ProtocolV10) Receive() (*Parcel, error) {
 	return p, nil
 }
 
-// V10Share is an alias of PeerShare
+// V10Share is an alias of Endpoint
 type V10Share Endpoint
 
 // MakePeerShare serializes a list of ips via json

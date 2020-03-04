@@ -32,6 +32,7 @@ type Network struct {
 }
 
 var packageLogger = log.WithField("package", "p2p")
+var loopTimer = time.Second
 
 // NewNetwork initializes a new network with the given configuration.
 // The passed Configuration is copied and cannot be modified afterwards.

@@ -10,6 +10,22 @@ import (
 	"time"
 )
 
+func testEqualEndpointList(a, b []Endpoint) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	has := make(map[Endpoint]bool)
+	for _, ep := range a {
+		has[ep] = true
+	}
+	for _, ep := range b {
+		if !has[ep] {
+			return false
+		}
+	}
+	return true
+}
+
 func testRandomParcel() *Parcel {
 	p := new(Parcel)
 	p.Type = ParcelType(rand.Intn(len(typeStrings)))
@@ -87,25 +103,39 @@ func testHandshake(t *testing.T, protf func(io.ReadWriter) Protocol) {
 	receiver := protf(B)
 
 	hs := testRandomHandshake()
+	parcel := testRandomParcel()
 
 	go func() {
 		if err := sender.SendHandshake(hs); err != nil {
 			t.Errorf("prot %s: send handshake err: %v", sender, err)
+		}
+		if err := sender.Send(parcel); err != nil {
+			t.Errorf("prot %s: send parcel-after-handshake err: %v", sender, err)
 		}
 	}()
 
 	if reply, err := receiver.ReadHandshake(); err != nil {
 		t.Errorf("prot %s: read handshake err: %v", receiver, err)
 	} else {
-		if len(reply.Alternatives) == 0 {
+
+		if testEqualEndpointList(reply.Alternatives, hs.Alternatives) {
+			// the order isn't guaranteed to be consistent, so check this first
+			// then set to nil for reflect.DeepEqual to check the rest
 			reply.Alternatives = nil
-		}
-		if len(hs.Alternatives) == 0 {
 			hs.Alternatives = nil
+		} else {
+			t.Errorf("prot %s: alternatives different. sent = %v, got = %v", receiver, reply.Alternatives, hs.Alternatives)
 		}
+
 		if !reflect.DeepEqual(hs, reply) {
-			t.Errorf("prot %s: handshake different. sent = %+v, got = %+v. %+v", receiver, hs, reply, reflect.DeepEqual(hs.Alternatives, reply.Alternatives))
+			t.Errorf("prot %s: handshake different. sent = %+v, got = %+v", receiver, hs, reply)
 		}
+	}
+
+	if reply, err := receiver.Receive(); err != nil {
+		t.Errorf("prot %s: receive parcel-after-handshake err: %v", receiver, err)
+	} else if !reflect.DeepEqual(reply, parcel) {
+		t.Errorf("prot %s: parcel-after-handshake not equal.", receiver)
 	}
 }
 
@@ -113,5 +143,32 @@ func TestProtocol_Handshake(t *testing.T) {
 	for i := 0; i < 128; i++ {
 		testHandshake(t, testProtV9)
 		testHandshake(t, testProtV11)
+	}
+}
+
+func TestProtocol_PeerShare(t *testing.T) {
+	shares := make([][]Endpoint, 128)
+	for i := range shares {
+		shares[i] = make([]Endpoint, rand.Intn(64))
+		for j := range shares[i] {
+			shares[i][j] = testRandomEndpoint()
+		}
+	}
+
+	for _, prot := range []Protocol{testProtV9(nil), testProtV10(nil), testProtV11(nil)} {
+		for _, share := range shares {
+			res, err := prot.MakePeerShare(share)
+			if err != nil {
+				t.Errorf("prot %d: %v", prot, err)
+			}
+			reverse, err := prot.ParsePeerShare(res)
+			if err != nil {
+				t.Errorf("prot %d: %v", prot, err)
+			}
+
+			if !testEqualEndpointList(reverse, share) {
+				t.Errorf("prot %d: shares aren't the same. got = %v, want = %v", prot, reverse, share)
+			}
+		}
 	}
 }

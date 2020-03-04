@@ -15,7 +15,9 @@ func (c *controller) runCatRound() {
 	c.logger.Debug("Cat Round")
 	c.rounds++
 
-	c.persistPeerFile()
+	if err := c.writePeerCache(); err != nil {
+		c.logger.Errorf("unable to write peer cache to disk: %v", err)
+	}
 
 	peers := c.peers.Slice()
 
@@ -173,7 +175,7 @@ func (c *controller) catReplenish() {
 	for {
 		var connect []Endpoint
 		if uint(c.peers.Total()) >= c.net.conf.TargetPeers {
-			time.Sleep(time.Second)
+			time.Sleep(loopTimer)
 			continue
 		}
 
@@ -249,7 +251,7 @@ func (c *controller) catReplenish() {
 		}
 
 		if attempts == 0 { // no peers and we exhausted special and seeds
-			time.Sleep(time.Second)
+			time.Sleep(loopTimer)
 		}
 	}
 }
