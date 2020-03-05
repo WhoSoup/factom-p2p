@@ -38,13 +38,13 @@ func Test_controller_persist(t *testing.T) {
 		t.Errorf("endpoint lists not identical")
 	}
 
-	if _, ok := pc.Bans["ban null"]; ok {
-		t.Errorf("null time ban was persisted")
+	if _, ok := npc.Bans["ban null"]; ok {
+		t.Errorf("null time ban was loaded")
 	}
-	if _, ok := pc.Bans["ban outdated"]; ok {
-		t.Errorf("outdated ban was persisted")
+	if _, ok := npc.Bans["ban outdated"]; ok {
+		t.Errorf("outdated ban was loaded")
 	}
-	if _, ok := pc.Bans["ban ok"]; !ok || !pc.Bans["ban ok"].Equal(npc.Bans["ban ok"]) {
+	if _, ok := npc.Bans["ban ok"]; !ok || !pc.Bans["ban ok"].Equal(npc.Bans["ban ok"]) {
 		t.Errorf("ok ban was not presented or mismatched. got = %v, want = %v", npc.Bans["ban ok"], pc.Bans["ban ok"])
 	}
 }

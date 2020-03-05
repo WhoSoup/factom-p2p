@@ -73,53 +73,35 @@ func (c *controller) allowIncoming(addr string) error {
 // If the node is full, the connection is closed with alternatives.
 //
 // For more information, see the README
-func (c *controller) handshakeIncoming(con net.Conn) {
+func (c *controller) handshakeIncoming(con net.Conn, ep Endpoint) error {
 	if c.net.prom != nil {
 		c.net.prom.Connecting.Inc()
 		defer c.net.prom.Connecting.Dec()
 	}
 
-	host, _, err := net.SplitHostPort(con.RemoteAddr().String())
-	if err != nil {
-		c.logger.WithError(err).Debugf("Unable to parse address %s", con.RemoteAddr().String())
-		con.Close()
-		return
-	}
-
-	// port is overriden during handshake, use default port as temp port
-	ep, err := NewEndpoint(host, c.net.conf.ListenPort)
-	if err != nil { // should never happen for incoming
-		c.logger.WithError(err).Debugf("Unable to decode address %s", host)
-		con.Close()
-		return
-	}
-
-	timeout := time.Now().Add(c.net.conf.HandshakeTimeout)
-	con.SetDeadline(timeout)
+	con.SetDeadline(time.Now().Add(c.net.conf.HandshakeTimeout))
 
 	// reject incoming connections based on host
-	if err = c.allowIncoming(host); err != nil {
-		c.logger.WithError(err).Infof("Rejecting connection: %s", host)
+	// the ep's port is our local port so we can't check that yet
+	if err := c.allowIncoming(ep.IP); err != nil {
 		share := c.makePeerShare(ep)  // they're not connected to us, so we don't have them in our system
 		c.RejectWithShare(con, share) // closes con
-		return
+		return fmt.Errorf("rejecting connection: %s", ep.IP)
 	}
 
 	// upgrade connection to a metrics connection
 	metrics := NewMetricsReadWriter(con)
 	prot, handshake, err := c.detectProtocolFromFirstMessage(metrics)
 	if err != nil {
-		c.logger.WithError(err).Debug("error detecting protocol")
 		con.Close()
-		return
+		return fmt.Errorf("error detecting protocol: %v", err)
 	}
 
 	reply := newHandshake(c.net.conf, c.net.instanceID)
 	reply.Version = handshake.Version
 	if err := prot.SendHandshake(reply); err != nil {
-		c.logger.WithError(err).Debugf("unable to reply to handshake")
 		con.Close()
-		return
+		return fmt.Errorf("unable to send handshake reply: %v", err)
 	}
 
 	// listenport has been validated in handshake.Valid
@@ -136,6 +118,7 @@ func (c *controller) handshakeIncoming(con net.Conn) {
 	}
 
 	c.logger.Debugf("Incoming handshake success for peer %s, version %s", peer.Hash, peer.prot)
+	return nil
 }
 
 // detectProtocolFromFirstMessage will listen for data to arrive on the ReadWriter and then attempt to interpret it.
@@ -181,20 +164,19 @@ func (c *controller) detectProtocolFromFirstMessage(rw io.ReadWriter) (Protocol,
 			return nil, nil, err
 		}
 
-		v := hs.Version
-		if v > c.net.conf.ProtocolVersion {
-			v = c.net.conf.ProtocolVersion // downgrade from 10 to 9
+		if hs.Version < c.net.conf.ProtocolVersionMinimum {
+			return nil, nil, fmt.Errorf("protocol version %d below minimum of %d", hs.Version, c.net.conf.ProtocolVersionMinimum)
 		}
 
 		handshake = hs
 
-		switch v {
+		switch hs.Version {
 		case 9:
 			prot = v9test
 		case 10:
 			prot = newProtocolV10(decoder, encoder)
 		default:
-			return nil, nil, fmt.Errorf("unsupported protocol version %d", v)
+			return nil, nil, fmt.Errorf("unsupported protocol version %d", hs.Version)
 		}
 	}
 
@@ -228,7 +210,7 @@ func (c *controller) selectProtocol(rw io.ReadWriter) Protocol {
 // case this function returns an error AND a list of alternate endpoints
 //
 // For more information, see the README
-func (c *controller) handshakeOutgoing(ep Endpoint, con net.Conn) (*Peer, []Endpoint, error) {
+func (c *controller) handshakeOutgoing(con net.Conn, ep Endpoint) (*Peer, []Endpoint, error) {
 	tmplogger := c.logger.WithField("endpoint", ep)
 	timeout := time.Now().Add(c.net.conf.HandshakeTimeout)
 	con.SetDeadline(timeout)
@@ -317,7 +299,7 @@ func (c *controller) Dial(ep Endpoint) (bool, []Endpoint) {
 		return false, nil
 	}
 
-	peer, alternatives, err := c.handshakeOutgoing(ep, con)
+	peer, alternatives, err := c.handshakeOutgoing(con, ep)
 	if err != nil { // handshake closes connection
 		if err.Error() == "loopback" {
 			c.logger.Debugf("Banning ourselves for 50 years")
@@ -371,6 +353,24 @@ func (c *controller) listen() {
 			continue
 		}
 
-		go c.handshakeIncoming(conn)
+		host, port, err := net.SplitHostPort(conn.RemoteAddr().String())
+		if err != nil {
+			c.logger.WithError(err).Debugf("unable to parse address %s", conn.RemoteAddr().String())
+			conn.Close()
+			continue
+		}
+
+		ep, err := NewEndpoint(host, port) // this is the randomly assigned local port
+		if err != nil {                    // should never happen for incoming
+			c.logger.WithError(err).Errorf("failure to decode net address %s", conn.RemoteAddr().String())
+			conn.Close()
+			continue
+		}
+
+		go func() {
+			if err := c.handshakeIncoming(conn, ep); err != nil {
+				c.logger.WithError(err).Debug("incoming handshake failed")
+			}
+		}()
 	}
 }

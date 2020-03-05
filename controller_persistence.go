@@ -29,6 +29,13 @@ func loadPeerCache(path string) (*PeerCache, error) {
 		return nil, err
 	}
 
+	// don't load bans that timed out
+	for k, v := range pc.Bans {
+		if v.Before(time.Now()) {
+			delete(pc.Bans, k)
+		}
+	}
+
 	return pc, nil
 }
 

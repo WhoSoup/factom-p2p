@@ -34,10 +34,6 @@ func newProtocolV9(netw NetworkID, nodeID uint32, listenPort string, decoder *go
 }
 
 func v9SendHandshake(encoder *gob.Encoder, h *Handshake) error {
-	if h.Type == TypeHandshake {
-		h.Type = TypePeerRequest
-	}
-
 	var payload []byte
 	if len(h.Alternatives) > 0 {
 		if data, err := json.Marshal(h.Alternatives); err != nil {
@@ -72,6 +68,9 @@ func v9SendHandshake(encoder *gob.Encoder, h *Handshake) error {
 // SendHandshake sends out a v9 structured handshake
 // transform handshake into peer request
 func (v9 *ProtocolV9) SendHandshake(h *Handshake) error {
+	if h.Type == TypeHandshake {
+		h.Type = TypePeerRequest
+	}
 	return v9SendHandshake(v9.encoder, h)
 }
 
