@@ -18,7 +18,7 @@ func (c *controller) run() {
 		select {
 		case <-c.net.stopper:
 			return
-		case <-time.After(loopTimer):
+		case <-time.After(time.Second):
 		}
 	}
 }

@@ -181,7 +181,7 @@ func (c *controller) catReplenish() {
 
 		var connect []Endpoint
 		if uint(c.peers.Total()) >= c.net.conf.TargetPeers {
-			time.Sleep(loopTimer)
+			time.Sleep(time.Second)
 			continue
 		}
 
@@ -257,7 +257,7 @@ func (c *controller) catReplenish() {
 		}
 
 		if attempts == 0 { // no peers and we exhausted special and seeds
-			time.Sleep(loopTimer)
+			time.Sleep(time.Second)
 		}
 	}
 }
