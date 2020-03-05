@@ -87,8 +87,10 @@ func (p *Peer) Stop() {
 		p.logger.Debug("Stopping peer")
 		close(p.stop) // stops sendLoop and readLoop and statLoop
 		// sendLoop closes p.conn and p.send in defer
-
-		p.net.controller.peerStatus <- peerStatus{peer: p, online: false}
+		select {
+		case p.net.controller.peerStatus <- peerStatus{peer: p, online: false}:
+		case <-p.net.stopper:
+		}
 	})
 }
 
@@ -200,6 +202,9 @@ func (p *Peer) sendLoop() {
 	defer p.conn.Close() // close connection on fatal error
 	for {
 		select {
+		case <-p.net.stopper:
+			p.Stop()
+			return
 		case <-p.stop:
 			return
 		case parcel := <-p.send:

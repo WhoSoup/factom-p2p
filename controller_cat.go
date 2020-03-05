@@ -173,6 +173,12 @@ func (c *controller) catReplenish() {
 	lastReseed := time.Now()
 
 	for {
+		select {
+		case <-c.net.stopper:
+			return
+		default:
+		}
+
 		var connect []Endpoint
 		if uint(c.peers.Total()) >= c.net.conf.TargetPeers {
 			time.Sleep(loopTimer)
