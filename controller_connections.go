@@ -245,9 +245,12 @@ func (c *controller) handshakeOutgoing(con net.Conn, ep Endpoint) (*Peer, []Endp
 	// since V9Msg is already registered in the other end's gob, a new gob encoder
 	// would try to register it again, causing an error on the other side
 	// v10 is fine since it switches to a new V10Msg
-	if v9, ok := desiredProt.(*ProtocolV9); ok {
-		if v9new, ok := prot.(*ProtocolV9); ok {
-			v9new.encoder = v9.encoder
+	if v9new, ok := prot.(*ProtocolV9); ok {
+		switch desiredProt.(type) {
+		case *ProtocolV10:
+			v9new.encoder = desiredProt.(*ProtocolV10).encoder
+		case *ProtocolV9:
+			v9new.encoder = desiredProt.(*ProtocolV9).encoder
 		}
 	}
 

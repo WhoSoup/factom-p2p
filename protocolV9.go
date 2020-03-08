@@ -21,7 +21,6 @@ type ProtocolV9 struct {
 	decoder *gob.Decoder
 	encoder *gob.Encoder
 }
-type V9Handshake V9Msg
 
 func newProtocolV9(netw NetworkID, nodeID uint32, listenPort string, decoder *gob.Decoder, encoder *gob.Encoder) *ProtocolV9 {
 	v9 := new(ProtocolV9)
@@ -46,7 +45,7 @@ func v9SendHandshake(encoder *gob.Encoder, h *Handshake) error {
 		binary.LittleEndian.PutUint64(payload, h.Loopback)
 	}
 
-	var msg V9Handshake
+	var msg V9Msg
 	msg.Header.Network = h.Network
 	msg.Header.Version = h.Version // can be 9 or 10
 	msg.Header.Type = h.Type
