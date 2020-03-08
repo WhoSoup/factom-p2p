@@ -111,8 +111,8 @@ func DebugServer(n *Network) {
 	mux.HandleFunc("/stats", func(rw http.ResponseWriter, req *http.Request) {
 		out := ""
 		out += fmt.Sprintf("Channels\n")
-		out += fmt.Sprintf("\tToNetwork: %d / %d\n", len(n.ToNetwork), cap(n.ToNetwork))
-		out += fmt.Sprintf("\tFromNetwork: %d / %d\n", len(n.FromNetwork), cap(n.FromNetwork))
+		out += fmt.Sprintf("\tToNetwork: %d / %d\n", len(n.toNetwork), cap(n.toNetwork))
+		out += fmt.Sprintf("\tFromNetwork: %d / %d\n", len(n.fromNetwork), cap(n.fromNetwork))
 		out += fmt.Sprintf("\tpeerData: %d / %d\n", len(n.controller.peerData), cap(n.controller.peerData))
 		out += fmt.Sprintf("\nPeers (%d)\n", n.controller.peers.Total())
 

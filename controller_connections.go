@@ -36,7 +36,6 @@ func (c *controller) manageOnline() {
 			}
 			if c.net.prom != nil {
 				c.net.prom.Connections.Set(float64(c.peers.Total()))
-				//c.net.prom.Unique.Set(float64(c.peers.Unique()))
 				c.net.prom.Incoming.Set(float64(c.peers.Incoming()))
 				c.net.prom.Outgoing.Set(float64(c.peers.Outgoing()))
 			}

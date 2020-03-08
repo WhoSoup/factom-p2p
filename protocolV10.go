@@ -44,7 +44,7 @@ func (v10 *ProtocolV10) ReadHandshake() (*Handshake, error) {
 // Send encodes a Parcel as V10Msg, calculates the crc and encodes it as gob
 func (v10 *ProtocolV10) Send(p *Parcel) error {
 	var msg V10Msg
-	msg.Type = p.Type
+	msg.Type = p.ptype
 	msg.Crc32 = crc32.Checksum(p.Payload, crcTable)
 	msg.Payload = p.Payload
 	return v10.encoder.Encode(msg)
