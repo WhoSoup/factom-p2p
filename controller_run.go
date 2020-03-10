@@ -63,7 +63,7 @@ func (c *controller) runMetrics() {
 
 		c.net.prom.ToNetwork.Set(float64(len(c.net.toNetwork)))
 		c.net.prom.ToNetworkRatio.Set(c.net.toNetwork.FillRatio())
-		c.net.prom.FromNetwork.Set(float64(len(c.net.toNetwork)))
+		c.net.prom.FromNetwork.Set(float64(len(c.net.fromNetwork)))
 		c.net.prom.FromNetworkRatio.Set(c.net.fromNetwork.FillRatio())
 	}
 }
