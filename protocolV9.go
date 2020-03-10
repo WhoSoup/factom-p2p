@@ -30,7 +30,7 @@ func (v9 *ProtocolV9) Send(p *Parcel) error {
 	var msg V9Msg
 	msg.Header.Network = v9.net.conf.Network
 	msg.Header.Version = 9 // hardcoded
-	msg.Header.Type = p.Type
+	msg.Header.Type = p.ptype
 	msg.Header.TargetPeer = p.Address
 
 	msg.Header.NodeID = uint64(v9.net.conf.NodeID)
@@ -61,7 +61,7 @@ func (v9 *ProtocolV9) Receive() (*Parcel, error) {
 	p := new(Parcel)
 	p.Address = msg.Header.TargetPeer
 	p.Payload = msg.Payload
-	p.Type = msg.Header.Type
+	p.ptype = msg.Header.Type
 	return p, nil
 }
 

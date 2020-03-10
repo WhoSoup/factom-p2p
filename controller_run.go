@@ -43,7 +43,27 @@ func (c *controller) makeMetrics() map[string]PeerMetrics {
 }
 
 func (c *controller) runMetrics() {
+	metrics := c.makeMetrics()
 	if c.net.metricsHook != nil {
-		go c.net.metricsHook(c.makeMetrics())
+		go c.net.metricsHook(metrics)
+	}
+	if c.net.prom != nil {
+		var MPSDown, MPSUp, BytesDown, BytesUp float64
+		for _, m := range metrics {
+			MPSDown += float64(m.MPSDown)
+			MPSUp += float64(m.MPSUp)
+			BytesDown += float64(m.BytesReceived)
+			BytesUp += float64(m.BytesSent)
+		}
+
+		c.net.prom.ByteRateDown.Set(BytesDown)
+		c.net.prom.ByteRateUp.Set(BytesUp)
+		c.net.prom.MessageRateUp.Set(MPSUp)
+		c.net.prom.MessageRateDown.Set(MPSDown)
+
+		c.net.prom.ToNetwork.Set(float64(len(c.net.toNetwork)))
+		c.net.prom.ToNetworkRatio.Set(c.net.toNetwork.FillRatio())
+		c.net.prom.FromNetwork.Set(float64(len(c.net.fromNetwork)))
+		c.net.prom.FromNetworkRatio.Set(c.net.fromNetwork.FillRatio())
 	}
 }
