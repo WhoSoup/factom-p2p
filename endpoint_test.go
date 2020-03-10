@@ -1,9 +1,21 @@
 package p2p
 
 import (
+	"fmt"
+	math "math"
+	"math/rand"
 	"reflect"
 	"testing"
 )
+
+func testRandomEndpoint() Endpoint {
+	ip := fmt.Sprintf("%d.%d.%d.%d", 1+rand.Intn(255), rand.Intn(256), rand.Intn(256), 1+rand.Intn(255))
+	return Endpoint{IP: ip, Port: testRandomPort()}
+}
+
+func testRandomPort() string {
+	return fmt.Sprintf("%d", (1+rand.Uint32())%math.MaxUint16)
+}
 
 func TestNewEndpoint(t *testing.T) {
 	type args struct {

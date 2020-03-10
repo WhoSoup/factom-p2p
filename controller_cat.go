@@ -19,7 +19,7 @@ func (c *controller) runCatRound() {
 	}
 
 	if err := c.writePeerCache(); err != nil {
-		c.logger.Errorf("unable to write peer cache to disk: %v", err)
+		c.logger.WithError(err).Errorf("unable to write peer cache to disk")
 	}
 
 	peers := c.peers.Slice()
