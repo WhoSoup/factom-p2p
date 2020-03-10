@@ -61,7 +61,9 @@ func (c *controller) runMetrics() {
 		c.net.prom.MessageRateUp.Set(MPSUp)
 		c.net.prom.MessageRateDown.Set(MPSDown)
 
-		c.net.prom.ToNetworkRatio.Set(float64(len(c.net.toNetwork)) / float64(cap(c.net.toNetwork)))
-		c.net.prom.FromNetworkRatio.Set(float64(len(c.net.toNetwork)) / float64(cap(c.net.fromNetwork)))
+		c.net.prom.ToNetwork.Set(float64(len(c.net.toNetwork)))
+		c.net.prom.ToNetworkRatio.Set(c.net.toNetwork.FillRatio())
+		c.net.prom.FromNetwork.Set(float64(len(c.net.fromNetwork)))
+		c.net.prom.FromNetworkRatio.Set(c.net.fromNetwork.FillRatio())
 	}
 }
