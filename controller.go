@@ -2,7 +2,6 @@ package p2p
 
 import (
 	"fmt"
-	"strings"
 	"sync"
 	"time"
 
@@ -173,7 +172,15 @@ func (c *controller) setSpecial(raw string) {
 		c.specialEndpoints = nil
 		return
 	}
-	c.specialEndpoints = c.parseSpecial(raw)
+
+	eps, err := parseSpecial(raw)
+	if err != nil {
+		c.logger.WithError(err).Warnf("unable to parse special endpoints")
+		c.specialEndpoints = nil
+		return
+	}
+
+	c.specialEndpoints = eps
 	c.specialMtx.Lock()
 	for _, ep := range c.specialEndpoints {
 		c.logger.Debugf("Registering special endpoint %s", ep)
@@ -182,20 +189,6 @@ func (c *controller) setSpecial(raw string) {
 	}
 	c.specialCount = len(c.special)
 	c.specialMtx.Unlock()
-}
-
-func (c *controller) parseSpecial(raw string) []Endpoint {
-	var eps []Endpoint
-	split := strings.Split(raw, ",")
-	for _, item := range split {
-		ep, err := ParseEndpoint(item)
-		if err != nil {
-			c.logger.Warnf("unable to determine host and port of special entry \"%s\"", item)
-			continue
-		}
-		eps = append(eps, ep)
-	}
-	return eps
 }
 
 // Start starts the controller
