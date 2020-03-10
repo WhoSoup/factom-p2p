@@ -171,7 +171,7 @@ func (n *Network) Send(p *Parcel) {
 	n.toNetwork.Send(p)
 }
 
-// BlockingSend accepts a parcel and sends it to the appropriate patries.
+// BlockingSend accepts a parcel and sends it to the appropriate parties.
 // This function blocks after the queue fills up.
 func (n *Network) BlockingSend(p *Parcel) {
 	n.toNetwork <- p
