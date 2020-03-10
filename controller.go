@@ -21,8 +21,7 @@ type controller struct {
 	dialer   *Dialer
 	listener *LimitedListener
 
-	specialMtx   sync.RWMutex
-	specialCount int
+	specialMtx sync.RWMutex
 
 	banMtx           sync.RWMutex
 	bans             map[string]time.Time // (ip|ip:port) => time the ban ends
@@ -168,27 +167,28 @@ func (c *controller) disconnect(hash string) {
 }
 
 func (c *controller) setSpecial(raw string) {
+	c.specialMtx.Lock()
+	defer c.specialMtx.Unlock()
+
 	if len(raw) == 0 {
 		c.specialEndpoints = nil
+		c.special = make(map[string]bool)
 		return
 	}
 
 	eps, err := parseSpecial(raw)
 	if err != nil {
 		c.logger.WithError(err).Warnf("unable to parse special endpoints")
-		c.specialEndpoints = nil
 		return
 	}
 
 	c.specialEndpoints = eps
-	c.specialMtx.Lock()
+	c.special = make(map[string]bool)
 	for _, ep := range c.specialEndpoints {
 		c.logger.Debugf("Registering special endpoint %s", ep)
 		c.special[ep.String()] = true
 		c.special[ep.IP] = true
 	}
-	c.specialCount = len(c.special)
-	c.specialMtx.Unlock()
 }
 
 // Start starts the controller
