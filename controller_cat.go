@@ -73,6 +73,7 @@ func (c *controller) shuffleTrimShare(list []Endpoint) []Endpoint {
 	if len(list) == 0 {
 		return nil
 	}
+	list = append(list[:0:0], list...) // don't shuffle passed parameter
 	c.net.rng.Shuffle(len(list), func(i, j int) { list[i], list[j] = list[j], list[i] })
 	if uint(len(list)) > c.net.conf.PeerShareAmount {
 		list = list[:c.net.conf.PeerShareAmount]
