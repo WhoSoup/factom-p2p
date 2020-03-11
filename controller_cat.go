@@ -253,7 +253,7 @@ func (c *controller) catReplenish() {
 			}
 
 			attempts++
-			if ok, alts := c.Dial(ep); !ok {
+			if p, alts := c.Dial(ep); p != nil {
 				for _, alt := range alts {
 					connect = append(connect, alt)
 				}

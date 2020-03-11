@@ -3,10 +3,46 @@ package p2p
 import (
 	"bytes"
 	"encoding/gob"
+	"fmt"
 	"net"
 	"testing"
 	"time"
+
+	log "github.com/sirupsen/logrus"
 )
+
+func testRandomPeer(net *Network) *Peer {
+	p := new(Peer)
+	p.net = net
+	p.Endpoint = testRandomEndpoint()
+
+	p.stop = make(chan bool, 1)
+	p.Hash = fmt.Sprintf("%s:%s %08x", p.Endpoint.IP, p.Endpoint.Port, net.rng.Uint64())
+
+	p.logger = peerLogger.WithFields(log.Fields{
+		"hash":    p.Hash,
+		"address": p.Endpoint.IP,
+		"Port":    p.Endpoint.Port,
+		"node":    p.net.conf.NodeName,
+	})
+
+	p.send = newParcelChannel(p.net.conf.ChannelCapacity)
+	p.IsIncoming = net.rng.Intn(1) == 0
+	p.connected = time.Now()
+	return p
+}
+
+func (p *Peer) _setProtocol(prot uint16, conn net.Conn) {
+	p.metrics = NewMetricsReadWriter(conn)
+	switch prot {
+	case 9:
+		p.prot = newProtocolV9(p.net.conf.Network, p.net.conf.NodeID, p.net.conf.ListenPort, gob.NewDecoder(p.metrics), gob.NewEncoder(p.metrics))
+	case 10:
+		p.prot = newProtocolV10(gob.NewDecoder(p.metrics), gob.NewEncoder(p.metrics))
+	case 11:
+		p.prot = newProtocolV11(p.metrics)
+	}
+}
 
 func TestPeer_sendLoop(t *testing.T) {
 	A, B := net.Pipe()

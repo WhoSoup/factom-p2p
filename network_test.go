@@ -13,6 +13,7 @@ func testNetworkHarness(t *testing.T) *Network {
 	conf.NodeName = fmt.Sprintf("UnitTestNode-%d", unitTestNetworks)
 	conf.Network = NewNetworkID("unit-test-network")
 	conf.Special = ""
+	conf.EnablePrometheus = false
 	unitTestNetworks++
 
 	n, err := NewNetwork(conf)
