@@ -48,16 +48,16 @@ func (c *controller) runMetrics() {
 		go c.net.metricsHook(metrics)
 	}
 	if c.net.prom != nil {
-		var MPSDown, MPSUp, BytesDown, BytesUp float64
+		var MPSDown, MPSUp, BPSDown, BPSUp float64
 		for _, m := range metrics {
 			MPSDown += float64(m.MPSDown)
 			MPSUp += float64(m.MPSUp)
-			BytesDown += float64(m.BytesReceived)
-			BytesUp += float64(m.BytesSent)
+			BPSDown += float64(m.BPSDown)
+			BPSUp += float64(m.BPSUp)
 		}
 
-		c.net.prom.ByteRateDown.Set(BytesDown)
-		c.net.prom.ByteRateUp.Set(BytesUp)
+		c.net.prom.ByteRateDown.Set(BPSDown)
+		c.net.prom.ByteRateUp.Set(BPSUp)
 		c.net.prom.MessageRateUp.Set(MPSUp)
 		c.net.prom.MessageRateDown.Set(MPSDown)
 
