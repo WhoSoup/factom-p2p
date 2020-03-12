@@ -17,7 +17,7 @@ func testRandomPeer(net *Network) *Peer {
 	p.Endpoint = testRandomEndpoint()
 
 	p.stop = make(chan bool, 1)
-	p.Hash = fmt.Sprintf("%s:%s %08x", p.Endpoint.IP, p.Endpoint.Port, net.rng.Uint64())
+	p.Hash = fmt.Sprintf("%s:%s %08x", p.Endpoint.IP, p.Endpoint.Port, p.net.rng.Uint64())
 
 	p.logger = peerLogger.WithFields(log.Fields{
 		"hash":    p.Hash,
@@ -30,6 +30,18 @@ func testRandomPeer(net *Network) *Peer {
 	p.IsIncoming = net.rng.Intn(1) == 0
 	p.connected = time.Now()
 	return p
+}
+
+func (p *Peer) _setEndpoint(ep Endpoint) {
+	p.Endpoint = ep
+	p.Hash = fmt.Sprintf("%s:%s %08x", p.Endpoint.IP, p.Endpoint.Port, p.net.rng.Uint64())
+	p.logger = peerLogger.WithFields(log.Fields{
+		"hash":    p.Hash,
+		"address": p.Endpoint.IP,
+		"Port":    p.Endpoint.Port,
+		"node":    p.net.conf.NodeName,
+	})
+
 }
 
 func (p *Peer) _setProtocol(prot uint16, conn net.Conn) {

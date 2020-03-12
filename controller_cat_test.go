@@ -1,6 +1,8 @@
 package p2p
 
 import (
+	"fmt"
+	"net"
 	"reflect"
 	"testing"
 	"time"
@@ -9,10 +11,7 @@ import (
 func Test_controller_processPeerShare(t *testing.T) {
 	net := testNetworkHarness(t)
 
-	share := make([]Endpoint, 3)
-	for i := range share {
-		share[i] = testRandomEndpoint()
-	}
+	share := testRandomEndpointList(3)
 
 	v9p := new(Peer)
 	v9p.prot = newProtocolV9(net.conf.Network, net.conf.NodeID, net.conf.ListenPort, nil, nil)
@@ -62,11 +61,7 @@ func Test_controller_processPeerShare(t *testing.T) {
 func Test_controller_shuffleTrimShare(t *testing.T) {
 	net := testNetworkHarness(t)
 
-	eps := make([]Endpoint, 64)
-	for i := range eps {
-		eps[i] = testRandomEndpoint()
-	}
-
+	eps := testRandomEndpointList(64)
 	net.conf.PeerShareAmount = 64
 
 	got := net.controller.shuffleTrimShare(eps)
@@ -100,11 +95,7 @@ func Test_controller_sharePeers(t *testing.T) {
 	p := testRandomPeer(net)
 	p._setProtocol(10, nil) // only need to encode peer share, not send on wire
 
-	share := make([]Endpoint, 128)
-	for i := range share {
-		share[i] = testRandomEndpoint()
-	}
-
+	share := testRandomEndpointList(128)
 	net.controller.sharePeers(p, share)
 
 	if len(p.send) == 0 {
@@ -129,10 +120,7 @@ func Test_controller_asyncPeerRequest(t *testing.T) {
 
 	peer._setProtocol(10, nil) // no connection needed
 
-	sendShare := make([]Endpoint, net.conf.PeerShareAmount)
-	for i := range sendShare {
-		sendShare[i] = testRandomEndpoint()
-	}
+	sendShare := testRandomEndpointList(int(net.conf.PeerShareAmount))
 
 	done := make(chan bool)
 	go func() {
@@ -177,5 +165,152 @@ func Test_controller_asyncPeerRequest_timeout(t *testing.T) {
 	got, err := net.controller.asyncPeerRequest(peer)
 	if err == nil {
 		t.Errorf("async did not return a timeout error. got = %v", got)
+	}
+}
+
+// testing this is challenging but there are some expectations we can have
+// 1. the bootstrap peers will be dialed first
+// 2. the special peers will be dialed
+// 3. the seed peers will be dialed
+// and the replenish loop will terminate when the network stops
+func Test_controller_catReplenish(t *testing.T) {
+	//dialed := make(map[Endpoint]bool)
+
+	testList := func(name string) []Endpoint {
+		list := make([]Endpoint, 3)
+		for i := range list {
+			list[i] = Endpoint{IP: name, Port: fmt.Sprintf("%d", i+1)}
+		}
+		return list
+	}
+
+	net := testNetworkHarness(t)
+	// create new dialer with lower timeout
+	net.conf.DialTimeout = time.Millisecond
+	net.conf.RedialInterval = time.Minute // we want to exhaust each endpoint in this unit test
+	net.controller.dialer, _ = NewDialer("", net.conf.RedialInterval, net.conf.DialTimeout)
+
+	net.controller.bootstrap = testList("bootstrap")
+
+	net.controller.seed.cache = testList("seed")
+	net.controller.seed.cacheTTL = time.Hour
+	net.controller.seed.cacheTime = time.Now()
+
+	net.controller.specialEndpoints = testList("special")
+
+	ap := testRandomPeer(net)
+	ap._setEndpoint(Endpoint{IP: "async", Port: "1"})
+	ap._setProtocol(10, nil)
+	net.controller.peers.Add(ap)
+	asyncShare := testList("share")
+
+	done := make(chan bool)
+	go func() {
+		net.controller.catReplenish()
+		done <- true
+	}()
+
+	go func() {
+		parc := <-ap.send
+		if parc.ptype != TypePeerRequest {
+			t.Errorf("async peer did not receive right parcel: %s", parc.ptype)
+		}
+
+		async := net.controller.shareListener[ap.Hash]
+
+		pl, _ := ap.prot.MakePeerShare(asyncShare)
+		resp := newParcel(TypePeerResponse, pl)
+		async <- resp
+	}()
+
+	time.Sleep(time.Millisecond * 100)
+	net.Stop()
+	<-done
+
+	for i, ep := range net.controller.bootstrap {
+		if net.controller.dialer.CanDial(ep) {
+			t.Errorf("bootstrap - did not dial ep %d", i)
+		}
+	}
+
+	for i, ep := range net.controller.seed.retrieve() {
+		if net.controller.dialer.CanDial(ep) {
+			t.Errorf("seed- did not dial ep %d", i)
+		}
+	}
+
+	for i, ep := range net.controller.specialEndpoints {
+		if net.controller.dialer.CanDial(ep) {
+			t.Errorf("special - did not dial ep %d", i)
+		}
+	}
+
+	any := false
+	for _, ep := range asyncShare {
+		if !net.controller.dialer.CanDial(ep) {
+			any = true
+		}
+	}
+
+	if !any {
+		t.Errorf("share - did not dial any of the shared endpoints")
+	}
+
+}
+
+func Test_controller_makePeerShare(t *testing.T) {
+	net := testNetworkHarness(t)
+	list := testRandomEndpointList(int(net.conf.PeerShareAmount + 1))
+	for _, ep := range list {
+		p := testRandomPeer(net)
+		p._setEndpoint(ep)
+		net.controller.peers.Add(p)
+	}
+
+	for _, ep := range list {
+		share := net.controller.makePeerShare(ep)
+		if len(share) != len(list)-1 {
+			t.Errorf("peer share without %s yielded wrong count. got = %d, want = %d", ep, len(share), len(list)-1)
+		} else {
+			for _, in := range share {
+				if in.Equal(ep) {
+					t.Errorf("peer share without %s included %s", ep, in)
+				}
+			}
+		}
+	}
+}
+
+func Test_controller_runCatRound(t *testing.T) {
+	n := testNetworkHarness(t)
+
+	rounds := n.Rounds()
+
+	n.conf.DropTo = 1
+
+	// create 3 peers, 2 should be dropped
+	for i := 0; i < 3; i++ {
+		rp := testRandomPeer(n)
+		A, B := net.Pipe()
+		rp.conn = A
+		defer B.Close()
+		n.controller.peers.Add(rp)
+	}
+
+	n.controller.lastRound = time.Time{}
+	n.controller.runCatRound()
+
+	if rounds == n.Rounds() {
+		t.Errorf("net.Rounds() did not increase. got = %d, want = %d", n.Rounds(), rounds+1)
+	}
+
+	if len(n.controller.peerStatus) != 2 {
+		t.Errorf("not enough status messages in peerStatus. got = %d, want = 2", len(n.controller.peerStatus))
+
+		for len(n.controller.peerStatus) > 0 {
+			if (<-n.controller.peerStatus).online {
+				t.Errorf("peer went online instead of offline")
+			}
+		}
 	}
 }

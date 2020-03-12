@@ -329,3 +329,32 @@ func Test_controller_allowIncoming(t *testing.T) {
 		})
 	}
 }
+
+func Test_controller_RejectWithShare(t *testing.T) {
+	n := testNetworkHarness(t)
+	for _, i := range []uint16{9, 11} {
+		share := testRandomEndpointList(int(n.conf.PeerShareAmount))
+		n.conf.ProtocolVersion = i
+
+		A, B := net.Pipe()
+		A.SetWriteDeadline(time.Now().Add(time.Millisecond * 100))
+		B.SetReadDeadline(time.Now().Add(time.Millisecond * 100))
+		go n.controller.RejectWithShare(A, share)
+
+		prot := n.controller.selectProtocol(B)
+		hs, err := prot.ReadHandshake()
+		if err != nil {
+			t.Errorf("prot %d receive error %v", i, err)
+			continue
+		}
+
+		if hs.Type != TypeRejectAlternative {
+			t.Errorf("prot %d parcel unexpected type. got = %s, want = %s", i, hs.Type, TypeRejectAlternative)
+			continue
+		}
+
+		if !testEqualEndpointList(share, hs.Alternatives) {
+			t.Errorf("prot %d different endpoint list. got = %v, want = %v", i, hs.Alternatives, share)
+		}
+	}
+}

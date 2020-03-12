@@ -13,6 +13,14 @@ func testRandomEndpoint() Endpoint {
 	return Endpoint{IP: ip, Port: testRandomPort()}
 }
 
+func testRandomEndpointList(size int) []Endpoint {
+	list := make([]Endpoint, size)
+	for i := range list {
+		list[i] = testRandomEndpoint()
+	}
+	return list
+}
+
 func testRandomPort() string {
 	return fmt.Sprintf("%d", (1+rand.Uint32())%math.MaxUint16)
 }
