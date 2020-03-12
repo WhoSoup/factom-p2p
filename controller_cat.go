@@ -142,7 +142,7 @@ func (c *controller) asyncPeerRequest(peer *Peer) ([]Endpoint, error) {
 	case parcel := <-async:
 		share := c.shuffleTrimShare(c.processPeerShare(peer, parcel))
 		return share, nil
-	case <-time.After(time.Second * 5):
+	case <-time.After(c.net.conf.PeerShareTimeout):
 		return nil, fmt.Errorf("timeout")
 	}
 }

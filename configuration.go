@@ -50,6 +50,9 @@ type Configuration struct {
 	// PeerShareAmount is the number of peers we share with others peers when they request a peer share
 	PeerShareAmount uint
 
+	// PeerShareTimeout is the maximum time to wait for an asynchronous reply to a peer share
+	PeerShareTimeout time.Duration
+
 	// CAT Settings
 	// How often to do cat rounds
 	RoundTime time.Duration
@@ -139,6 +142,7 @@ func DefaultP2PConfiguration() (c Configuration) {
 	c.MaxIncoming = 36
 	c.Fanout = 8
 	c.PeerShareAmount = 3 // CAT share
+	c.PeerShareTimeout = time.Second * 5
 	c.RoundTime = time.Minute * 15
 	c.TargetPeers = 32
 	c.MaxPeers = 36
@@ -227,6 +231,10 @@ func (c Configuration) Check() error {
 
 	if c.ChannelCapacity == 0 {
 		return fmt.Errorf("config.ChannelCapacity is not set")
+	}
+
+	if c.PeerShareTimeout == 0 {
+		return fmt.Errorf("config.PeerShareTimeout is not set")
 	}
 
 	if _, err := parseSpecial(c.Special); c.Special != "" && err != nil {
