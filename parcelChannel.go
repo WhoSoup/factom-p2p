@@ -1,5 +1,9 @@
 package p2p
 
+import (
+	"runtime"
+)
+
 var pcLogger = packageLogger.WithField("subpack", "protocol")
 
 // ParcelChannel is a channel that supports non-blocking sends
@@ -11,6 +15,7 @@ func newParcelChannel(capacity uint) ParcelChannel {
 
 // Send a parcel along this channel. Non-blocking. If full, half of messages are dropped.
 func (pc ParcelChannel) Send(parcel *Parcel) (bool, int) {
+	defer runtime.Gosched() // don't let any goroutine hog the parcel channels
 	select {
 	case pc <- parcel:
 		return true, 0
@@ -35,7 +40,7 @@ func (pc ParcelChannel) Reader() <-chan *Parcel {
 	return pc
 }
 
-// Capacity returns a percentage [0.0,1.0] of how full the channel is
-func (pc ParcelChannel) Capacity() float64 {
+// FillRatio returns a percentage [0.0,1.0] of how full the channel is
+func (pc ParcelChannel) FillRatio() float64 {
 	return float64(len(pc)) / float64(cap(pc))
 }

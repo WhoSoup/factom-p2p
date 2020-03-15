@@ -4,7 +4,6 @@ import (
 	"encoding/gob"
 	"encoding/json"
 	"fmt"
-	"hash/crc32"
 )
 
 var _ Protocol = (*ProtocolV10)(nil)
@@ -12,37 +11,49 @@ var _ Protocol = (*ProtocolV10)(nil)
 // ProtocolV10 is the protocol introduced by p2p 2.0.
 // It is a slimmed down version of V9, reducing overhead
 type ProtocolV10 struct {
-	net     *Network
 	decoder *gob.Decoder
 	encoder *gob.Encoder
-	peer    *Peer
 }
 
 // V10Msg is the barebone message
 type V10Msg struct {
 	Type    ParcelType
-	Crc32   uint32
 	Payload []byte
 }
 
-func (v10 *ProtocolV10) init(peer *Peer, decoder *gob.Decoder, encoder *gob.Encoder) {
-	v10.peer = peer
-	v10.net = peer.net
+func newProtocolV10(decoder *gob.Decoder, encoder *gob.Encoder) *ProtocolV10 {
+	v10 := new(ProtocolV10)
 	v10.decoder = decoder
 	v10.encoder = encoder
+	return v10
+}
+
+func (v10 *ProtocolV10) SendHandshake(h *Handshake) error {
+	return v9SendHandshake(v10.encoder, h)
+}
+
+// ReadHandshake for v10 is using the identical format to V9 for backward compatibility.
+// It can't be easily told apart without first decoding the message, so the code is only
+// implemented in v9, then upgraded to V10 based on the values
+func (v10 *ProtocolV10) ReadHandshake() (*Handshake, error) {
+	return nil, fmt.Errorf("V10 doesn't have its own handshake")
 }
 
 // Send encodes a Parcel as V10Msg, calculates the crc and encodes it as gob
 func (v10 *ProtocolV10) Send(p *Parcel) error {
 	var msg V10Msg
-	msg.Type = p.Type
-	msg.Crc32 = crc32.Checksum(p.Payload, crcTable)
+	msg.Type = p.ptype
 	msg.Payload = p.Payload
 	return v10.encoder.Encode(msg)
 }
 
 // Version 10
-func (v10 *ProtocolV10) Version() string {
+func (v10 *ProtocolV10) Version() uint16 {
+	return 10
+}
+
+// String 10
+func (v10 *ProtocolV10) String() string {
 	return "10"
 }
 
@@ -55,19 +66,14 @@ func (v10 *ProtocolV10) Receive() (*Parcel, error) {
 	}
 
 	if len(msg.Payload) == 0 {
-		return nil, fmt.Errorf("nul payload")
-	}
-
-	csum := crc32.Checksum(msg.Payload, crcTable)
-	if csum != msg.Crc32 {
-		return nil, fmt.Errorf("invalid checksum")
+		return nil, fmt.Errorf("null payload")
 	}
 
 	p := newParcel(msg.Type, msg.Payload)
 	return p, nil
 }
 
-// V10Share is an alias of PeerShare
+// V10Share is an alias of Endpoint
 type V10Share Endpoint
 
 // MakePeerShare serializes a list of ips via json

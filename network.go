@@ -1,6 +1,7 @@
 package p2p
 
 import (
+	"fmt"
 	"math/rand"
 	"time"
 
@@ -13,8 +14,8 @@ import (
 //
 // FromNetwork is the channel that gets filled with parcels arriving from the network layer
 type Network struct {
-	ToNetwork   ParcelChannel
-	FromNetwork ParcelChannel
+	toNetwork   ParcelChannel
+	fromNetwork ParcelChannel
 
 	conf       *Configuration
 	controller *controller
@@ -23,12 +24,11 @@ type Network struct {
 
 	metricsHook func(pm map[string]PeerMetrics)
 
-	rng        *rand.Rand
+	rng        *rand.Rand // note: not thread safe for Read()
 	instanceID uint64
 	logger     *log.Entry
 
-	globalCloser chan interface{}
-	fatalError   chan error
+	stopper chan interface{}
 }
 
 var packageLogger = log.WithField("package", "p2p")
@@ -38,20 +38,28 @@ var packageLogger = log.WithField("package", "p2p")
 // Does not start the network automatically.
 func NewNetwork(conf Configuration) (*Network, error) {
 	var err error
-	myconf := conf // copy
-	myconf.Sanitize()
+
+	if err = conf.Check(); err != nil {
+		return nil, err
+	}
 
 	n := new(Network)
-	n.fatalError = make(chan error)
+	n.conf = &conf
+	n.conf.Sanitize()
+	n.stopper = make(chan interface{})
 
-	n.logger = packageLogger.WithField("subpackage", "Network").WithField("node", conf.NodeName)
+	n.logger = packageLogger.WithField("subpackage", "Network").WithField("node", n.conf.NodeName)
 
-	n.conf = &myconf
 	if n.conf.EnablePrometheus {
 		n.prom = new(Prometheus)
 		n.prom.Setup()
 	}
-	n.rng = rand.New(rand.NewSource(time.Now().UnixNano()))
+
+	if src, err := newLockSource(time.Now().UnixNano()); err != nil {
+		return nil, err
+	} else {
+		n.rng = rand.New(src)
+	}
 	// generate random instanceid for loopback detection
 	n.instanceID = n.rng.Uint64()
 
@@ -64,8 +72,8 @@ func NewNetwork(conf Configuration) (*Network, error) {
 	if err != nil {
 		return nil, err
 	}
-	n.ToNetwork = newParcelChannel(conf.ChannelCapacity)
-	n.FromNetwork = newParcelChannel(conf.ChannelCapacity)
+	n.toNetwork = newParcelChannel(n.conf.ChannelCapacity)
+	n.fromNetwork = newParcelChannel(n.conf.ChannelCapacity)
 	return n, nil
 }
 
@@ -100,19 +108,30 @@ func (n *Network) SetMetricsHook(f func(pm map[string]PeerMetrics)) {
 }
 
 // Run starts the network.
-// Listens to incoming connections on the specified port
-// and connects to other peers
-func (n *Network) Run() {
-	n.logger.Infof("Starting a P2P Network with configuration %+v", n.conf)
+// Listens to incoming connections on the specified port and connects to other peers
+func (n *Network) Run() error {
+	select {
+	case <-n.stopper:
+		return fmt.Errorf("unable to restart a network that has been stopped")
+	default:
+		n.logger.Infof("Starting a P2P Network with configuration %+v", n.conf)
+		n.controller.Start()
+		return nil
+	}
 
-	n.controller.Start() // this will get peer manager ready to handle incoming connections
-	//DebugServer(n)
 }
 
-func (n *Network) Stop() {
-	// TODO implement
-	// close stop channel
-	// stop all peers
+// Stop shuts down the network
+// Note that the network object will become unusable after it is stopped
+func (n *Network) Stop() error {
+	select {
+	case <-n.stopper:
+		return fmt.Errorf("network already stopped")
+	default:
+		n.logger.Info("Network.Stop() called")
+		close(n.stopper)
+		return nil
+	}
 }
 
 // Ban removes a peer as well as any other peer from that address
@@ -147,4 +166,25 @@ func (n *Network) Total() int {
 // Rounds returns the total number of CAT rounds that have occurred
 func (n *Network) Rounds() int {
 	return n.controller.rounds
+}
+
+// Send accepts a parcel and sends it to the appropriate parties.
+// This function is non-blocking.
+// If the network goes down, older messages are dropped first.
+func (n *Network) Send(p *Parcel) {
+	_, dropped := n.toNetwork.Send(p)
+	if dropped > 0 && n.prom != nil {
+		n.prom.DroppedToNetwork.Add(float64(dropped))
+	}
+}
+
+// BlockingSend accepts a parcel and sends it to the appropriate parties.
+// This function blocks after the queue fills up.
+func (n *Network) BlockingSend(p *Parcel) {
+	n.toNetwork <- p
+}
+
+// Reader returns a read-only channel containing application parcels arriving from the network.
+func (n *Network) Reader() <-chan *Parcel {
+	return n.fromNetwork.Reader()
 }

@@ -1,6 +1,8 @@
 package p2p
 
 import (
+	"fmt"
+	"strconv"
 	"time"
 )
 
@@ -40,22 +42,29 @@ type Configuration struct {
 	// ip is considered special
 	Special string
 
-	// PersistFile is the filepath to the file to save peers. It is persisted in every CAT round
-	PersistFile string
-	// PersistAge is the maximum age of the peer file to try and bootstrap peers from
-	PersistAge time.Duration
+	// PeerCacheFile is the filepath to the file to save peers. It is persisted in every CAT round
+	PeerCacheFile string
+	// PeerCacheAge is the maximum age of the peer file to try and bootstrap peers from
+	PeerCacheAge time.Duration
 
-	// to count as being connected
-	// PeerShareAmount is the number of peers we share
+	// PeerShareAmount is the number of peers we share with others peers when they request a peer share
 	PeerShareAmount uint
 
+	// PeerShareTimeout is the maximum time to wait for an asynchronous reply to a peer share
+	PeerShareTimeout time.Duration
+
 	// CAT Settings
+	// How often to do cat rounds
 	RoundTime time.Duration
-	Target    uint
-	Max       uint
-	Drop      uint
-	MinReseed uint
-	Incoming  uint // maximum inbound connections, 0 <= Incoming <= Max
+	// Desired amount of peers
+	TargetPeers uint
+	// Hard cap of connections
+	MaxPeers uint
+	// Amount of peers to drop down to
+	DropTo uint
+	// Reseed if there are fewer than this peers
+	MinReseed   uint
+	MaxIncoming uint // maximum inbound connections, 0 <= MaxIncoming <= MaxPeers
 
 	// === Gossip Behavior ===
 
@@ -79,7 +88,8 @@ type Configuration struct {
 	ListenLimit time.Duration
 
 	// PingInterval dictates the maximum amount of time a connection can be
-	// silent (no writes) before sending a Ping
+	// silent (no writes) before sending a Ping.
+	// Values under one second are normalized to one second.
 	PingInterval time.Duration
 
 	// RedialInterval dictates how long to wait between connection attempts
@@ -120,22 +130,23 @@ func DefaultP2PConfiguration() (c Configuration) {
 	c.NodeName = "FNode0"
 	c.ListenPort = "8108"
 
-	c.PeerRequestInterval = time.Second
+	c.PeerRequestInterval = time.Second * 5
 	c.PeerReseedInterval = time.Hour * 4
 	c.PeerIPLimitIncoming = 0
 	c.PeerIPLimitOutgoing = 0
 	c.ManualBan = time.Hour * 24 * 7 // a week
 
-	c.PersistFile = ""
-	c.PersistAge = time.Hour //
+	c.PeerCacheFile = ""
+	c.PeerCacheAge = time.Hour //
 
-	c.Incoming = 36
+	c.MaxIncoming = 36
 	c.Fanout = 8
 	c.PeerShareAmount = 3 // CAT share
+	c.PeerShareTimeout = time.Second * 5
 	c.RoundTime = time.Minute * 15
-	c.Target = 32
-	c.Max = 36
-	c.Drop = 30
+	c.TargetPeers = 32
+	c.MaxPeers = 36
+	c.DropTo = 30
 	c.MinReseed = 10
 
 	c.BindIP = "" // bind to all
@@ -152,7 +163,7 @@ func DefaultP2PConfiguration() (c Configuration) {
 	c.ProtocolVersion = 10
 	c.ProtocolVersionMinimum = 9
 
-	c.ChannelCapacity = 1000
+	c.ChannelCapacity = 50
 
 	c.EnablePrometheus = true
 	return
@@ -160,7 +171,75 @@ func DefaultP2PConfiguration() (c Configuration) {
 
 // Sanitize automatically adjusts some variables that are dependent on others
 func (c *Configuration) Sanitize() {
-	if c.Incoming > c.Max {
-		c.Incoming = c.Max
+	if c.MaxIncoming > c.MaxPeers {
+		c.MaxIncoming = c.MaxPeers
 	}
+	if c.DropTo > c.MaxPeers {
+		c.DropTo = c.MaxPeers
+	}
+}
+
+// Check will return an error if there is a configuration value set in a way that would
+// prevent the normal functions of a node
+func (c Configuration) Check() error {
+	if c.ListenPort == "" {
+		return fmt.Errorf("config.ListenPort is empty")
+	}
+	if _, err := strconv.Atoi(c.ListenPort); err != nil {
+		return fmt.Errorf("config.ListenPort cannot be converted to a number: %v", err)
+	}
+
+	if c.PeerShareAmount == 0 {
+		return fmt.Errorf("config.PeerShareAmount is zero")
+	}
+
+	if c.RoundTime == 0 {
+		return fmt.Errorf("config.RoundTime is not set")
+	}
+
+	if c.TargetPeers == 0 {
+		return fmt.Errorf("config.TargetPeers is not set")
+	}
+
+	if c.Fanout == 0 {
+		return fmt.Errorf("config.Fanout is not set")
+	}
+
+	if c.HandshakeTimeout == 0 {
+		return fmt.Errorf("config.HandshakeTimeout is not set")
+	}
+
+	if c.DialTimeout == 0 {
+		return fmt.Errorf("config.DialTimeout is not set")
+	}
+
+	if c.ReadDeadline == 0 {
+		return fmt.Errorf("config.ReadDeadline is not set")
+	}
+
+	if c.WriteDeadline == 0 {
+		return fmt.Errorf("config.WriteDeadline is not set")
+	}
+
+	if c.ProtocolVersion < 9 || c.ProtocolVersion > 11 {
+		return fmt.Errorf("config.ProtocolVersion outside of range of support protocols (9,10,11)")
+	}
+
+	if c.ProtocolVersionMinimum > 11 {
+		return fmt.Errorf("config.ProtocolVersionMinimum is higher than the maximum supported protocol")
+	}
+
+	if c.ChannelCapacity == 0 {
+		return fmt.Errorf("config.ChannelCapacity is not set")
+	}
+
+	if c.PeerShareTimeout == 0 {
+		return fmt.Errorf("config.PeerShareTimeout is not set")
+	}
+
+	if _, err := parseSpecial(c.Special); c.Special != "" && err != nil {
+		return fmt.Errorf("config.Special contains unparseable endpoints")
+	}
+
+	return nil
 }

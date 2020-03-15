@@ -4,8 +4,10 @@ import (
 	"bufio"
 	"crypto/sha256"
 	"encoding/binary"
+	"fmt"
 	"net"
 	"net/http"
+	"strings"
 )
 
 // IP2Location converts an ip address to a uint32
@@ -53,15 +55,33 @@ func StringToUint32(input string) uint32 {
 // WebScanner is a wrapper that applies the closure f to the response body
 func WebScanner(url string, f func(line string)) error {
 	resp, err := http.Get(url)
-
 	if err != nil {
 		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("invalid http status code: %d", resp.StatusCode)
 	}
 
 	scanner := bufio.NewScanner(resp.Body)
 	for scanner.Scan() {
 		f(scanner.Text())
 	}
-	resp.Body.Close()
+
 	return nil
+}
+
+func parseSpecial(raw string) ([]Endpoint, error) {
+	var eps []Endpoint
+	split := strings.Split(raw, ",")
+	for _, item := range split {
+		item = strings.TrimSpace(item)
+		ep, err := ParseEndpoint(item)
+		if err != nil {
+			return nil, err
+		}
+		eps = append(eps, ep)
+	}
+	return eps, nil
 }

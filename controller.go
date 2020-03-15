@@ -2,7 +2,6 @@ package p2p
 
 import (
 	"fmt"
-	"strings"
 	"sync"
 	"time"
 
@@ -22,8 +21,7 @@ type controller struct {
 	dialer   *Dialer
 	listener *LimitedListener
 
-	specialMtx   sync.RWMutex
-	specialCount int
+	specialMtx sync.RWMutex
 
 	banMtx           sync.RWMutex
 	bans             map[string]time.Time // (ip|ip:port) => time the ban ends
@@ -31,7 +29,7 @@ type controller struct {
 	specialEndpoints []Endpoint
 	bootstrap        []Endpoint
 
-	shareListener map[uint32]func(*Parcel)
+	shareListener map[string]chan *Parcel
 	shareMtx      sync.RWMutex
 
 	lastPeerDial time.Time
@@ -73,7 +71,7 @@ func newController(network *Network) (*controller, error) {
 	c.peerData = make(chan peerParcel, conf.ChannelCapacity)
 
 	c.special = make(map[string]bool)
-	c.shareListener = make(map[uint32]func(*Parcel))
+	c.shareListener = make(map[string]chan *Parcel)
 
 	// CAT
 	c.lastRound = time.Now()
@@ -82,17 +80,13 @@ func newController(network *Network) (*controller, error) {
 	c.peers = NewPeerStore()
 	c.setSpecial(conf.Special)
 
-	if persist, err := c.loadPersist(); err != nil || persist == nil {
+	if cache, err := c.loadPeerCache(); err != nil || cache == nil {
 		c.logger.Infof("no valid bootstrap file found")
 		c.bans = make(map[string]time.Time)
 		c.bootstrap = nil
-	} else if persist != nil {
-		c.bans = persist.Bans
-		c.bootstrap = persist.Bootstrap
-	}
-
-	if c.net.prom != nil {
-		c.net.prom.KnownPeers.Set(float64(c.peers.Total()))
+	} else if cache != nil {
+		c.bans = cache.Bans
+		c.bootstrap = cache.Peers
 	}
 
 	return c, nil
@@ -173,33 +167,28 @@ func (c *controller) disconnect(hash string) {
 }
 
 func (c *controller) setSpecial(raw string) {
+	c.specialMtx.Lock()
+	defer c.specialMtx.Unlock()
+
 	if len(raw) == 0 {
 		c.specialEndpoints = nil
+		c.special = make(map[string]bool)
 		return
 	}
-	c.specialEndpoints = c.parseSpecial(raw)
-	c.specialMtx.Lock()
+
+	eps, err := parseSpecial(raw)
+	if err != nil {
+		c.logger.WithError(err).Warnf("unable to parse special endpoints")
+		return
+	}
+
+	c.specialEndpoints = eps
+	c.special = make(map[string]bool)
 	for _, ep := range c.specialEndpoints {
 		c.logger.Debugf("Registering special endpoint %s", ep)
 		c.special[ep.String()] = true
 		c.special[ep.IP] = true
 	}
-	c.specialCount = len(c.special)
-	c.specialMtx.Unlock()
-}
-
-func (c *controller) parseSpecial(raw string) []Endpoint {
-	var eps []Endpoint
-	split := strings.Split(raw, ",")
-	for _, item := range split {
-		ep, err := ParseEndpoint(item)
-		if err != nil {
-			c.logger.Warnf("unable to determine host and port of special entry \"%s\"", item)
-			continue
-		}
-		eps = append(eps, ep)
-	}
-	return eps
 }
 
 // Start starts the controller
