@@ -7,11 +7,11 @@ import (
 	"strconv"
 )
 
-// built after https://en.wikipedia.org/wiki/Hostname#Restrictions_on_valid_hostnames
-//                     (      optional labels        )    (    required label            )
 var hostnameRegex *regexp.Regexp
 
 func init() {
+	// built after https://en.wikipedia.org/wiki/Hostname#Restrictions_on_valid_hostnames
+	//                                   (      optional labels           ) (    required label          )
 	hostnameRegex = regexp.MustCompile(`^([0-9A-Za-z][0-9A-Za-z\-]{0,62}\.)*[0-9A-Za-z][0-9A-Za-z\-]{0,62}$`)
 }
 

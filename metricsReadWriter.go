@@ -26,6 +26,7 @@ type MetricsReadWriter struct {
 
 var _ StatsCollector = (*MetricsReadWriter)(nil)
 var _ ReadWriteCollector = (*MetricsReadWriter)(nil)
+var _ io.ReadWriter = (*MetricsReadWriter)(nil)
 
 func NewMetricsReadWriter(rw io.ReadWriter) *MetricsReadWriter {
 	sc := new(MetricsReadWriter)

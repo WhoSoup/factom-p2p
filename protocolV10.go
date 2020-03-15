@@ -21,9 +21,22 @@ type V10Msg struct {
 	Payload []byte
 }
 
-func (v10 *ProtocolV10) init(decoder *gob.Decoder, encoder *gob.Encoder) {
+func newProtocolV10(decoder *gob.Decoder, encoder *gob.Encoder) *ProtocolV10 {
+	v10 := new(ProtocolV10)
 	v10.decoder = decoder
 	v10.encoder = encoder
+	return v10
+}
+
+func (v10 *ProtocolV10) SendHandshake(h *Handshake) error {
+	return v9SendHandshake(v10.encoder, h)
+}
+
+// ReadHandshake for v10 is using the identical format to V9 for backward compatibility.
+// It can't be easily told apart without first decoding the message, so the code is only
+// implemented in v9, then upgraded to V10 based on the values
+func (v10 *ProtocolV10) ReadHandshake() (*Handshake, error) {
+	return nil, fmt.Errorf("V10 doesn't have its own handshake")
 }
 
 // Send encodes a Parcel as V10Msg, calculates the crc and encodes it as gob
@@ -35,7 +48,12 @@ func (v10 *ProtocolV10) Send(p *Parcel) error {
 }
 
 // Version 10
-func (v10 *ProtocolV10) Version() string {
+func (v10 *ProtocolV10) Version() uint16 {
+	return 10
+}
+
+// String 10
+func (v10 *ProtocolV10) String() string {
 	return "10"
 }
 
@@ -55,7 +73,7 @@ func (v10 *ProtocolV10) Receive() (*Parcel, error) {
 	return p, nil
 }
 
-// V10Share is an alias of PeerShare
+// V10Share is an alias of Endpoint
 type V10Share Endpoint
 
 // MakePeerShare serializes a list of ips via json

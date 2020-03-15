@@ -105,29 +105,57 @@ Peers that are rejected are given a list of 3 (conf: `PeerShareAmount`) random p
 
 ### Handshake
 
-The handshake starts with an already established TCP connection.
+The handshake follows establishing a TCP connection. The "outgoing" handshake is performed by the node dialing into another node. The format of the Handshake struct is protocol-dependent but it contains the following information:
 
-1. A deadline of 10 seconds (conf: `HandshakeTimeout`) is set for both reading and writing
-2. Generate a Handshake containing our preferred version (conf: `ProtocolVersion`), listen port (conf: `ListenPort`), network id (conf: `Network`), and node id (conf: `NodeID`) and send it across the wire
-3. Blocking read of the first message
-4. Verify that we are in the same network
-5. Calculate the minimum of both our and their version
-6. Check if we can handle that version (conf: `ProtocolVersionMinimum`) and initialize the protocol adapter
-7. If it's an outgoing connection, check if the Handshake is of type RejectAlternative, in which case we parse the list of alternate endpoints
+| Name | Type | Description |
+|------|------|-------------|
+| Network | NetworkID | The network id of the network (ie, MainNet = `0xfeedbeef`) (conf: `Network`) |
+| Version | uint16 | The version of the protocol we want to use. (conf: `ProtocolVersion`) | 
+| Type | ParcelType | For V10 and up, this is either type "Handshake" (`0x8`) or "Reject with Alternatives" (`0x9`). For V9, this is "Peer Request" (`0x3`) |
+| NodeID | uint32 | An application-defined value that can persist across restarts (conf: `NodeID`) |
+| ListenPort | string | The port the node is defined to listen at (conf: `ListenPort`) | 
+| Loopback | uint64 | A unique nonce to detect loopback connections | 
+| Alternatives | slice of Endpoints | If the connection is rejected, a list of alternative endpoints to connect to | 
 
-If any step fails, the handshake will fail. 
+#### Outgoing Handshake
 
-For backward compatibility, the Handshake message is in the same format as protocol v9 requests but it uses the type "Handshake". Nodes running the old software will just drop the invalid message without affecting the node's status in any way.
+1. Set a deadline of 10 seconds (conf: `HandshakeTimeout`)
+2. Select the desired protocol
+3. Encode the handshake data using the desired protocol
+4. Send the handshake
+5. Wait for a response
+6. Attempt to identify the encoding scheme and decode the first message as handshake
+7. Validate the handshake response to see if the network, loopback, and types are desired
+8. Use the protocol that matches the reply's encoding and version
+
+If any step fails, the handshake is considered failed. 
+
+#### Incoming Handshake
+
+1. Set a deadline of 10 seconds (conf: `HandshakeTimeout`)
+2. Attempt to identify the encoding scheme and decode the first message as handshake
+3. Validate the handshake response to see if the network and types are desired
+4. (Optional) Propose an alternative protocol
+5. Create a handshake, copying the loopback value from 3.
+6. Send the handshake
+
+If any step fails, the handshake is considered failed. In most cases, the node should use the same protocol that it received the handshake for. However, p2p1 nodes are unable to understand the newer protocol and will always send a message containing protocol version 9. In this case, nodes are expected to downgrade the protocol to V9. 
 
 ### 9
 
-Protocol 9 is the legacy (Factomd v6.5 and lower) protocol with the ability to split messages into parts disabled. V9 has the disadvantage of sending unwanted overhead with every message, namely Network, Version, Length, Address, Part info, NodeID, Address, Port. In the old p2p system this was used to post-load information but now has been shifted to the handshake.
+Protocol 9 is the legacy (Factomd v6.6 and lower) protocol with the ability to split messages into parts disabled. V9 has the disadvantage of sending unwanted overhead with every message, namely Network, Version, Length, Address, Part info, NodeID, Address, Port. In the old p2p system this was used to post-load information but now has been shifted to the handshake.
 
 Data is serialized via Golang's gob.
 
 ### 10
 
-Protocol 10 is the slimmed down version of V9, containing only the Type, CRC32 of the payload, and the payload itself. Data is also serialized via Golang's gob.
+Protocol 10 is the slimmed down version of V9, containing only the Type, CRC32 of the payload, and the payload itself. Data is also serialized via Golang's gob. The handshake is encoded using V9's format.
+
+### 11
+
+Protocol 11 uses Protobuf ([protocolV11.proto](protocolV11.proto)) to define the Handshake and message. To signal that the connection is used for V11, the 4-byte sequence `0x70627566` (ASCII for "pbuf") is transmitted first. Protobufs are transmitted by sending the size of the marshalled protobuf first, encoded as uint32 in Big Endian format, followed by the protobuf byte sequence itself.
+
+V11 has a maximum parcel size of 128 Mebibytes.
 
 ## Usage
 

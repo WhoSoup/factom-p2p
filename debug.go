@@ -26,14 +26,32 @@ func (n *Network) DebugMessage() (string, int) {
 
 	tw := tabwriter.NewWriter(buf, 0, 0, 3, ' ', 0)
 
-	fmt.Fprintf(tw, "Hash\tMPS Down\tMPS Up\tBps Down\tBps up\tRatio\tDropped\t\n")
-	fmt.Fprintf(tw, "----\t--------\t------\t--------\t------\t-----\t-------\t\n")
+	fmt.Fprintf(tw, "Hash\tMPS Down\tMPS Up\tBps Down\tBps up\tRatio\tDropped\tProt\tType\t\n")
+	fmt.Fprintf(tw, "----\t--------\t------\t--------\t------\t-----\t-------\t----\t----\t\n")
 
+	bps := func(b uint64) string {
+		if b > 1024 {
+			return fmt.Sprintf("%.2f KiB/s", float64(b)/1024)
+		}
+		return fmt.Sprintf("%d B/s", b)
+	}
 	count := len(s)
+	sums := make([]uint64, 6)
 	for _, p := range s {
 		m := p.GetMetrics()
-		fmt.Fprintf(tw, "%s\t%.2f\t%.2f\t%.2f\t%.2f\t%.2f\t%d\t\n", p.Hash, m.MPSDown, m.MPSUp, m.BPSDown, m.BPSUp, m.SendFillRatio, m.Dropped)
+		t := "Outgoing"
+		if p.IsIncoming {
+			t = "Incoming"
+		}
+		sums[0] += uint64(m.MPSDown)
+		sums[1] += uint64(m.MPSUp)
+		sums[2] += uint64(m.BPSUp)
+		sums[3] += uint64(m.BPSUp)
+		sums[4] += m.Dropped
+		fmt.Fprintf(tw, "%s\t%.2f\t%.2f\t%.2f\t%.2f\t%.2f\t%d\t%s\t%s\t\n", p.Hash, m.MPSDown, m.MPSUp, m.BPSDown, m.BPSUp, m.SendFillRatio, m.Dropped, p.prot, t)
 	}
+	fmt.Fprintf(tw, "----\t--------\t------\t--------\t------\t-----\t-------\t----\t----\t\n")
+	fmt.Fprintf(tw, "Sum\t%d\t%d\t%s\t%s\t \t%d\t\t\t\n", sums[0], sums[1], bps(sums[2]), bps(sums[3]), sums[4])
 	tw.Flush()
 
 	fmt.Fprint(buf, "\nBANS:\n")
@@ -135,7 +153,7 @@ func DebugServer(n *Network) {
 			out += fmt.Sprintf("\t\tBPS Down: %.2f\n", m.BPSDown)
 			out += fmt.Sprintf("\t\tBPS Up: %.2f\n", m.BPSUp)
 			out += fmt.Sprintf("\t\tCapacity: %.2f\n", m.SendFillRatio)
-			out += fmt.Sprintf("\t\tDropped: %d\n", m.Dropped)
+			out += fmt.Sprintf("\t\tDropped (send): %d\n", m.Dropped)
 		}
 
 		rw.Write([]byte(out))
