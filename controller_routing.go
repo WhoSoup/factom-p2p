@@ -17,7 +17,13 @@ func (c *controller) route() {
 		case parcel := <-c.net.toNetwork:
 			switch parcel.Address {
 			case FullBroadcast:
-				for _, p := range c.peers.Slice() {
+				var selection []*Peer
+				if c.net.conf.PeerResend {
+					selection = c.selectNoResendPeers(parcel.Payload)
+				} else {
+					selection = c.peers.Slice()
+				}
+				for _, p := range selection {
 					p.Send(parcel)
 				}
 
