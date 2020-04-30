@@ -1,6 +1,9 @@
 package p2p
 
-import "time"
+import (
+	"crypto/sha1"
+	"time"
+)
 
 // route takes messages from ToNetwork and routes it to the appropriate peers
 func (c *controller) route() {
@@ -19,7 +22,13 @@ func (c *controller) route() {
 				}
 
 			case Broadcast:
-				selection := c.selectBroadcastPeers(c.net.conf.Fanout)
+				var selection []*Peer
+				if c.net.conf.PeerResend {
+					selection = c.selectNoResendPeers(parcel.Payload)
+				} else {
+					selection = c.peers.Slice()
+				}
+				selection = c.selectBroadcastPeers(selection, c.net.conf.Fanout)
 				for _, p := range selection {
 					p.Send(parcel)
 				}
@@ -116,9 +125,25 @@ func (c *controller) randomPeer() *Peer {
 	return nil
 }
 
-func (c *controller) selectBroadcastPeers(fanout uint) []*Peer {
-	peers := c.peers.Slice()
+func (c *controller) selectNoResendPeers(payload []byte) []*Peer {
+	all := c.peers.Slice()
 
+	if len(all) == 0 {
+		return nil
+	}
+
+	hash := sha1.Sum(payload)
+	filtered := make([]*Peer, 0, len(all))
+	for _, p := range all {
+		if !p.resend.Has(hash) {
+			filtered = append(filtered, p)
+		}
+	}
+
+	return filtered
+}
+
+func (c *controller) selectBroadcastPeers(peers []*Peer, fanout uint) []*Peer {
 	// not enough to randomize
 	if uint(len(peers)) <= fanout {
 		return peers
